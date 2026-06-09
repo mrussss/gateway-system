@@ -7,6 +7,10 @@
 #include <csignal>
 #include <cerrno>
 #include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
+#include <arpa/inet.h>
 #include "concurrent/BlockQueue.hpp"
 #include "net/TcpServer.hpp"
 #include "net/SocketUtil.hpp"
@@ -19,6 +23,30 @@
 namespace
 {
     constexpr size_t MAX_OUT_BUFFER_SIZE = 2 * 1024 * 1024;
+
+    std::string formatUtcTime(std::chrono::system_clock::time_point tp)
+    {
+        std::time_t time = std::chrono::system_clock::to_time_t(tp);
+        std::tm tm{};
+        gmtime_r(&time, &tm);
+
+        std::ostringstream oss;
+        oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+        return oss.str();
+    }
+
+    std::string formatRemoteAddr(const sockaddr_in &addr)
+    {
+        char ip[INET_ADDRSTRLEN] = {0};
+        if (inet_ntop(AF_INET, &addr.sin_addr, ip, sizeof(ip)) == nullptr)
+        {
+            return "unknown";
+        }
+
+        std::ostringstream oss;
+        oss << ip << ":" << ntohs(addr.sin_port);
+        return oss.str();
+    }
 }
 
 // =========================================================
@@ -138,9 +166,13 @@ void TcpServer::stop()
         listen_fd_ = -1;
     }
     std::vector<int> fds_to_close;
-    for (const auto &[fd, conn] : connections_)
     {
-        fds_to_close.push_back(fd);
+        std::lock_guard<std::mutex> lock(connections_mutex_);
+        for (const auto &[fd, conn] : connections_)
+        {
+            (void)conn;
+            fds_to_close.push_back(fd);
+        }
     }
     for (int fd : fds_to_close)
     {
@@ -316,7 +348,12 @@ void TcpServer::handleAccept()
         }
         LOG_INFO("New connection: fd=%d", fd);
         uint64_t conn_id = next_conn_id_.fetch_add(1);
-        connections_.insert({fd, Connection(fd, conn_id)});
+        std::string remote_addr = formatRemoteAddr(client_addr);
+        std::string connected_at = formatUtcTime(std::chrono::system_clock::now());
+        {
+            std::lock_guard<std::mutex> lock(connections_mutex_);
+            connections_.emplace(fd, Connection(fd, conn_id, remote_addr, connected_at));
+        }
         business::StatsManager::getInstance().incrementConnections();
     }
 }
@@ -490,6 +527,7 @@ void TcpServer::metricsReporterLoop()
             stats.getTotalErrors(),
             std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())};
         control_plane_.reportMetrics(metrics);
+        control_plane_.reportClients(metrics.gateway_id, buildClientSnapshot());
 
         for (int i = 0; i < 50 && running_; ++i)
         {
@@ -498,12 +536,37 @@ void TcpServer::metricsReporterLoop()
     }
 }
 
+std::vector<ClientReport> TcpServer::buildClientSnapshot()
+{
+    std::vector<ClientReport> clients;
+    std::lock_guard<std::mutex> lock(connections_mutex_);
+    clients.reserve(connections_.size());
+
+    for (const auto &[fd, conn] : connections_)
+    {
+        (void)fd;
+        clients.push_back(ClientReport{
+            conn.client_id,
+            conn.remote_addr,
+            conn.connected_at,
+        });
+    }
+
+    return clients;
+}
+
 void TcpServer::closeConnection(int fd)
 {
-    auto it = connections_.find(fd);
-    if (it == connections_.end())
+    bool existed = false;
     {
-        return;
+        std::lock_guard<std::mutex> lock(connections_mutex_);
+        auto it = connections_.find(fd);
+        if (it == connections_.end())
+        {
+            return;
+        }
+        connections_.erase(it);
+        existed = true;
     }
 
     if (epfd_ != -1)
@@ -512,6 +575,8 @@ void TcpServer::closeConnection(int fd)
     }
 
     close(fd);
-    connections_.erase(it);
-    business::StatsManager::getInstance().decrementConnections();
+    if (existed)
+    {
+        business::StatsManager::getInstance().decrementConnections();
+    }
 }

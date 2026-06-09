@@ -77,6 +77,36 @@ bool ControlPlaneClient::reportMetrics(const GatewayMetrics &metrics) const
     return true;
 }
 
+bool ControlPlaneClient::reportClients(const std::string &gateway_id, const std::vector<ClientReport> &clients) const
+{
+    nlohmann::json client_items = nlohmann::json::array();
+    for (const auto &client : clients)
+    {
+        client_items.push_back({
+            {"client_id", client.client_id},
+            {"remote_addr", client.remote_addr},
+            {"connected_at", client.connected_at},
+        });
+    }
+
+    nlohmann::json payload = {
+        {"gateway_id", gateway_id},
+        {"clients", client_items},
+    };
+
+    std::string response_body;
+    if (!postJson("/clients/report", payload.dump(), response_body))
+    {
+        LOG_ERROR("%s", "control plane clients report failed");
+        return false;
+    }
+
+    LOG_INFO("clients reported: gateway_id=%s count=%llu",
+             gateway_id.c_str(),
+             static_cast<unsigned long long>(clients.size()));
+    return true;
+}
+
 bool ControlPlaneClient::postJson(const std::string &path, const std::string &body, std::string &response_body) const
 {
     int fd = connectWithTimeout();

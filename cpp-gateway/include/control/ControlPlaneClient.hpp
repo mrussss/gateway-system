@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 struct GatewayMetrics
 {
@@ -14,6 +15,13 @@ struct GatewayMetrics
     int64_t timestamp;
 };
 
+struct ClientReport
+{
+    std::string client_id;
+    std::string remote_addr;
+    std::string connected_at;
+};
+
 class ControlPlaneClient
 {
 public:
@@ -21,6 +29,7 @@ public:
 
     bool checkAuth(const std::string &client_id, const std::string &token) const;
     bool reportMetrics(const GatewayMetrics &metrics) const;
+    bool reportClients(const std::string &gateway_id, const std::vector<ClientReport> &clients) const;
 
 private:
     bool postJson(const std::string &path, const std::string &body, std::string &response_body) const;

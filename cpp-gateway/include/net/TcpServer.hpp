@@ -5,6 +5,7 @@
 #include <thread>
 #include <unordered_map>
 #include <string>
+#include <mutex>
 #include <sys/epoll.h>
 #include "net/Connection.hpp"
 #include "protocol/Request.hpp"
@@ -46,6 +47,7 @@ private:
     bool modifyConnectionEvents(int fd, uint32_t events);
     void startMetricsReporter();
     void metricsReporterLoop();
+    std::vector<ClientReport> buildClientSnapshot();
 
     int port_;
     int listen_fd_;
@@ -58,6 +60,7 @@ private:
     BlockQueue<Request> request_queue_;
     BlockQueue<Response> response_queue_;
     std::unordered_map<int, Connection> connections_;
+    std::mutex connections_mutex_;
     std::vector<std::thread> workers_;
     std::thread metrics_reporter_;
     ControlPlaneClient control_plane_{"127.0.0.1", 8080, 1000};
