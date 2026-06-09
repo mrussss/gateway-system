@@ -60,6 +60,12 @@ cmake --build build
 
 The gateway listens on TCP port `9000` and calls the Go control plane on `127.0.0.1:8080`.
 
+Run both services with Docker Compose:
+
+```bash
+docker compose up --build
+```
+
 ## Test
 
 Go unit tests:
