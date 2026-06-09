@@ -29,6 +29,7 @@ gateway-system/
 
 - C++17 TCP gateway based on Linux socket and epoll.
 - Custom packet codec with sticky-packet and half-packet handling.
+- Protocol-level AUTH before business requests.
 - Worker-thread request dispatch.
 - Go HTTP control plane built with standard `net/http`.
 - Client auth through `POST /auth/check`.
@@ -214,15 +215,14 @@ Response:
 
 ## Current Limits
 
-- Auth currently uses a hardcoded token: `test-token`.
+- Auth currently uses a hardcoded valid token in the Go control plane: `test-token`.
 - Runtime state is stored in Go process memory.
-- The C++ gateway currently identifies accepted clients as `client_<conn_id>` until a real login/auth payload is added to the custom protocol.
+- The C++ gateway requires clients to send an AUTH packet before PING/ECHO/LOG_PUSH/STATS.
 - Docker Compose is available for one-command startup; external storage is still intentionally not included.
 
 ## Roadmap
 
 - Move tokens and runtime state to Redis or another storage backend.
-- Add protocol-level AUTH before business requests.
 - Export Prometheus-format metrics.
 - Add integration tests for C++ gateway to Go control plane communication.
 - Add a minimal Go-rendered dashboard after the backend flow is stable.

@@ -20,6 +20,8 @@ ECHO_RESP = 6
 ERROR_RESP = 7
 LOG_ACK = 8
 STATS_RESP = 9
+AUTH = 10
+AUTH_RESP = 11
 MAX_BODY_SIZE = 4 * 1024 * 1024 + FIXED_BODY_SIZE
 
 
@@ -60,6 +62,19 @@ def connect(host: str, port: int) -> socket.socket:
     return sock
 
 
+def authenticate(sock: socket.socket, request_id: int = 9000) -> None:
+    payload = json.dumps({
+        "client_id": f"tcp-test-{request_id}",
+        "token": "test-token",
+    }).encode("utf-8")
+    sock.sendall(packet(AUTH, request_id, payload))
+    resp = recv_response(sock)
+    assert_response(resp, AUTH_RESP, request_id)
+    body = json.loads(resp.payload.decode("utf-8"))
+    if body.get("allowed") is not True:
+        raise AssertionError(f"AUTH rejected unexpectedly: {body}")
+
+
 def assert_response(resp: Response, msg_type: int, request_id: int, payload: bytes | None = None) -> None:
     if resp.version != VERSION:
         raise AssertionError(f"expected version={VERSION}, got {resp.version}")
@@ -73,6 +88,7 @@ def assert_response(resp: Response, msg_type: int, request_id: int, payload: byt
 
 def test_ping(host: str, port: int) -> None:
     with connect(host, port) as sock:
+        authenticate(sock, 9001)
         sock.sendall(packet(PING, 1001))
         resp = recv_response(sock)
     assert_response(resp, PONG, 1001)
@@ -85,6 +101,7 @@ def test_ping(host: str, port: int) -> None:
 def test_echo(host: str, port: int) -> None:
     payload = b"hello gateway"
     with connect(host, port) as sock:
+        authenticate(sock, 9002)
         sock.sendall(packet(ECHO, 1002, payload))
         resp = recv_response(sock)
     assert_response(resp, ECHO_RESP, 1002, payload)
@@ -93,6 +110,7 @@ def test_echo(host: str, port: int) -> None:
 
 def test_stats(host: str, port: int) -> None:
     with connect(host, port) as sock:
+        authenticate(sock, 9003)
         sock.sendall(packet(STATS, 1003))
         resp = recv_response(sock)
     assert_response(resp, STATS_RESP, 1003)
@@ -111,6 +129,7 @@ def test_log_push(host: str, port: int) -> None:
         "message": "log push smoke test",
     }).encode("utf-8")
     with connect(host, port) as sock:
+        authenticate(sock, 9004)
         sock.sendall(packet(LOG_PUSH, 1004, payload))
         resp = recv_response(sock)
     assert_response(resp, LOG_ACK, 1004)
@@ -121,6 +140,7 @@ def test_half_packet(host: str, port: int) -> None:
     payload = b"split payload"
     raw = packet(ECHO, 1005, payload)
     with connect(host, port) as sock:
+        authenticate(sock, 9005)
         sock.sendall(raw[:4])
         sock.settimeout(0.4)
         try:
@@ -143,6 +163,7 @@ def test_sticky_packet(host: str, port: int) -> None:
     }
     packets = [packet(ECHO, request_id, payload) for request_id, payload in expected.items()]
     with connect(host, port) as sock:
+        authenticate(sock, 9006)
         sock.sendall(b"".join(packets))
         responses = [recv_response(sock) for _ in packets]
 
@@ -175,10 +196,39 @@ def test_invalid_length(host: str, port: int) -> None:
                 raise AssertionError(f"expected close for invalid length {body_length}, got data={data!r}")
 
     with connect(host, port) as sock:
+        authenticate(sock, 9007)
         sock.sendall(packet(PING, 3001))
         resp = recv_response(sock)
     assert_response(resp, PONG, 3001)
     print("[tcp] PASS invalid_length")
+
+
+def test_auth_required(host: str, port: int) -> None:
+    with connect(host, port) as sock:
+        sock.sendall(packet(PING, 4001))
+        time.sleep(0.2)
+        try:
+            data = sock.recv(1)
+        except (ConnectionResetError, BrokenPipeError):
+            data = b""
+        if data:
+            raise AssertionError(f"expected close before AUTH, got data={data!r}")
+
+    with connect(host, port) as sock:
+        payload = json.dumps({
+            "client_id": "tcp-test-invalid",
+            "token": "bad-token",
+        }).encode("utf-8")
+        sock.sendall(packet(AUTH, 4002, payload))
+        time.sleep(0.2)
+        try:
+            data = sock.recv(1)
+        except (ConnectionResetError, BrokenPipeError):
+            data = b""
+        if data:
+            raise AssertionError(f"expected close after invalid AUTH, got data={data!r}")
+
+    print("[tcp] PASS auth_required")
 
 
 def main() -> int:
@@ -195,6 +245,7 @@ def main() -> int:
         test_half_packet,
         test_sticky_packet,
         test_invalid_length,
+        test_auth_required,
     ]
 
     for test in tests:

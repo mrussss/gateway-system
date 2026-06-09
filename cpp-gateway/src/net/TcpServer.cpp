@@ -19,6 +19,7 @@
 #include "business/Dispatcher.hpp"
 #include "business/StatsManager.hpp"
 #include "common/Logger.hpp"
+#include "nlohmann/json.hpp"
 
 namespace
 {
@@ -338,12 +339,6 @@ void TcpServer::handleAccept()
             }
         }
         setNonBlocking(fd);
-        if (!control_plane_.checkAuth("client_001", "test-token"))
-        {
-            LOG_INFO("auth rejected new connection: fd=%d", fd);
-            close(fd);
-            continue;
-        }
 
         struct epoll_event event1;
         memset(&event1, 0, sizeof(event1));
@@ -494,6 +489,75 @@ bool TcpServer::decodeAndEnqueue(Connection &conn)
     }
     for (auto &req : out_requests)
     {
+        if (!conn.authenticated)
+        {
+            if (req.type != MessageType::AUTH)
+            {
+                LOG_INFO("client fd=%d sent business request before AUTH, closing", conn.fd);
+                closeConnection(conn.fd);
+                return false;
+            }
+
+            try
+            {
+                auto payload = nlohmann::json::parse(req.payload);
+                if (!payload.is_object() ||
+                    !payload.contains("client_id") ||
+                    !payload.contains("token") ||
+                    !payload["client_id"].is_string() ||
+                    !payload["token"].is_string())
+                {
+                    LOG_INFO("client fd=%d sent invalid AUTH payload, closing", conn.fd);
+                    closeConnection(conn.fd);
+                    return false;
+                }
+
+                std::string client_id = payload["client_id"];
+                std::string token = payload["token"];
+                if (!control_plane_.checkAuth(client_id, token))
+                {
+                    LOG_INFO("client fd=%d AUTH rejected, closing", conn.fd);
+                    closeConnection(conn.fd);
+                    return false;
+                }
+
+                conn.authenticated = true;
+                conn.client_id = client_id;
+
+                Response resp;
+                resp.fd = conn.fd;
+                resp.conn_id = conn.conn_id;
+                resp.version = req.version;
+                resp.type = MessageType::AUTH_RESP;
+                resp.request_id = req.request_id;
+                resp.status_code = 0;
+                resp.payload = R"({"allowed":true,"reason":"ok"})";
+                response_queue_.push(resp);
+            }
+            catch (const std::exception &e)
+            {
+                LOG_INFO("client fd=%d AUTH parse failed: %s", conn.fd, e.what());
+                closeConnection(conn.fd);
+                return false;
+            }
+
+            continue;
+        }
+
+        if (req.type == MessageType::AUTH)
+        {
+            Response resp;
+            resp.fd = conn.fd;
+            resp.conn_id = conn.conn_id;
+            resp.version = req.version;
+            resp.type = MessageType::ERROR_RESP;
+            resp.request_id = req.request_id;
+            resp.status_code = 400;
+            resp.payload = R"({"status":400,"message":"already authenticated"})";
+            response_queue_.push(resp);
+            continue;
+        }
+
         request_queue_.push(req);
     }
     return true;
