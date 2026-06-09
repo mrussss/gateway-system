@@ -44,6 +44,8 @@ private:
     void closeConnection(int fd);
     bool decodeAndEnqueue(Connection &conn);
     bool modifyConnectionEvents(int fd, uint32_t events);
+    void startMetricsReporter();
+    void metricsReporterLoop();
 
     int port_;
     int listen_fd_;
@@ -57,5 +59,6 @@ private:
     BlockQueue<Response> response_queue_;
     std::unordered_map<int, Connection> connections_;
     std::vector<std::thread> workers_;
+    std::thread metrics_reporter_;
     ControlPlaneClient control_plane_{"127.0.0.1", 8080, 1000};
 };

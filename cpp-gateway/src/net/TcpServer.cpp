@@ -6,6 +6,7 @@
 #include <atomic>
 #include <csignal>
 #include <cerrno>
+#include <chrono>
 #include "concurrent/BlockQueue.hpp"
 #include "net/TcpServer.hpp"
 #include "net/SocketUtil.hpp"
@@ -118,6 +119,7 @@ catch(...){
 std::cerr << "worker thread unknown error!" << std::endl;
                                 } });
     }
+    startMetricsReporter();
     loop();
 }
 
@@ -147,6 +149,11 @@ void TcpServer::stop()
     request_queue_.stop();
     response_queue_.stop();
     LOG_INFO("task queue stopped, waiting for all workers to exit");
+
+    if (metrics_reporter_.joinable())
+    {
+        metrics_reporter_.join();
+    }
 
     for (auto &worker : workers_)
     {
@@ -461,6 +468,34 @@ bool TcpServer::modifyConnectionEvents(int fd, uint32_t events)
     }
 
     return true;
+}
+
+void TcpServer::startMetricsReporter()
+{
+    metrics_reporter_ = std::thread([this]()
+                                    { metricsReporterLoop(); });
+}
+
+void TcpServer::metricsReporterLoop()
+{
+    while (running_)
+    {
+        auto &stats = business::StatsManager::getInstance();
+        GatewayMetrics metrics{
+            "gateway-001",
+            stats.getConnections(),
+            stats.getTotalRequests(),
+            stats.getReadBytes(),
+            stats.getWriteBytes(),
+            stats.getTotalErrors(),
+            std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())};
+        control_plane_.reportMetrics(metrics);
+
+        for (int i = 0; i < 50 && running_; ++i)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    }
 }
 
 void TcpServer::closeConnection(int fd)

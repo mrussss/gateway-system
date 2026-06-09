@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -22,31 +23,80 @@ ControlPlaneClient::ControlPlaneClient(std::string host, int port, int timeout_m
 
 bool ControlPlaneClient::checkAuth(const std::string &client_id, const std::string &token) const
 {
-    int fd = connectWithTimeout();
-    if (fd == -1)
-    {
-        LOG_ERROR("%s", "control plane auth connect failed, default reject");
-        return false;
-    }
-
     nlohmann::json payload = {
         {"client_id", client_id},
         {"token", token},
     };
-    std::string body = payload.dump();
+
+    std::string response_body;
+    if (!postJson("/auth/check", payload.dump(), response_body))
+    {
+        LOG_ERROR("%s", "control plane auth request failed, default reject");
+        return false;
+    }
+
+    try
+    {
+        auto json = nlohmann::json::parse(response_body);
+        bool allowed = json.value("allowed", false);
+        std::string reason = json.value("reason", "");
+        LOG_INFO("control plane auth result: client_id=%s allowed=%d reason=%s",
+                 client_id.c_str(), allowed ? 1 : 0, reason.c_str());
+        return allowed;
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR("control plane auth response parse failed: %s", e.what());
+        return false;
+    }
+}
+
+bool ControlPlaneClient::reportMetrics(const GatewayMetrics &metrics) const
+{
+    nlohmann::json payload = {
+        {"gateway_id", metrics.gateway_id},
+        {"active_connections", metrics.active_connections},
+        {"total_messages", metrics.total_messages},
+        {"bytes_in", metrics.bytes_in},
+        {"bytes_out", metrics.bytes_out},
+        {"error_count", metrics.error_count},
+        {"timestamp", metrics.timestamp},
+    };
+
+    std::string response_body;
+    if (!postJson("/metrics/report", payload.dump(), response_body))
+    {
+        LOG_ERROR("%s", "control plane metrics report failed");
+        return false;
+    }
+
+    LOG_INFO("metrics reported: gateway_id=%s active_connections=%llu total_messages=%llu",
+             metrics.gateway_id.c_str(),
+             static_cast<unsigned long long>(metrics.active_connections),
+             static_cast<unsigned long long>(metrics.total_messages));
+    return true;
+}
+
+bool ControlPlaneClient::postJson(const std::string &path, const std::string &body, std::string &response_body) const
+{
+    int fd = connectWithTimeout();
+    if (fd == -1)
+    {
+        LOG_ERROR("control plane connect failed: path=%s", path.c_str());
+        return false;
+    }
 
     std::ostringstream req;
-    req << "POST /auth/check HTTP/1.1\r\n"
+    req << "POST " << path << " HTTP/1.1\r\n"
         << "Host: " << host_ << ":" << port_ << "\r\n"
         << "Content-Type: application/json\r\n"
         << "Content-Length: " << body.size() << "\r\n"
         << "Connection: close\r\n\r\n"
         << body;
 
-    bool allowed = false;
     if (!sendAll(fd, req.str()))
     {
-        LOG_ERROR("%s", "control plane auth request send failed, default reject");
+        LOG_ERROR("control plane request send failed: path=%s", path.c_str());
         close(fd);
         return false;
     }
@@ -57,26 +107,12 @@ bool ControlPlaneClient::checkAuth(const std::string &client_id, const std::stri
     size_t header_end = response.find("\r\n\r\n");
     if (header_end == std::string::npos || response.find("HTTP/1.1 200") != 0)
     {
-        LOG_ERROR("%s", "control plane auth returned invalid HTTP response, default reject");
+        LOG_ERROR("control plane returned invalid HTTP response: path=%s", path.c_str());
         return false;
     }
 
-    try
-    {
-        std::string response_body = response.substr(header_end + 4);
-        auto json = nlohmann::json::parse(response_body);
-        allowed = json.value("allowed", false);
-        std::string reason = json.value("reason", "");
-        LOG_INFO("control plane auth result: client_id=%s allowed=%d reason=%s",
-                 client_id.c_str(), allowed ? 1 : 0, reason.c_str());
-    }
-    catch (const std::exception &e)
-    {
-        LOG_ERROR("control plane auth response parse failed: %s", e.what());
-        return false;
-    }
-
-    return allowed;
+    response_body = response.substr(header_end + 4);
+    return true;
 }
 
 int ControlPlaneClient::connectWithTimeout() const
