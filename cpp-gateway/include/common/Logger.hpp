@@ -13,7 +13,14 @@ inline void LOG_INFO(const char *fmt, Args... args)
 {
     std::lock_guard<std::mutex> lock(g_log_mutex);
     printf("[INFO] [Thread %zu] ", std::hash<std::thread::id>{}(std::this_thread::get_id()));
-    printf(fmt, args...);
+    if constexpr (sizeof...(Args) == 0)
+    {
+        printf("%s", fmt);
+    }
+    else
+    {
+        printf(fmt, args...);
+    }
     printf("\n");
 }
 
@@ -22,6 +29,13 @@ inline void LOG_ERROR(const char *fmt, Args... args)
 {
     std::lock_guard<std::mutex> lock(g_log_mutex);
     fprintf(stderr, "[ERROR] [Thread %zu] ", std::hash<std::thread::id>{}(std::this_thread::get_id()));
-    fprintf(stderr, fmt, args...);
+    if constexpr (sizeof...(Args) == 0)
+    {
+        fprintf(stderr, "%s", fmt);
+    }
+    else
+    {
+        fprintf(stderr, fmt, args...);
+    }
     fprintf(stderr, "\n");
 }
