@@ -5,10 +5,13 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 )
 
 const validToken = "test-token"
+
+var store = newMemoryStore()
 
 type authCheckRequest struct {
 	ClientID string `json:"client_id"`
@@ -22,6 +25,69 @@ type authCheckResponse struct {
 
 type healthResponse struct {
 	Status string `json:"status"`
+}
+
+type metricsReportRequest struct {
+	GatewayID         string `json:"gateway_id"`
+	ActiveConnections int64  `json:"active_connections"`
+	TotalMessages     int64  `json:"total_messages"`
+	BytesIn           int64  `json:"bytes_in"`
+	BytesOut          int64  `json:"bytes_out"`
+	ErrorCount        int64  `json:"error_count"`
+	Timestamp         int64  `json:"timestamp"`
+}
+
+type gatewayStatusResponse struct {
+	GatewayID         string `json:"gateway_id"`
+	ActiveConnections int64  `json:"active_connections"`
+	TotalMessages     int64  `json:"total_messages"`
+	BytesIn           int64  `json:"bytes_in"`
+	BytesOut          int64  `json:"bytes_out"`
+	ErrorCount        int64  `json:"error_count"`
+	LastReportTime    string `json:"last_report_time"`
+}
+
+type errorResponse struct {
+	Error string `json:"error"`
+}
+
+type memoryStore struct {
+	mu     sync.RWMutex
+	status gatewayStatusResponse
+	hasStatus bool
+}
+
+func newMemoryStore() *memoryStore {
+	return &memoryStore{}
+}
+
+func (s *memoryStore) saveMetrics(req metricsReportRequest) gatewayStatusResponse {
+	reportTime := time.Now().UTC()
+	if req.Timestamp > 0 {
+		reportTime = time.Unix(req.Timestamp, 0).UTC()
+	}
+
+	status := gatewayStatusResponse{
+		GatewayID:         req.GatewayID,
+		ActiveConnections: req.ActiveConnections,
+		TotalMessages:     req.TotalMessages,
+		BytesIn:           req.BytesIn,
+		BytesOut:          req.BytesOut,
+		ErrorCount:        req.ErrorCount,
+		LastReportTime:    reportTime.Format(time.RFC3339),
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.status = status
+	s.hasStatus = true
+	return status
+}
+
+func (s *memoryStore) getStatus() (gatewayStatusResponse, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.status, s.hasStatus
 }
 
 func main() {
@@ -44,6 +110,8 @@ func routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", handleHealth)
 	mux.HandleFunc("POST /auth/check", handleAuthCheck)
+	mux.HandleFunc("POST /metrics/report", handleMetricsReport)
+	mux.HandleFunc("GET /gateway/status", handleGatewayStatus)
 	return mux
 }
 
@@ -75,6 +143,34 @@ func handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 		Allowed: true,
 		Reason:  "ok",
 	})
+}
+
+func handleMetricsReport(w http.ResponseWriter, r *http.Request) {
+	var req metricsReportRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
+		return
+	}
+
+	if req.GatewayID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "gateway_id is required"})
+		return
+	}
+
+	status := store.saveMetrics(req)
+	writeJSON(w, http.StatusOK, status)
+}
+
+func handleGatewayStatus(w http.ResponseWriter, r *http.Request) {
+	status, ok := store.getStatus()
+	if !ok {
+		writeJSON(w, http.StatusNotFound, errorResponse{Error: "gateway status not reported"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, status)
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, payload any) {

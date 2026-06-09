@@ -41,3 +41,17 @@ curl -X POST http://localhost:8080/auth/check \
   -H "Content-Type: application/json" \
   -d '{"client_id":"client_001","token":"bad-token"}'
 ```
+
+Report gateway metrics:
+
+```bash
+curl -X POST http://localhost:8080/metrics/report \
+  -H "Content-Type: application/json" \
+  -d '{"gateway_id":"gateway-001","active_connections":12,"total_messages":3456,"bytes_in":102400,"bytes_out":204800,"error_count":3,"timestamp":1710000000}'
+```
+
+Query gateway status:
+
+```bash
+curl http://localhost:8080/gateway/status
+```
