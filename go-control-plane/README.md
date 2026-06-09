@@ -55,3 +55,17 @@ Query gateway status:
 ```bash
 curl http://localhost:8080/gateway/status
 ```
+
+Report online clients:
+
+```bash
+curl -X POST http://localhost:8080/clients/report \
+  -H "Content-Type: application/json" \
+  -d '{"gateway_id":"gateway-001","clients":[{"client_id":"client_001","remote_addr":"127.0.0.1:50001","connected_at":"2026-06-08T12:00:00Z"}]}'
+```
+
+Query online clients:
+
+```bash
+curl http://localhost:8080/clients
+```

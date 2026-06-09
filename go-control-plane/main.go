@@ -47,14 +47,26 @@ type gatewayStatusResponse struct {
 	LastReportTime    string `json:"last_report_time"`
 }
 
+type clientInfo struct {
+	ClientID    string `json:"client_id"`
+	RemoteAddr  string `json:"remote_addr"`
+	ConnectedAt string `json:"connected_at"`
+}
+
+type clientsReportRequest struct {
+	GatewayID string       `json:"gateway_id"`
+	Clients   []clientInfo `json:"clients"`
+}
+
 type errorResponse struct {
 	Error string `json:"error"`
 }
 
 type memoryStore struct {
-	mu     sync.RWMutex
-	status gatewayStatusResponse
+	mu        sync.RWMutex
+	status    gatewayStatusResponse
 	hasStatus bool
+	clients   []clientInfo
 }
 
 func newMemoryStore() *memoryStore {
@@ -90,6 +102,24 @@ func (s *memoryStore) getStatus() (gatewayStatusResponse, bool) {
 	return s.status, s.hasStatus
 }
 
+func (s *memoryStore) saveClients(clients []clientInfo) {
+	copied := make([]clientInfo, len(clients))
+	copy(copied, clients)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.clients = copied
+}
+
+func (s *memoryStore) getClients() []clientInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	copied := make([]clientInfo, len(s.clients))
+	copy(copied, s.clients)
+	return copied
+}
+
 func main() {
 	server := &http.Server{
 		Addr:              ":8080",
@@ -112,6 +142,8 @@ func routes() http.Handler {
 	mux.HandleFunc("POST /auth/check", handleAuthCheck)
 	mux.HandleFunc("POST /metrics/report", handleMetricsReport)
 	mux.HandleFunc("GET /gateway/status", handleGatewayStatus)
+	mux.HandleFunc("POST /clients/report", handleClientsReport)
+	mux.HandleFunc("GET /clients", handleClients)
 	return mux
 }
 
@@ -171,6 +203,28 @@ func handleGatewayStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, status)
+}
+
+func handleClientsReport(w http.ResponseWriter, r *http.Request) {
+	var req clientsReportRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
+		return
+	}
+
+	if req.GatewayID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "gateway_id is required"})
+		return
+	}
+
+	store.saveClients(req.Clients)
+	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+func handleClients(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, store.getClients())
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, payload any) {

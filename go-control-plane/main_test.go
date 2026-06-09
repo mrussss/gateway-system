@@ -99,6 +99,44 @@ func TestGatewayStatusNotReported(t *testing.T) {
 	}
 }
 
+func TestClientsReportAndList(t *testing.T) {
+	store = newMemoryStore()
+	report := `{
+		"gateway_id":"gateway-001",
+		"clients":[
+			{"client_id":"client_001","remote_addr":"127.0.0.1:50001","connected_at":"2026-06-08T12:00:00Z"}
+		]
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/clients/report", bytes.NewBufferString(report))
+	resp := httptest.NewRecorder()
+
+	routes().ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.Code)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/clients", nil)
+	listResp := httptest.NewRecorder()
+
+	routes().ServeHTTP(listResp, listReq)
+
+	if listResp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", listResp.Code)
+	}
+
+	var clients []clientInfo
+	if err := json.NewDecoder(listResp.Body).Decode(&clients); err != nil {
+		t.Fatalf("decode clients: %v", err)
+	}
+	if len(clients) != 1 ||
+		clients[0].ClientID != "client_001" ||
+		clients[0].RemoteAddr != "127.0.0.1:50001" ||
+		clients[0].ConnectedAt != "2026-06-08T12:00:00Z" {
+		t.Fatalf("unexpected clients: %+v", clients)
+	}
+}
+
 func assertAuthResponse(t *testing.T, resp *httptest.ResponseRecorder, wantStatus int, wantAllowed bool, wantReason string) {
 	t.Helper()
 
