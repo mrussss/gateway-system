@@ -290,6 +290,13 @@ void TcpServer::handleAccept()
             }
         }
         setNonBlocking(fd);
+        if (!control_plane_.checkAuth("client_001", "test-token"))
+        {
+            LOG_INFO("auth rejected new connection: fd=%d", fd);
+            close(fd);
+            continue;
+        }
+
         struct epoll_event event1;
         memset(&event1, 0, sizeof(event1));
         event1.events = EPOLLIN | EPOLLET;

@@ -10,6 +10,7 @@
 #include "protocol/Request.hpp"
 #include "protocol/Response.hpp"
 #include "concurrent/BlockQueue.hpp"
+#include "control/ControlPlaneClient.hpp"
 
 class TcpServer
 {
@@ -56,4 +57,5 @@ private:
     BlockQueue<Response> response_queue_;
     std::unordered_map<int, Connection> connections_;
     std::vector<std::thread> workers_;
+    ControlPlaneClient control_plane_{"127.0.0.1", 8080, 1000};
 };

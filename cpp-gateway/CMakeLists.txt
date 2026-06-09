@@ -16,6 +16,7 @@ set(SRC_FILES
     src/main.cpp
     
     src/net/TcpServer.cpp
+    src/control/ControlPlaneClient.cpp
     
     src/protocol/ProtocolCodec.cpp
 
