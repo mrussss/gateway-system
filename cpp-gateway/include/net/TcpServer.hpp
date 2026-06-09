@@ -17,6 +17,7 @@ class TcpServer
 {
 public:
     TcpServer(int port);
+    TcpServer(int port, std::string control_plane_host, int control_plane_port);
     ~TcpServer();
 
     void start();
@@ -63,5 +64,5 @@ private:
     std::mutex connections_mutex_;
     std::vector<std::thread> workers_;
     std::thread metrics_reporter_;
-    ControlPlaneClient control_plane_{"127.0.0.1", 8080, 1000};
+    ControlPlaneClient control_plane_;
 };

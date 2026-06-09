@@ -52,7 +52,16 @@ namespace
 // =========================================================
 // 1. Construction & Destruction
 // =========================================================
-TcpServer::TcpServer(int port) : port_(port), listen_fd_(-1), epfd_(-1), running_(false) {}
+TcpServer::TcpServer(int port) : TcpServer(port, "127.0.0.1", 8080) {}
+
+TcpServer::TcpServer(int port, std::string control_plane_host, int control_plane_port)
+    : port_(port),
+      listen_fd_(-1),
+      epfd_(-1),
+      running_(false),
+      control_plane_(std::move(control_plane_host), control_plane_port, 1000)
+{
+}
 
 TcpServer::~TcpServer()
 {
