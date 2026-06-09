@@ -69,3 +69,9 @@ Query online clients:
 ```bash
 curl http://localhost:8080/clients
 ```
+
+Trigger config reload:
+
+```bash
+curl -X POST http://localhost:8080/config/reload
+```

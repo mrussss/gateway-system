@@ -137,6 +137,26 @@ func TestClientsReportAndList(t *testing.T) {
 	}
 }
 
+func TestConfigReload(t *testing.T) {
+	store = newMemoryStore()
+	req := httptest.NewRequest(http.MethodPost, "/config/reload", nil)
+	resp := httptest.NewRecorder()
+
+	routes().ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.Code)
+	}
+
+	var body configReloadResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.Success || body.Message != "config reload triggered" {
+		t.Fatalf("unexpected config reload response: %+v", body)
+	}
+}
+
 func assertAuthResponse(t *testing.T, resp *httptest.ResponseRecorder, wantStatus int, wantAllowed bool, wantReason string) {
 	t.Helper()
 

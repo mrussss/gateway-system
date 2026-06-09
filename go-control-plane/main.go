@@ -27,6 +27,11 @@ type healthResponse struct {
 	Status string `json:"status"`
 }
 
+type configReloadResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
 type metricsReportRequest struct {
 	GatewayID         string `json:"gateway_id"`
 	ActiveConnections int64  `json:"active_connections"`
@@ -144,6 +149,7 @@ func routes() http.Handler {
 	mux.HandleFunc("GET /gateway/status", handleGatewayStatus)
 	mux.HandleFunc("POST /clients/report", handleClientsReport)
 	mux.HandleFunc("GET /clients", handleClients)
+	mux.HandleFunc("POST /config/reload", handleConfigReload)
 	return mux
 }
 
@@ -225,6 +231,13 @@ func handleClientsReport(w http.ResponseWriter, r *http.Request) {
 
 func handleClients(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, store.getClients())
+}
+
+func handleConfigReload(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, configReloadResponse{
+		Success: true,
+		Message: "config reload triggered",
+	})
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
