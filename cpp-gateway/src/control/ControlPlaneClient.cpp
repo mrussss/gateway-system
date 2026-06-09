@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <sstream>
 #include <stdexcept>
@@ -147,73 +148,85 @@ bool ControlPlaneClient::postJson(const std::string &path, const std::string &bo
 
 int ControlPlaneClient::connectWithTimeout() const
 {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd == -1)
+    addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    addrinfo *result = nullptr;
+    std::string port = std::to_string(port_);
+    int gai_ret = getaddrinfo(host_.c_str(), port.c_str(), &hints, &result);
+    if (gai_ret != 0)
     {
+        LOG_ERROR("control plane resolve failed: host=%s port=%d error=%s",
+                  host_.c_str(), port_, gai_strerror(gai_ret));
         return -1;
     }
 
-    int flags = fcntl(fd, F_GETFL, 0);
-    if (flags == -1 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
+    for (addrinfo *rp = result; rp != nullptr; rp = rp->ai_next)
     {
-        close(fd);
-        return -1;
-    }
-
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port_);
-    if (inet_pton(AF_INET, host_.c_str(), &addr.sin_addr) != 1)
-    {
-        close(fd);
-        return -1;
-    }
-
-    int ret = connect(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
-    if (ret == -1 && errno != EINPROGRESS)
-    {
-        close(fd);
-        return -1;
-    }
-
-    if (ret == -1)
-    {
-        fd_set write_fds;
-        FD_ZERO(&write_fds);
-        FD_SET(fd, &write_fds);
-
-        timeval timeout{};
-        timeout.tv_sec = timeout_ms_ / 1000;
-        timeout.tv_usec = (timeout_ms_ % 1000) * 1000;
-        ret = select(fd + 1, nullptr, &write_fds, nullptr, &timeout);
-        if (ret <= 0)
+        int fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (fd == -1)
         {
-            close(fd);
-            return -1;
+            continue;
         }
 
-        int so_error = 0;
-        socklen_t len = sizeof(so_error);
-        if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &len) == -1 || so_error != 0)
+        int flags = fcntl(fd, F_GETFL, 0);
+        if (flags == -1 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
         {
             close(fd);
-            return -1;
+            continue;
         }
+
+        int ret = connect(fd, rp->ai_addr, rp->ai_addrlen);
+        if (ret == -1 && errno != EINPROGRESS)
+        {
+            close(fd);
+            continue;
+        }
+
+        if (ret == -1)
+        {
+            fd_set write_fds;
+            FD_ZERO(&write_fds);
+            FD_SET(fd, &write_fds);
+
+            timeval timeout{};
+            timeout.tv_sec = timeout_ms_ / 1000;
+            timeout.tv_usec = (timeout_ms_ % 1000) * 1000;
+            ret = select(fd + 1, nullptr, &write_fds, nullptr, &timeout);
+            if (ret <= 0)
+            {
+                close(fd);
+                continue;
+            }
+
+            int so_error = 0;
+            socklen_t len = sizeof(so_error);
+            if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &len) == -1 || so_error != 0)
+            {
+                close(fd);
+                continue;
+            }
+        }
+
+        timeval io_timeout{};
+        io_timeout.tv_sec = timeout_ms_ / 1000;
+        io_timeout.tv_usec = (timeout_ms_ % 1000) * 1000;
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &io_timeout, sizeof(io_timeout));
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &io_timeout, sizeof(io_timeout));
+
+        if (fcntl(fd, F_SETFL, flags) == -1)
+        {
+            close(fd);
+            continue;
+        }
+
+        freeaddrinfo(result);
+        return fd;
     }
 
-    timeval io_timeout{};
-    io_timeout.tv_sec = timeout_ms_ / 1000;
-    io_timeout.tv_usec = (timeout_ms_ % 1000) * 1000;
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &io_timeout, sizeof(io_timeout));
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &io_timeout, sizeof(io_timeout));
-
-    if (fcntl(fd, F_SETFL, flags) == -1)
-    {
-        close(fd);
-        return -1;
-    }
-
-    return fd;
+    freeaddrinfo(result);
+    return -1;
 }
 
 bool ControlPlaneClient::sendAll(int fd, const std::string &data) const

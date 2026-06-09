@@ -1,6 +1,4 @@
 #include "net/TcpServer.hpp"
-#include "protocol/MessageType.hpp"
-#include "protocol/Request.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -46,9 +44,6 @@ int main()
     int control_plane_port = readIntEnv("CONTROL_PLANE_PORT", 8080);
 
     TcpServer server(gateway_port, control_plane_host, control_plane_port);
-
-    Request req;
-    req.fd = 5;
 
     server.start();
     return 0;
