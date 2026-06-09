@@ -1,0 +1,14 @@
+# Claude Code local settings
+.claude/
+
+build/
+.vscode/
+.idea/
+results/
+*.o
+*.out
+*.exe
+*.log
+.DS_Store
+
+docs/ai_command.md
