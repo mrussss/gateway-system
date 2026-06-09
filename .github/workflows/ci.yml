@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go-control-plane/go.mod
+
+      - name: Test Go control plane
+        working-directory: go-control-plane
+        run: go test ./...
+
+      - name: Build C++ gateway
+        working-directory: cpp-gateway
+        run: |
+          cmake -S . -B build
+          cmake --build build
+
+      - name: Validate Docker Compose config
+        run: docker compose config

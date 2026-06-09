@@ -1,0 +1,35 @@
+# Build output
+build/
+cmake-build-*/
+out/
+bin/
+obj/
+
+# C/C++
+*.o
+*.a
+*.so
+*.exe
+
+# Go
+go-control-plane/bin/
+go-control-plane/tmp/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Env
+.env

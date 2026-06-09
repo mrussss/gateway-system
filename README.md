@@ -38,7 +38,7 @@ gateway-system/
 - Online client query through `GET /clients`.
 - Fake config reload through `POST /config/reload`.
 
-## Run
+## Run Locally
 
 Start the Go control plane:
 
@@ -60,11 +60,22 @@ cmake --build build
 
 The gateway listens on TCP port `9000` and calls the Go control plane on `127.0.0.1:8080`.
 
+## Run With Docker Compose
+
 Run both services with Docker Compose:
 
 ```bash
-docker compose up --build
+docker compose up -d --build
 ```
+
+In Docker Compose mode the C++ gateway still listens on host TCP port `9000`, but it calls the Go control plane through the Compose service DNS name:
+
+```text
+CONTROL_PLANE_HOST=go-control-plane
+CONTROL_PLANE_PORT=8080
+```
+
+This is different from local mode, where the C++ process calls `127.0.0.1:8080`.
 
 ## Test
 
@@ -84,6 +95,22 @@ cmake --build build
 ```
 
 Existing gateway protocol scripts are under `cpp-gateway/scripts/`.
+
+Project smoke test:
+
+```bash
+bash scripts/smoke_test.sh
+```
+
+The smoke test starts Docker Compose, waits for `GET /health`, checks `GET /gateway/status` and `GET /clients`, prints service state/logs, and runs the TCP protocol test against `localhost:9000`.
+
+TCP protocol test only:
+
+```bash
+python3 scripts/tcp_protocol_test.py
+```
+
+It verifies `PING`, `ECHO`, `LOG_PUSH`, `STATS`, half-packet handling, sticky-packet handling, invalid length handling, and server liveness after invalid packets.
 
 ## HTTP API
 
@@ -190,12 +217,12 @@ Response:
 - Auth currently uses a hardcoded token: `test-token`.
 - Runtime state is stored in Go process memory.
 - The C++ gateway currently identifies accepted clients as `client_<conn_id>` until a real login/auth payload is added to the custom protocol.
-- Docker Compose and external storage are planned but intentionally not included in the first working version.
+- Docker Compose is available for one-command startup; external storage is still intentionally not included.
 
 ## Roadmap
 
 - Move tokens and runtime state to Redis or another storage backend.
-- Add Docker Compose for one-command startup.
+- Add protocol-level AUTH before business requests.
 - Export Prometheus-format metrics.
 - Add integration tests for C++ gateway to Go control plane communication.
 - Add a minimal Go-rendered dashboard after the backend flow is stable.

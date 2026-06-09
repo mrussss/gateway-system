@@ -1,7 +1,23 @@
 #include "business/LogStorage.hpp"
 
+#include <cstdlib>
+#include <filesystem>
+
 namespace business
 {
+    namespace
+    {
+        std::filesystem::path defaultLogPath()
+        {
+            const char *env_path = std::getenv("GATEWAY_LOG_PATH");
+            if (env_path != nullptr && env_path[0] != '\0')
+            {
+                return env_path;
+            }
+            return "logs/access.log";
+        }
+    }
+
     LogStorage &LogStorage::getInstance()
     {
 
@@ -11,7 +27,12 @@ namespace business
 
     LogStorage::LogStorage()
     {
-        m_ofs.open("../logs/access.log", std::ios::app);
+        std::filesystem::path path = defaultLogPath();
+        if (path.has_parent_path())
+        {
+            std::filesystem::create_directories(path.parent_path());
+        }
+        m_ofs.open(path, std::ios::app);
     }
 
     bool LogStorage::append(const std::string &log_line)
