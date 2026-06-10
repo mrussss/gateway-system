@@ -116,7 +116,7 @@ void TcpServer::start()
                               {
                                   try
                                   {
-                                      business::Dispatcher Dispatch;
+                                      business::Dispatcher Dispatch(control_plane_);
                                       while (true)
                                       {
                                           Request req;
@@ -431,6 +431,11 @@ void TcpServer::handleWrite(int fd)
         }
         if (conn.output_buffer.empty())
         {
+            if (conn.closing)
+            {
+                closeConnection(fd);
+                return;
+            }
             if (!modifyConnectionEvents(fd, EPOLLIN | EPOLLET))
             {
                 return;
@@ -457,6 +462,23 @@ void TcpServer::drainResponseQueue()
             continue;
         }
 
+        if (resp.mark_authenticated)
+        {
+            conn.authenticated = true;
+            conn.auth_pending = false;
+            conn.client_id = resp.authenticated_client_id;
+        }
+        else if (resp.type == MessageType::AUTH_RESP || resp.close_connection)
+        {
+            conn.auth_pending = false;
+        }
+
+        if (resp.close_connection && resp.skip_write)
+        {
+            closeConnection(conn.fd);
+            continue;
+        }
+
         std::string encoded_data = ProtocolCodec::encode(resp);
         if (conn.output_buffer.size() + encoded_data.size() > MAX_OUT_BUFFER_SIZE)
         {
@@ -466,6 +488,10 @@ void TcpServer::drainResponseQueue()
         }
 
         conn.output_buffer.append(encoded_data);
+        if (resp.close_connection)
+        {
+            conn.closing = true;
+        }
         if (!modifyConnectionEvents(resp.fd, EPOLLIN | EPOLLOUT | EPOLLET))
         {
             continue;
@@ -498,49 +524,15 @@ bool TcpServer::decodeAndEnqueue(Connection &conn)
                 return false;
             }
 
-            try
+            if (conn.auth_pending)
             {
-                auto payload = nlohmann::json::parse(req.payload);
-                if (!payload.is_object() ||
-                    !payload.contains("client_id") ||
-                    !payload.contains("token") ||
-                    !payload["client_id"].is_string() ||
-                    !payload["token"].is_string())
-                {
-                    LOG_INFO("client fd=%d sent invalid AUTH payload, closing", conn.fd);
-                    closeConnection(conn.fd);
-                    return false;
-                }
-
-                std::string client_id = payload["client_id"];
-                std::string token = payload["token"];
-                if (!control_plane_.checkAuth(client_id, token))
-                {
-                    LOG_INFO("client fd=%d AUTH rejected, closing", conn.fd);
-                    closeConnection(conn.fd);
-                    return false;
-                }
-
-                conn.authenticated = true;
-                conn.client_id = client_id;
-
-                Response resp;
-                resp.fd = conn.fd;
-                resp.conn_id = conn.conn_id;
-                resp.version = req.version;
-                resp.type = MessageType::AUTH_RESP;
-                resp.request_id = req.request_id;
-                resp.status_code = 0;
-                resp.payload = R"({"allowed":true,"reason":"ok"})";
-                response_queue_.push(resp);
-            }
-            catch (const std::exception &e)
-            {
-                LOG_INFO("client fd=%d AUTH parse failed: %s", conn.fd, e.what());
+                LOG_INFO("client fd=%d sent request while AUTH is pending, closing", conn.fd);
                 closeConnection(conn.fd);
                 return false;
             }
 
+            conn.auth_pending = true;
+            request_queue_.push(req);
             continue;
         }
 
@@ -618,6 +610,10 @@ std::vector<ClientReport> TcpServer::buildClientSnapshot()
     for (const auto &[fd, conn] : connections_)
     {
         (void)fd;
+        if (!conn.authenticated)
+        {
+            continue;
+        }
         clients.push_back(ClientReport{
             conn.client_id,
             conn.remote_addr,

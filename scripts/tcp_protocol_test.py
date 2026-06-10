@@ -6,6 +6,7 @@ import json
 import socket
 import struct
 import time
+import urllib.request
 from dataclasses import dataclass
 
 
@@ -62,9 +63,9 @@ def connect(host: str, port: int) -> socket.socket:
     return sock
 
 
-def authenticate(sock: socket.socket, request_id: int = 9000) -> None:
+def authenticate(sock: socket.socket, request_id: int = 9000, client_id: str | None = None) -> None:
     payload = json.dumps({
-        "client_id": f"tcp-test-{request_id}",
+        "client_id": client_id or f"tcp-test-{request_id}",
         "token": "test-token",
     }).encode("utf-8")
     sock.sendall(packet(AUTH, request_id, payload))
@@ -73,6 +74,16 @@ def authenticate(sock: socket.socket, request_id: int = 9000) -> None:
     body = json.loads(resp.payload.decode("utf-8"))
     if body.get("allowed") is not True:
         raise AssertionError(f"AUTH rejected unexpectedly: {body}")
+
+
+def expect_closed(sock: socket.socket, message: str) -> None:
+    time.sleep(0.2)
+    try:
+        data = sock.recv(1)
+    except (ConnectionResetError, BrokenPipeError):
+        data = b""
+    if data:
+        raise AssertionError(f"{message}, got data={data!r}")
 
 
 def assert_response(resp: Response, msg_type: int, request_id: int, payload: bytes | None = None) -> None:
@@ -206,13 +217,7 @@ def test_invalid_length(host: str, port: int) -> None:
 def test_auth_required(host: str, port: int) -> None:
     with connect(host, port) as sock:
         sock.sendall(packet(PING, 4001))
-        time.sleep(0.2)
-        try:
-            data = sock.recv(1)
-        except (ConnectionResetError, BrokenPipeError):
-            data = b""
-        if data:
-            raise AssertionError(f"expected close before AUTH, got data={data!r}")
+        expect_closed(sock, "expected close before AUTH")
 
     with connect(host, port) as sock:
         payload = json.dumps({
@@ -220,21 +225,98 @@ def test_auth_required(host: str, port: int) -> None:
             "token": "bad-token",
         }).encode("utf-8")
         sock.sendall(packet(AUTH, 4002, payload))
-        time.sleep(0.2)
-        try:
-            data = sock.recv(1)
-        except (ConnectionResetError, BrokenPipeError):
-            data = b""
-        if data:
-            raise AssertionError(f"expected close after invalid AUTH, got data={data!r}")
+        expect_closed(sock, "expected close after invalid AUTH")
 
     print("[tcp] PASS auth_required")
+
+
+def test_auth_invalid_json(host: str, port: int) -> None:
+    with connect(host, port) as sock:
+        sock.sendall(packet(AUTH, 4101, b"not-json"))
+        expect_closed(sock, "expected close after invalid AUTH JSON")
+
+    print("[tcp] PASS auth_invalid_json")
+
+
+def test_auth_missing_fields(host: str, port: int) -> None:
+    cases = [
+        (b'{"token":"test-token"}', "missing client_id"),
+        (b'{"client_id":"tcp-test-missing-token"}', "missing token"),
+    ]
+    for payload, name in cases:
+        with connect(host, port) as sock:
+            sock.sendall(packet(AUTH, 4102, payload))
+            expect_closed(sock, f"expected close after AUTH {name}")
+
+    print("[tcp] PASS auth_missing_fields")
+
+
+def test_auth_invalid_field_types(host: str, port: int) -> None:
+    cases = [
+        (b'{"client_id":123,"token":"test-token"}', "non-string client_id"),
+        (b'{"client_id":"tcp-test-type","token":123}', "non-string token"),
+    ]
+    for payload, name in cases:
+        with connect(host, port) as sock:
+            sock.sendall(packet(AUTH, 4103, payload))
+            expect_closed(sock, f"expected close after AUTH {name}")
+
+    print("[tcp] PASS auth_invalid_field_types")
+
+
+def test_auth_duplicate(host: str, port: int) -> None:
+    with connect(host, port) as sock:
+        authenticate(sock, 4104)
+        payload = json.dumps({
+            "client_id": "tcp-test-duplicate",
+            "token": "test-token",
+        }).encode("utf-8")
+        sock.sendall(packet(AUTH, 4105, payload))
+        resp = recv_response(sock)
+
+    assert_response(resp, ERROR_RESP, 4105)
+    body = json.loads(resp.payload.decode("utf-8"))
+    if body.get("message") != "already authenticated":
+        raise AssertionError(f"unexpected duplicate AUTH response: {body}")
+
+    print("[tcp] PASS auth_duplicate")
+
+
+def test_clients_reports_authenticated_id(host: str, port: int, control_plane_url: str) -> None:
+    client_id = "tcp-test-real-client-id"
+    with connect(host, port) as sock:
+        authenticate(sock, 4105, client_id=client_id)
+        deadline = time.time() + 8.0
+        while time.time() < deadline:
+            with urllib.request.urlopen(f"{control_plane_url}/clients", timeout=2.0) as resp:
+                clients = json.loads(resp.read().decode("utf-8"))
+            if any(client.get("client_id") == client_id for client in clients):
+                print("[tcp] PASS clients_reports_authenticated_id")
+                return
+            time.sleep(0.5)
+
+    raise AssertionError(f"/clients did not include authenticated client_id={client_id}")
+
+
+def test_clients_excludes_unauthenticated(host: str, port: int, control_plane_url: str) -> None:
+    unauthenticated_id = "client_"
+    with connect(host, port) as sock:
+        deadline = time.time() + 8.0
+        while time.time() < deadline:
+            with urllib.request.urlopen(f"{control_plane_url}/clients", timeout=2.0) as resp:
+                clients = json.loads(resp.read().decode("utf-8"))
+            if any(str(client.get("client_id", "")).startswith(unauthenticated_id) for client in clients):
+                raise AssertionError("/clients included an unauthenticated placeholder client_id")
+            time.sleep(0.5)
+
+    print("[tcp] PASS clients_excludes_unauthenticated")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default=9000, type=int)
+    parser.add_argument("--control-plane-url", default="http://127.0.0.1:8080")
     args = parser.parse_args()
 
     tests = [
@@ -246,10 +328,16 @@ def main() -> int:
         test_sticky_packet,
         test_invalid_length,
         test_auth_required,
+        test_auth_invalid_json,
+        test_auth_missing_fields,
+        test_auth_invalid_field_types,
+        test_auth_duplicate,
     ]
 
     for test in tests:
         test(args.host, args.port)
+    test_clients_reports_authenticated_id(args.host, args.port, args.control_plane_url)
+    test_clients_excludes_unauthenticated(args.host, args.port, args.control_plane_url)
 
     print("[tcp] PASS all protocol checks")
     return 0

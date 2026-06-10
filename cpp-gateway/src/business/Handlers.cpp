@@ -12,6 +12,55 @@
 namespace business
 {
 
+    Response handleAuth(const Request &request, const ControlPlaneClient &control_plane)
+    {
+        Response resp;
+        resp.fd = request.fd;
+        resp.conn_id = request.conn_id;
+        resp.version = request.version;
+        resp.request_id = request.request_id;
+        resp.type = MessageType::AUTH_RESP;
+
+        try
+        {
+            auto payload = nlohmann::json::parse(request.payload);
+            if (!payload.is_object() ||
+                !payload.contains("client_id") ||
+                !payload.contains("token") ||
+                !payload["client_id"].is_string() ||
+                !payload["token"].is_string())
+            {
+                StatsManager::getInstance().incrementErrors();
+                resp.close_connection = true;
+                resp.skip_write = true;
+                return resp;
+            }
+
+            std::string client_id = payload["client_id"];
+            std::string token = payload["token"];
+            if (!control_plane.checkAuth(client_id, token))
+            {
+                StatsManager::getInstance().incrementErrors();
+                resp.close_connection = true;
+                resp.skip_write = true;
+                return resp;
+            }
+
+            resp.status_code = 0;
+            resp.payload = R"({"allowed":true,"reason":"ok"})";
+            resp.mark_authenticated = true;
+            resp.authenticated_client_id = client_id;
+            return resp;
+        }
+        catch (const std::exception &)
+        {
+            StatsManager::getInstance().incrementErrors();
+            resp.close_connection = true;
+            resp.skip_write = true;
+            return resp;
+        }
+    }
+
     Response handlePing(const Request &request)
     {
         Response resp;

@@ -2,55 +2,48 @@
 
 `gateway-system` is a backend infrastructure practice project built around a C++ TCP gateway and a Go control plane.
 
-The C++ gateway is the data plane. It accepts TCP long connections, parses a custom binary protocol, dispatches business requests, and reports runtime state. The Go service is the control plane. It provides HTTP APIs for auth, metrics, gateway status, online clients, and config reload.
+It is intentionally small in scope: one custom TCP protocol server, one HTTP control plane, Docker Compose for local integration, and smoke tests that exercise the full path.
 
 ## Architecture
 
 ```text
-C++ Gateway  <---- HTTP ---->  Go Control Plane
-     |
-     | TCP long connection / custom protocol
-     |
- Client / benchmark scripts
+Client
+  |
+  | TCP length-prefixed protocol
+  | AUTH / PING / ECHO / LOG_PUSH / STATS
+  v
+C++ Gateway
+  | epoll ET + non-blocking socket
+  | request queue / worker threads / response queue
+  | connection-level AUTH state
+  |
+  | HTTP JSON
+  v
+Go Control Plane
+  | POST /auth/check
+  | POST /metrics/report
+  | POST /clients/report
+  | GET  /health
+  | GET  /gateway/status
+  | GET  /clients
 ```
 
-## Directory Layout
+## Quick Start
 
-```text
-gateway-system/
-|-- cpp-gateway/          # C++ epoll TCP gateway
-|-- go-control-plane/     # Go HTTP control plane
-|-- scripts/              # Project-level scripts
-|-- docs/                 # Project docs
-`-- README.md
+Run with Docker Compose:
+
+```bash
+docker compose up -d --build
 ```
 
-## Features
+The gateway listens on `localhost:9000` and the control plane listens on `localhost:8080`.
 
-- C++17 TCP gateway based on Linux socket and epoll.
-- Custom packet codec with sticky-packet and half-packet handling.
-- Protocol-level AUTH before business requests.
-- Worker-thread request dispatch.
-- Go HTTP control plane built with standard `net/http`.
-- Client auth through `POST /auth/check`.
-- Gateway metrics reporting through `POST /metrics/report`.
-- Gateway status query through `GET /gateway/status`.
-- Online client reporting through `POST /clients/report`.
-- Online client query through `GET /clients`.
-- Fake config reload through `POST /config/reload`.
-
-## Run Locally
-
-Start the Go control plane:
+Run locally without Docker:
 
 ```bash
 cd go-control-plane
 go run .
 ```
-
-The control plane listens on `localhost:8080`.
-
-Build and start the C++ gateway:
 
 ```bash
 cd cpp-gateway
@@ -59,51 +52,15 @@ cmake --build build
 ./build/message_server
 ```
 
-The gateway listens on TCP port `9000` and calls the Go control plane on `127.0.0.1:8080`.
+## Verification
 
-## Run With Docker Compose
-
-Run both services with Docker Compose:
-
-```bash
-docker compose up -d --build
-```
-
-In Docker Compose mode the C++ gateway still listens on host TCP port `9000`, but it calls the Go control plane through the Compose service DNS name:
-
-```text
-CONTROL_PLANE_HOST=go-control-plane
-CONTROL_PLANE_PORT=8080
-```
-
-This is different from local mode, where the C++ process calls `127.0.0.1:8080`.
-
-## Test
-
-Go unit tests:
-
-```bash
-cd go-control-plane
-go test ./...
-```
-
-C++ build test:
-
-```bash
-cd cpp-gateway
-cmake -S . -B build
-cmake --build build
-```
-
-Existing gateway protocol scripts are under `cpp-gateway/scripts/`.
-
-Project smoke test:
+Full smoke test:
 
 ```bash
 bash scripts/smoke_test.sh
 ```
 
-The smoke test starts Docker Compose, waits for `GET /health`, checks `GET /gateway/status` and `GET /clients`, prints service state/logs, and runs the TCP protocol test against `localhost:9000`.
+This starts Docker Compose, waits for `GET /health`, checks `GET /gateway/status` and `GET /clients`, then runs the TCP protocol test against `localhost:9000`.
 
 TCP protocol test only:
 
@@ -111,23 +68,41 @@ TCP protocol test only:
 python3 scripts/tcp_protocol_test.py
 ```
 
-It verifies `PING`, `ECHO`, `LOG_PUSH`, `STATS`, half-packet handling, sticky-packet handling, invalid length handling, and server liveness after invalid packets.
+Current protocol checks cover:
+
+- `AUTH`, `PING`, `ECHO`, `LOG_PUSH`, `STATS`
+- half-packet and sticky-packet handling
+- invalid packet length rejection
+- unauthenticated request rejection
+- invalid `AUTH` JSON rejection
+- missing `AUTH` fields rejection
+- invalid `AUTH` field type rejection
+- duplicate `AUTH` rejection
+- `/clients` reporting of authenticated `client_id`
+- `/clients` exclusion of unauthenticated placeholder clients
+
+Component-level checks:
+
+```bash
+cd go-control-plane
+go test ./...
+```
+
+```bash
+cd cpp-gateway
+cmake -S . -B build
+cmake --build build
+```
 
 ## HTTP API
 
-### Health
+Health:
 
 ```bash
 curl http://localhost:8080/health
 ```
 
-Response:
-
-```json
-{"status":"ok"}
-```
-
-### Auth Check
+Auth check:
 
 ```bash
 curl -X POST http://localhost:8080/auth/check \
@@ -135,94 +110,86 @@ curl -X POST http://localhost:8080/auth/check \
   -d '{"client_id":"client_001","token":"test-token"}'
 ```
 
-Allowed response:
-
-```json
-{"allowed":true,"reason":"ok"}
-```
-
-Rejected response:
-
-```json
-{"allowed":false,"reason":"invalid token"}
-```
-
-### Metrics Report
-
-```bash
-curl -X POST http://localhost:8080/metrics/report \
-  -H "Content-Type: application/json" \
-  -d '{"gateway_id":"gateway-001","active_connections":12,"total_messages":3456,"bytes_in":102400,"bytes_out":204800,"error_count":3,"timestamp":1710000000}'
-```
-
-### Gateway Status
+Gateway status:
 
 ```bash
 curl http://localhost:8080/gateway/status
 ```
 
-Example response:
-
-```json
-{
-  "gateway_id": "gateway-001",
-  "active_connections": 12,
-  "total_messages": 3456,
-  "bytes_in": 102400,
-  "bytes_out": 204800,
-  "error_count": 3,
-  "last_report_time": "2024-03-09T16:00:00Z"
-}
-```
-
-### Clients Report
-
-```bash
-curl -X POST http://localhost:8080/clients/report \
-  -H "Content-Type: application/json" \
-  -d '{"gateway_id":"gateway-001","clients":[{"client_id":"client_001","remote_addr":"127.0.0.1:50001","connected_at":"2026-06-08T12:00:00Z"}]}'
-```
-
-### Clients Query
+Clients:
 
 ```bash
 curl http://localhost:8080/clients
 ```
 
-Example response:
+## TCP Protocol
+
+Each packet uses a 4-byte length prefix followed by a fixed header and optional payload:
+
+```text
+uint32 body_length
+uint8  version
+uint8  message_type
+uint64 request_id
+bytes  payload
+```
+
+`body_length` covers `version + message_type + request_id + payload`. Multi-byte integers use network byte order.
+
+Message types:
+
+```text
+1  PING       -> 5  PONG
+2  ECHO       -> 6  ECHO_RESP
+3  LOG_PUSH   -> 8  LOG_ACK
+4  STATS      -> 9  STATS_RESP
+7  ERROR_RESP
+10 AUTH       -> 11 AUTH_RESP
+```
+
+## AUTH State Machine
+
+New connections start unauthenticated. Only `AUTH` is accepted before authentication:
 
 ```json
-[
-  {
-    "client_id": "client_001",
-    "remote_addr": "127.0.0.1:50001",
-    "connected_at": "2026-06-08T12:00:00Z"
-  }
-]
+{"client_id":"client_001","token":"test-token"}
 ```
 
-### Config Reload
+Current behavior:
 
-```bash
-curl -X POST http://localhost:8080/config/reload
-```
+- Business requests before `AUTH` close the connection.
+- `AUTH` is queued to a worker thread, not handled directly in the epoll IO loop.
+- The worker validates JSON, required fields, field types, and token correctness through `POST /auth/check`.
+- Invalid JSON, missing fields, bad field types, invalid token, or requests sent while `AUTH` is pending close the connection.
+- Successful `AUTH` stores the real `client_id` on the connection.
+- Repeated `AUTH` after success returns `ERROR_RESP`.
+- `/clients` only reports authenticated connections.
 
-Response:
+## Highlights
 
-```json
-{"success":true,"message":"config reload triggered"}
-```
+- C++17 gateway using `epoll` and non-blocking sockets.
+- Custom protocol codec with half-packet and sticky-packet handling.
+- AUTH-gated request flow with worker-thread dispatch.
+- Go control plane using standard `net/http`.
+- Docker Compose integration and repo-level smoke tests.
 
-## Current Limits
+## Current Limitations
 
-- Auth currently uses a hardcoded valid token in the Go control plane: `test-token`.
-- Runtime state is stored in Go process memory.
-- The C++ gateway requires clients to send an AUTH packet before PING/ECHO/LOG_PUSH/STATS.
-- Docker Compose is available for one-command startup; external storage is still intentionally not included.
+- `AUTH` still uses the demo token `test-token`.
+- Control plane state is in memory and is lost on restart.
+- `checkAuth()` is synchronous HTTP, although it runs in worker threads instead of the epoll IO thread.
+- There is no Redis, database, Prometheus, Grafana, or dashboard frontend.
+- The main smoke test depends on Docker being available in the local environment.
 
 ## Roadmap
 
-- Move tokens and runtime state to Redis or another storage backend.
-- Export Prometheus-format metrics.
-- Add integration tests for C++ gateway to Go control plane communication.
-- Add a minimal Go-rendered dashboard after the backend flow is stable.
+- Keep the `AUTH` state machine strict and testable.
+- Expand protocol edge-case coverage before changing behavior.
+- Improve documentation so project behavior matches real code.
+- Add a manual GitHub Actions smoke workflow without making every push run Docker integration.
+
+## More Docs
+
+- [Architecture](docs/architecture.md)
+- [Protocol](docs/protocol.md)
+- [Development Plan](docs/vibe_coding.md)

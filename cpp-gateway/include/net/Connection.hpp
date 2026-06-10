@@ -14,6 +14,7 @@ struct Connection
     std::string remote_addr;
     std::string connected_at;
     bool authenticated = false;
+    bool auth_pending = false;
     bool closing = false;
 
     Connection(int fd_, uint64_t conn_id_, std::string remote_addr_, std::string connected_at_)

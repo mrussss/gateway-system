@@ -5,12 +5,19 @@
 
 namespace business
 {
+    Dispatcher::Dispatcher(const ControlPlaneClient &control_plane)
+        : control_plane_(control_plane)
+    {
+    }
 
     Response Dispatcher::dispatch(const Request &request)
     {
         StatsManager::getInstance().incrementRequests();
         switch (request.type)
         {
+        case MessageType::AUTH:
+            return handleAuth(request, control_plane_);
+            break;
         case MessageType::PING:
             return handlePing(request);
             break;
