@@ -5,6 +5,7 @@ import argparse
 import json
 import socket
 import struct
+import threading
 import time
 import urllib.request
 from dataclasses import dataclass
@@ -84,6 +85,11 @@ def expect_closed(sock: socket.socket, message: str) -> None:
         data = b""
     if data:
         raise AssertionError(f"{message}, got data={data!r}")
+
+
+def fetch_clients(control_plane_url: str) -> list[dict]:
+    with urllib.request.urlopen(f"{control_plane_url}/clients", timeout=2.0) as resp:
+        return json.loads(resp.read().decode("utf-8"))
 
 
 def assert_response(resp: Response, msg_type: int, request_id: int, payload: bytes | None = None) -> None:
@@ -288,8 +294,7 @@ def test_clients_reports_authenticated_id(host: str, port: int, control_plane_ur
         authenticate(sock, 4105, client_id=client_id)
         deadline = time.time() + 8.0
         while time.time() < deadline:
-            with urllib.request.urlopen(f"{control_plane_url}/clients", timeout=2.0) as resp:
-                clients = json.loads(resp.read().decode("utf-8"))
+            clients = fetch_clients(control_plane_url)
             if any(client.get("client_id") == client_id for client in clients):
                 print("[tcp] PASS clients_reports_authenticated_id")
                 return
@@ -303,13 +308,85 @@ def test_clients_excludes_unauthenticated(host: str, port: int, control_plane_ur
     with connect(host, port) as sock:
         deadline = time.time() + 8.0
         while time.time() < deadline:
-            with urllib.request.urlopen(f"{control_plane_url}/clients", timeout=2.0) as resp:
-                clients = json.loads(resp.read().decode("utf-8"))
+            clients = fetch_clients(control_plane_url)
             if any(str(client.get("client_id", "")).startswith(unauthenticated_id) for client in clients):
                 raise AssertionError("/clients included an unauthenticated placeholder client_id")
             time.sleep(0.5)
 
     print("[tcp] PASS clients_excludes_unauthenticated")
+
+
+def test_repeated_auth_ping_close(host: str, port: int) -> None:
+    for i in range(5):
+        with connect(host, port) as sock:
+            authenticate(sock, 5000 + i)
+            sock.sendall(packet(PING, 5100 + i))
+            resp = recv_response(sock)
+        assert_response(resp, PONG, 5100 + i)
+
+    print("[tcp] PASS repeated_auth_ping_close")
+
+
+def test_concurrent_auth_echo(host: str, port: int) -> None:
+    errors: list[str] = []
+
+    def worker(index: int) -> None:
+        payload = f"concurrent-{index}".encode("utf-8")
+        try:
+            with connect(host, port) as sock:
+                authenticate(sock, 5200 + index)
+                sock.sendall(packet(ECHO, 5300 + index, payload))
+                resp = recv_response(sock)
+            assert_response(resp, ECHO_RESP, 5300 + index, payload)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"worker {index}: {exc}")
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(5)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    if errors:
+        raise AssertionError("; ".join(errors))
+
+    print("[tcp] PASS concurrent_auth_echo")
+
+
+def test_auth_pending_second_request_closes(host: str, port: int) -> None:
+    payload = json.dumps({
+        "client_id": "tcp-test-pending-close",
+        "token": "test-token",
+    }).encode("utf-8")
+    with connect(host, port) as sock:
+        sock.sendall(packet(AUTH, 5401, payload) + packet(PING, 5402))
+        expect_closed(sock, "expected close after request sent while AUTH pending")
+
+    print("[tcp] PASS auth_pending_second_request_closes")
+
+
+def test_clients_remove_disconnected_client(host: str, port: int, control_plane_url: str) -> None:
+    client_id = "tcp-test-disconnect-cleanup"
+    with connect(host, port) as sock:
+        authenticate(sock, 5501, client_id=client_id)
+        deadline = time.time() + 8.0
+        while time.time() < deadline:
+            clients = fetch_clients(control_plane_url)
+            if any(client.get("client_id") == client_id for client in clients):
+                break
+            time.sleep(0.5)
+        else:
+            raise AssertionError(f"/clients did not include authenticated client_id={client_id}")
+
+    deadline = time.time() + 8.0
+    while time.time() < deadline:
+        clients = fetch_clients(control_plane_url)
+        if not any(client.get("client_id") == client_id for client in clients):
+            print("[tcp] PASS clients_remove_disconnected_client")
+            return
+        time.sleep(0.5)
+
+    raise AssertionError(f"/clients still included disconnected client_id={client_id}")
 
 
 def main() -> int:
@@ -338,6 +415,10 @@ def main() -> int:
         test(args.host, args.port)
     test_clients_reports_authenticated_id(args.host, args.port, args.control_plane_url)
     test_clients_excludes_unauthenticated(args.host, args.port, args.control_plane_url)
+    test_repeated_auth_ping_close(args.host, args.port)
+    test_concurrent_auth_echo(args.host, args.port)
+    test_auth_pending_second_request_closes(args.host, args.port)
+    test_clients_remove_disconnected_client(args.host, args.port, args.control_plane_url)
 
     print("[tcp] PASS all protocol checks")
     return 0

@@ -364,18 +364,28 @@ void TcpServer::handleAccept()
 
 void TcpServer::handleRead(int fd)
 {
-    auto it = connections_.find(fd);
-    if (it == connections_.end())
-        return;
-    Connection &conn = it->second;
     while (true)
     {
+        {
+            std::lock_guard<std::mutex> lock(connections_mutex_);
+            if (connections_.find(fd) == connections_.end())
+            {
+                return;
+            }
+        }
+
         char buf[4096];
         memset(buf, 0, sizeof(buf));
         ssize_t bytes_read = recv(fd, buf, sizeof(buf), 0);
         if (bytes_read > 0)
         {
-            conn.input_buffer.append(buf, bytes_read);
+            std::lock_guard<std::mutex> lock(connections_mutex_);
+            auto it = connections_.find(fd);
+            if (it == connections_.end())
+            {
+                return;
+            }
+            it->second.input_buffer.append(buf, bytes_read);
             business::StatsManager::getInstance().incrementReadBytes(bytes_read);
             LOG_INFO("fd=%d received %zd bytes", fd, bytes_read);
         }
@@ -390,7 +400,7 @@ void TcpServer::handleRead(int fd)
 
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                decodeAndEnqueue(conn);
+                decodeAndEnqueue(fd);
                 break;
             }
             else
@@ -405,39 +415,68 @@ void TcpServer::handleRead(int fd)
 
 void TcpServer::handleWrite(int fd)
 {
-    auto it = connections_.find(fd);
-    if (it == connections_.end())
-        return;
-    Connection &conn = it->second;
-    while (!conn.output_buffer.empty())
+    while (true)
     {
-        ssize_t sent_bytes = send(fd, conn.output_buffer.data(), conn.output_buffer.size(), MSG_NOSIGNAL);
+        std::string pending_output;
+        bool should_close = false;
+        bool should_switch_to_read = false;
+        {
+            std::lock_guard<std::mutex> lock(connections_mutex_);
+            auto it = connections_.find(fd);
+            if (it == connections_.end())
+            {
+                return;
+            }
+
+            Connection &conn = it->second;
+            if (conn.output_buffer.empty())
+            {
+                should_close = conn.closing;
+                should_switch_to_read = !conn.closing;
+            }
+            else
+            {
+                pending_output = conn.output_buffer;
+            }
+        }
+
+        if (should_close)
+        {
+            closeConnection(fd);
+            return;
+        }
+        if (should_switch_to_read)
+        {
+            if (!modifyConnectionEvents(fd, EPOLLIN | EPOLLET))
+            {
+                return;
+            }
+            return;
+        }
+
+        ssize_t sent_bytes = send(fd, pending_output.data(), pending_output.size(), MSG_NOSIGNAL);
         if (sent_bytes > 0)
         {
-            conn.output_buffer.erase(0, sent_bytes);
+            std::lock_guard<std::mutex> lock(connections_mutex_);
+            auto it = connections_.find(fd);
+            if (it == connections_.end())
+            {
+                return;
+            }
+            Connection &conn = it->second;
+            size_t erase_count = std::min(static_cast<size_t>(sent_bytes), conn.output_buffer.size());
+            conn.output_buffer.erase(0, erase_count);
             business::StatsManager::getInstance().incrementWriteBytes(sent_bytes);
         }
         else if (sent_bytes == -1)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                break;
+                return;
             }
             else
             {
                 closeConnection(fd);
-                return;
-            }
-        }
-        if (conn.output_buffer.empty())
-        {
-            if (conn.closing)
-            {
-                closeConnection(fd);
-                return;
-            }
-            if (!modifyConnectionEvents(fd, EPOLLIN | EPOLLET))
-            {
                 return;
             }
         }
@@ -449,108 +488,187 @@ void TcpServer::drainResponseQueue()
     Response resp;
     while (response_queue_.Try_pop(resp))
     {
-        auto it = connections_.find(resp.fd);
-        if (it == connections_.end())
-        {
-            LOG_INFO("Client has disconnected.");
-            continue;
-        }
-        Connection &conn = it->second;
-        if (conn.conn_id != resp.conn_id)
-        {
-            LOG_INFO("stale response (conn_id mismatch)");
-            continue;
-        }
-
-        if (resp.mark_authenticated)
-        {
-            conn.authenticated = true;
-            conn.auth_pending = false;
-            conn.client_id = resp.authenticated_client_id;
-        }
-        else if (resp.type == MessageType::AUTH_RESP || resp.close_connection)
-        {
-            conn.auth_pending = false;
-        }
-
         if (resp.close_connection && resp.skip_write)
         {
-            closeConnection(conn.fd);
+            bool should_close = false;
+            {
+                std::lock_guard<std::mutex> lock(connections_mutex_);
+                auto it = connections_.find(resp.fd);
+                if (it == connections_.end())
+                {
+                    LOG_INFO("Client has disconnected.");
+                    continue;
+                }
+
+                Connection &conn = it->second;
+                if (conn.conn_id != resp.conn_id)
+                {
+                    LOG_INFO("stale response (conn_id mismatch)");
+                    continue;
+                }
+
+                if (resp.mark_authenticated)
+                {
+                    conn.authenticated = true;
+                    conn.client_id = resp.authenticated_client_id;
+                }
+                if (resp.type == MessageType::AUTH_RESP || resp.close_connection)
+                {
+                    conn.auth_pending = false;
+                }
+                should_close = true;
+            }
+
+            if (should_close)
+            {
+                closeConnection(resp.fd);
+            }
             continue;
         }
 
         std::string encoded_data = ProtocolCodec::encode(resp);
-        if (conn.output_buffer.size() + encoded_data.size() > MAX_OUT_BUFFER_SIZE)
+        bool should_close = false;
+        bool should_modify_events = false;
         {
-            LOG_INFO("fd=%d output buffer overflow, forcefully closing connection!", conn.fd);
-            closeConnection(conn.fd);
+            std::lock_guard<std::mutex> lock(connections_mutex_);
+            auto it = connections_.find(resp.fd);
+            if (it == connections_.end())
+            {
+                LOG_INFO("Client has disconnected.");
+                continue;
+            }
+
+            Connection &conn = it->second;
+            if (conn.conn_id != resp.conn_id)
+            {
+                LOG_INFO("stale response (conn_id mismatch)");
+                continue;
+            }
+
+            if (resp.mark_authenticated)
+            {
+                conn.authenticated = true;
+                conn.auth_pending = false;
+                conn.client_id = resp.authenticated_client_id;
+            }
+            else if (resp.type == MessageType::AUTH_RESP || resp.close_connection)
+            {
+                conn.auth_pending = false;
+            }
+
+            if (conn.output_buffer.size() + encoded_data.size() > MAX_OUT_BUFFER_SIZE)
+            {
+                LOG_INFO("fd=%d output buffer overflow, forcefully closing connection!", conn.fd);
+                should_close = true;
+            }
+            else
+            {
+                conn.output_buffer.append(encoded_data);
+                if (resp.close_connection)
+                {
+                    conn.closing = true;
+                }
+                should_modify_events = true;
+            }
+        }
+
+        if (should_close)
+        {
+            closeConnection(resp.fd);
             continue;
         }
 
-        conn.output_buffer.append(encoded_data);
-        if (resp.close_connection)
-        {
-            conn.closing = true;
-        }
-        if (!modifyConnectionEvents(resp.fd, EPOLLIN | EPOLLOUT | EPOLLET))
+        if (should_modify_events && !modifyConnectionEvents(resp.fd, EPOLLIN | EPOLLOUT | EPOLLET))
         {
             continue;
         }
     }
 };
 
-bool TcpServer::decodeAndEnqueue(Connection &conn)
+bool TcpServer::decodeAndEnqueue(int fd)
 {
-    std::vector<Request> out_requests;
-    DecodeStatus status = ProtocolCodec::decode(
-        conn.input_buffer,
-        conn.fd,
-        out_requests,
-        conn.conn_id);
-    if (status == DecodeStatus::INVALID_LENGTH)
+    std::vector<Request> decoded_requests;
+    std::vector<Request> requests_to_enqueue;
+    std::vector<Response> out_responses;
+    bool should_close = false;
+
     {
-        LOG_INFO("client fd=%d sent invalid protocol, closing", conn.fd);
-        closeConnection(conn.fd);
+        std::lock_guard<std::mutex> lock(connections_mutex_);
+        auto it = connections_.find(fd);
+        if (it == connections_.end())
+        {
+            return false;
+        }
+
+        Connection &conn = it->second;
+        DecodeStatus status = ProtocolCodec::decode(
+            conn.input_buffer,
+            conn.fd,
+            decoded_requests,
+            conn.conn_id);
+        if (status == DecodeStatus::INVALID_LENGTH)
+        {
+            LOG_INFO("client fd=%d sent invalid protocol, closing", conn.fd);
+            should_close = true;
+        }
+
+        if (!should_close)
+        {
+            for (auto &req : decoded_requests)
+            {
+                if (!conn.authenticated)
+                {
+                    if (req.type != MessageType::AUTH)
+                    {
+                        LOG_INFO("client fd=%d sent business request before AUTH, closing", conn.fd);
+                        should_close = true;
+                        break;
+                    }
+
+                    if (conn.auth_pending)
+                    {
+                        LOG_INFO("client fd=%d sent request while AUTH is pending, closing", conn.fd);
+                        should_close = true;
+                        break;
+                    }
+
+                    conn.auth_pending = true;
+                    requests_to_enqueue.push_back(req);
+                    continue;
+                }
+
+                if (req.type == MessageType::AUTH)
+                {
+                    Response resp;
+                    resp.fd = conn.fd;
+                    resp.conn_id = conn.conn_id;
+                    resp.version = req.version;
+                    resp.type = MessageType::ERROR_RESP;
+                    resp.request_id = req.request_id;
+                    resp.status_code = 400;
+                    resp.payload = R"({"status":400,"message":"already authenticated"})";
+                    out_responses.push_back(resp);
+                    continue;
+                }
+
+                requests_to_enqueue.push_back(req);
+            }
+        }
+    }
+
+    if (should_close)
+    {
+        closeConnection(fd);
         return false;
     }
-    for (auto &req : out_requests)
+
+    for (auto &req : requests_to_enqueue)
     {
-        if (!conn.authenticated)
-        {
-            if (req.type != MessageType::AUTH)
-            {
-                LOG_INFO("client fd=%d sent business request before AUTH, closing", conn.fd);
-                closeConnection(conn.fd);
-                return false;
-            }
-
-            if (conn.auth_pending)
-            {
-                LOG_INFO("client fd=%d sent request while AUTH is pending, closing", conn.fd);
-                closeConnection(conn.fd);
-                return false;
-            }
-
-            conn.auth_pending = true;
-            request_queue_.push(req);
-            continue;
-        }
-
-        if (req.type == MessageType::AUTH)
-        {
-            Response resp;
-            resp.fd = conn.fd;
-            resp.conn_id = conn.conn_id;
-            resp.version = req.version;
-            resp.type = MessageType::ERROR_RESP;
-            resp.request_id = req.request_id;
-            resp.status_code = 400;
-            resp.payload = R"({"status":400,"message":"already authenticated"})";
-            response_queue_.push(resp);
-            continue;
-        }
-
         request_queue_.push(req);
+    }
+    for (auto &resp : out_responses)
+    {
+        response_queue_.push(resp);
     }
     return true;
 }

@@ -57,6 +57,14 @@ Threading model:
 - decoded requests are pushed into a request queue
 - worker threads call the dispatcher and business handlers
 - responses are pushed into a response queue and drained by the epoll side
+- a metrics reporter thread periodically snapshots authenticated clients and gateway counters
+
+Connection state ownership:
+
+- `connections_` is the source of truth for live TCP connections
+- `connections_mutex_` guards map lookup, erase, and per-connection state reads or writes
+- short critical sections are used for `authenticated`, `auth_pending`, `client_id`, `input_buffer`, `output_buffer`, and `closing`
+- blocking or heavier work such as `recv`, `send`, `epoll_ctl`, protocol encoding, and HTTP auth checks stays outside the mutex
 
 ## AUTH Path
 
@@ -75,6 +83,8 @@ client sends AUTH
 Important property:
 
 - `checkAuth()` is synchronous HTTP, but it runs in worker threads rather than the epoll IO loop
+- once auth succeeds, the IO side marks the connection authenticated and later client snapshots report that real `client_id`
+- if auth is invalid or a second request arrives while auth is pending, the connection is closed
 
 ## Go Control Plane
 
@@ -110,4 +120,7 @@ Docker Compose mode:
 - no external message broker
 - no dashboard frontend
 - no async auth client yet
+- auth still uses the demo token `test-token`
+- `/clients` visibility depends on periodic snapshot reporting rather than an immediate push-on-every-state-change model
 - smoke testing depends on Docker availability
+- GitHub Actions smoke coverage is manual `workflow_dispatch`

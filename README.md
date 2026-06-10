@@ -80,6 +80,10 @@ Current protocol checks cover:
 - duplicate `AUTH` rejection
 - `/clients` reporting of authenticated `client_id`
 - `/clients` exclusion of unauthenticated placeholder clients
+- repeated `AUTH + PING + close`
+- concurrent client `AUTH + ECHO`
+- connection close when a second request arrives while `AUTH` is pending
+- `/clients` cleanup after an authenticated client disconnects
 
 Component-level checks:
 
@@ -165,6 +169,14 @@ Current behavior:
 - Repeated `AUTH` after success returns `ERROR_RESP`.
 - `/clients` only reports authenticated connections.
 
+## Concurrency Model
+
+- The epoll IO thread owns socket accept, read, write, decode, response draining, and connection close decisions.
+- Worker threads only process queued requests and produce `Response` objects.
+- `AUTH` is checked in worker threads through `POST /auth/check`; the epoll IO thread does not call the control plane directly.
+- Connection records in `connections_` are protected by `connections_mutex_`.
+- The metrics reporter thread only reads connection snapshots under the same mutex and reports authenticated clients only.
+
 ## Highlights
 
 - C++17 gateway using `epoll` and non-blocking sockets.
@@ -178,8 +190,10 @@ Current behavior:
 - `AUTH` still uses the demo token `test-token`.
 - Control plane state is in memory and is lost on restart.
 - `checkAuth()` is synchronous HTTP, although it runs in worker threads instead of the epoll IO thread.
+- Connection state is mutex-protected, but the design is still a small in-process model rather than a fully isolated actor-style architecture.
 - There is no Redis, database, Prometheus, Grafana, or dashboard frontend.
 - The main smoke test depends on Docker being available in the local environment.
+- The smoke GitHub Actions workflow is manual `workflow_dispatch`, not an every-push integration job.
 
 ## Roadmap
 

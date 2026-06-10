@@ -44,7 +44,7 @@ private:
     void handleWrite(int fd);
     void drainResponseQueue();
     void closeConnection(int fd);
-    bool decodeAndEnqueue(Connection &conn);
+    bool decodeAndEnqueue(int fd);
     bool modifyConnectionEvents(int fd, uint32_t events);
     void startMetricsReporter();
     void metricsReporterLoop();
