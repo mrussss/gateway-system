@@ -125,7 +125,7 @@ Docker Compose mode:
 - no dashboard frontend
 - no async auth client yet
 - token registry is in memory only
-- `tcp-test-* + test-token` remains as a compatibility path for smoke tests
+- AUTH requires explicit token registration through `POST /tokens`
 - `/clients` visibility depends on periodic snapshot reporting rather than an immediate push-on-every-state-change model
 - smoke testing depends on Docker availability
 - GitHub Actions smoke coverage is manual `workflow_dispatch`

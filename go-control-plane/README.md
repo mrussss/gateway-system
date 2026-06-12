@@ -99,4 +99,4 @@ curl -X POST http://localhost:8080/config/reload
 - `/auth/check` now validates `client_id + token` against an in-memory token registry.
 - `GET /tokens` only returns `client_id` values and does not expose token plaintext.
 - Registry data is in memory only and is cleared on restart.
-- `tcp-test-* + test-token` is still accepted as a compatibility path for the TCP smoke tests.
+- AUTH requires explicit token registration through `POST /tokens`.

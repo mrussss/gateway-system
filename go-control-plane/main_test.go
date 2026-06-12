@@ -76,7 +76,7 @@ func TestAuthCheckRejectsMissingFields(t *testing.T) {
 	assertAuthResponse(t, resp, http.StatusBadRequest, false, "client_id and token are required")
 }
 
-func TestAuthCheckAllowsTcpTestFallback(t *testing.T) {
+func TestAuthCheckRejectsUnregisteredTcpTestToken(t *testing.T) {
 	store = newMemoryStore()
 	body := bytes.NewBufferString(`{"client_id":"tcp-test-9001","token":"test-token"}`)
 	req := httptest.NewRequest(http.MethodPost, "/auth/check", body)
@@ -84,7 +84,7 @@ func TestAuthCheckAllowsTcpTestFallback(t *testing.T) {
 
 	routes().ServeHTTP(resp, req)
 
-	assertAuthResponse(t, resp, http.StatusOK, true, "ok")
+	assertAuthResponse(t, resp, http.StatusOK, false, "invalid token")
 }
 
 func TestMetricsReportAndGatewayStatus(t *testing.T) {

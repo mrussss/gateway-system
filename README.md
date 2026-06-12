@@ -213,7 +213,7 @@ Current behavior:
 
 - Control plane state is in memory and is lost on restart.
 - Token registry data is in memory and is lost on restart.
-- TCP smoke tests still allow `tcp-test-* + test-token` as a compatibility path while explicit registration is rolled in.
+- AUTH now requires explicit token registration through `POST /tokens`.
 - `checkAuth()` is synchronous HTTP, although it runs in worker threads instead of the epoll IO thread.
 - Connection state is mutex-protected, but the design is still a small in-process model rather than a fully isolated actor-style architecture.
 - There is no Redis, database, Prometheus, Grafana, or dashboard frontend.

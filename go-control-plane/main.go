@@ -5,12 +5,9 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
-
-const fallbackTestToken = "test-token"
 
 var store = newMemoryStore()
 
@@ -155,10 +152,6 @@ func (s *memoryStore) deleteToken(clientID string) {
 }
 
 func (s *memoryStore) isAllowed(clientID string, token string) bool {
-	if strings.HasPrefix(clientID, "tcp-test-") && token == fallbackTestToken {
-		return true
-	}
-
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	storedToken, ok := s.tokens[clientID]
