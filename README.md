@@ -238,6 +238,7 @@ Current behavior:
 - Go control plane using standard `net/http`.
 - In-memory token registry managed over HTTP.
 - In-memory runtime config managed over HTTP.
+- C++ Gateway currently enforces `max_connections_per_client` and `max_requests_per_client_per_second` only.
 - Docker Compose integration and repo-level smoke tests.
 
 ## Current Limitations
@@ -258,7 +259,7 @@ Current behavior:
 - Keep the `AUTH` state machine strict and testable.
 - Expand protocol edge-case coverage before changing behavior.
 - Improve documentation so project behavior matches real code.
-- Let C++ Gateway fetch runtime config from the control plane.
+- Enforce runtime config in the C++ Gateway.
 - Enforce `max_connections_per_client` and `max_requests_per_client_per_second` in the C++ Gateway.
 - Replace the in-memory token registry with Redis or a database when persistence is needed.
 - Add a manual GitHub Actions smoke workflow without making every push run Docker integration.

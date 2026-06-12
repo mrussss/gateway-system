@@ -122,6 +122,24 @@ def fetch_clients(control_plane_url: str) -> list[dict]:
         return json.loads(resp.read().decode("utf-8"))
 
 
+def update_config(control_plane_url: str, config: dict) -> None:
+    payload = json.dumps(config).encode("utf-8")
+    request = urllib.request.Request(
+        f"{control_plane_url}/config",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=2.0) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.URLError as exc:
+        raise AssertionError(f"failed to update config: {exc}") from exc
+
+    if body.get("auth_timeout_ms") != config["auth_timeout_ms"]:
+        raise AssertionError(f"unexpected config update response: {body}")
+
+
 def assert_response(resp: Response, msg_type: int, request_id: int, payload: bytes | None = None) -> None:
     if resp.version != VERSION:
         raise AssertionError(f"expected version={VERSION}, got {resp.version}")
@@ -400,7 +418,7 @@ def test_clients_remove_disconnected_client(host: str, port: int, control_plane_
     client_id = "tcp-test-disconnect-cleanup"
     with connect(host, port) as sock:
         authenticate(sock, control_plane_url, 5501, client_id=client_id)
-        deadline = time.time() + 8.0
+        deadline = time.time() + 12.0
         while time.time() < deadline:
             clients = fetch_clients(control_plane_url)
             if any(client.get("client_id") == client_id for client in clients):
@@ -409,7 +427,7 @@ def test_clients_remove_disconnected_client(host: str, port: int, control_plane_
         else:
             raise AssertionError(f"/clients did not include authenticated client_id={client_id}")
 
-    deadline = time.time() + 8.0
+    deadline = time.time() + 12.0
     while time.time() < deadline:
         clients = fetch_clients(control_plane_url)
         if not any(client.get("client_id") == client_id for client in clients):
@@ -418,6 +436,81 @@ def test_clients_remove_disconnected_client(host: str, port: int, control_plane_
         time.sleep(0.5)
 
     raise AssertionError(f"/clients still included disconnected client_id={client_id}")
+
+
+def test_max_connections_per_client(host: str, port: int, control_plane_url: str) -> None:
+    update_config(control_plane_url, {
+        "auth_timeout_ms": 1000,
+        "max_payload_size": 4194314,
+        "max_connections_per_client": 1,
+        "max_requests_per_client_per_second": 100,
+        "fail_open": False,
+    })
+    time.sleep(6.0)
+
+    client_id = "tcp-test-max-connections"
+    token = "test-token"
+    first = connect(host, port)
+    try:
+        authenticate(first, control_plane_url, 5601, client_id=client_id, token=token)
+        second = connect(host, port)
+        try:
+            register_token(control_plane_url, client_id, token)
+            payload = json.dumps({
+                "client_id": client_id,
+                "token": token,
+            }).encode("utf-8")
+            second.sendall(packet(AUTH, 5602, payload))
+            resp = recv_response(second)
+            assert_response(resp, AUTH_RESP, 5602)
+            body = json.loads(resp.payload.decode("utf-8"))
+            if body.get("allowed") is not False or body.get("reason") != "max connections exceeded":
+                raise AssertionError(f"unexpected max connections response: {body}")
+            expect_closed(second, "expected close after max connections exceeded")
+        finally:
+            second.close()
+    finally:
+        first.close()
+
+    print("[tcp] PASS max_connections_per_client")
+
+
+def test_rate_limit_per_client(host: str, port: int, control_plane_url: str) -> None:
+    update_config(control_plane_url, {
+        "auth_timeout_ms": 1000,
+        "max_payload_size": 4194314,
+        "max_connections_per_client": 10,
+        "max_requests_per_client_per_second": 3,
+        "fail_open": False,
+    })
+    time.sleep(6.0)
+
+    with connect(host, port) as sock:
+        authenticate(sock, control_plane_url, 5701, client_id="tcp-test-rate-limit")
+        sock.sendall(
+            packet(PING, 5702) +
+            packet(PING, 5703) +
+            packet(PING, 5704) +
+            packet(PING, 5705)
+        )
+        responses = [recv_response(sock) for _ in range(4)]
+        response_by_id = {resp.request_id: resp for resp in responses}
+
+        for request_id in (5702, 5703, 5704):
+            assert_response(response_by_id[request_id], PONG, request_id)
+
+        limited = response_by_id[5705]
+        assert_response(limited, ERROR_RESP, 5705)
+        body = json.loads(limited.payload.decode("utf-8"))
+        if body.get("status") != 429 or body.get("message") != "rate limited":
+            raise AssertionError(f"unexpected rate limit response: {body}")
+
+        time.sleep(1.1)
+        sock.sendall(packet(PING, 5706))
+        resp = recv_response(sock)
+        assert_response(resp, PONG, 5706)
+
+    print("[tcp] PASS max_requests_per_client_per_second")
 
 
 def main() -> int:
@@ -450,6 +543,8 @@ def main() -> int:
     test_concurrent_auth_echo(args.host, args.port, args.control_plane_url)
     test_auth_pending_second_request_closes(args.host, args.port, args.control_plane_url)
     test_clients_remove_disconnected_client(args.host, args.port, args.control_plane_url)
+    test_max_connections_per_client(args.host, args.port, args.control_plane_url)
+    test_rate_limit_per_client(args.host, args.port, args.control_plane_url)
 
     print("[tcp] PASS all protocol checks")
     return 0

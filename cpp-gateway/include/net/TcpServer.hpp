@@ -35,6 +35,7 @@ public:
     {
         return response_queue_.size();
     }
+    RuntimeConfig getRuntimeConfigSnapshot();
 
 private:
     void initServer();
@@ -50,7 +51,15 @@ private:
     void startConfigPuller();
     void metricsReporterLoop();
     void configPullerLoop();
+    size_t countAuthenticatedConnectionsForClientLocked(const std::string &client_id, int exclude_fd) const;
+    bool allowRequestForClientLocked(const std::string &client_id, const RuntimeConfig &config);
     std::vector<ClientReport> buildClientSnapshot();
+
+    struct RateLimitWindow
+    {
+        int64_t unix_second = 0;
+        int count = 0;
+    };
 
     int port_;
     int listen_fd_;
@@ -70,4 +79,5 @@ private:
     ControlPlaneClient control_plane_;
     RuntimeConfig runtime_config_{};
     std::mutex runtime_config_mutex_;
+    std::unordered_map<std::string, RateLimitWindow> rate_limit_windows_;
 };

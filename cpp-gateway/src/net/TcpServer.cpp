@@ -530,10 +530,9 @@ void TcpServer::drainResponseQueue()
             }
             continue;
         }
-
-        std::string encoded_data = ProtocolCodec::encode(resp);
         bool should_close = false;
         bool should_modify_events = false;
+        RuntimeConfig config = getRuntimeConfigSnapshot();
         {
             std::lock_guard<std::mutex> lock(connections_mutex_);
             auto it = connections_.find(resp.fd);
@@ -552,15 +551,31 @@ void TcpServer::drainResponseQueue()
 
             if (resp.mark_authenticated)
             {
-                conn.authenticated = true;
-                conn.auth_pending = false;
-                conn.client_id = resp.authenticated_client_id;
+                size_t existing_count =
+                    countAuthenticatedConnectionsForClientLocked(resp.authenticated_client_id, conn.fd);
+                if (existing_count >= static_cast<size_t>(config.max_connections_per_client))
+                {
+                    business::StatsManager::getInstance().incrementErrors();
+                    resp.mark_authenticated = false;
+                    resp.close_connection = true;
+                    resp.type = MessageType::AUTH_RESP;
+                    resp.payload = R"({"allowed":false,"reason":"max connections exceeded"})";
+                }
+                else
+                {
+                    conn.authenticated = true;
+                    conn.auth_pending = false;
+                    conn.client_id = resp.authenticated_client_id;
+                }
             }
-            else if (resp.type == MessageType::AUTH_RESP || resp.close_connection)
+
+            if (!resp.mark_authenticated &&
+                (resp.type == MessageType::AUTH_RESP || resp.close_connection))
             {
                 conn.auth_pending = false;
             }
 
+            std::string encoded_data = ProtocolCodec::encode(resp);
             if (conn.output_buffer.size() + encoded_data.size() > MAX_OUT_BUFFER_SIZE)
             {
                 LOG_INFO("fd=%d output buffer overflow, forcefully closing connection!", conn.fd);
@@ -596,6 +611,7 @@ bool TcpServer::decodeAndEnqueue(int fd)
     std::vector<Request> requests_to_enqueue;
     std::vector<Response> out_responses;
     bool should_close = false;
+    RuntimeConfig config = getRuntimeConfigSnapshot();
 
     {
         std::lock_guard<std::mutex> lock(connections_mutex_);
@@ -652,6 +668,21 @@ bool TcpServer::decodeAndEnqueue(int fd)
                     resp.request_id = req.request_id;
                     resp.status_code = 400;
                     resp.payload = R"({"status":400,"message":"already authenticated"})";
+                    out_responses.push_back(resp);
+                    continue;
+                }
+
+                if (!allowRequestForClientLocked(conn.client_id, config))
+                {
+                    business::StatsManager::getInstance().incrementErrors();
+                    Response resp;
+                    resp.fd = conn.fd;
+                    resp.conn_id = conn.conn_id;
+                    resp.version = req.version;
+                    resp.type = MessageType::ERROR_RESP;
+                    resp.request_id = req.request_id;
+                    resp.status_code = 429;
+                    resp.payload = R"({"status":429,"message":"rate limited"})";
                     out_responses.push_back(resp);
                     continue;
                 }
@@ -760,12 +791,58 @@ void TcpServer::configPullerLoop()
                 runtime_config_ = fetched;
             }
         }
+        else
+        {
+            LOG_INFO("%s", "runtime config fetch failed, keeping current config");
+        }
 
         for (int i = 0; i < 50 && running_; ++i)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
+}
+
+RuntimeConfig TcpServer::getRuntimeConfigSnapshot()
+{
+    std::lock_guard<std::mutex> lock(runtime_config_mutex_);
+    return runtime_config_;
+}
+
+size_t TcpServer::countAuthenticatedConnectionsForClientLocked(const std::string &client_id, int exclude_fd) const
+{
+    size_t count = 0;
+    for (const auto &[fd, conn] : connections_)
+    {
+        if (fd == exclude_fd)
+        {
+            continue;
+        }
+        if (conn.authenticated && conn.client_id == client_id)
+        {
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool TcpServer::allowRequestForClientLocked(const std::string &client_id, const RuntimeConfig &config)
+{
+    int64_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    RateLimitWindow &window = rate_limit_windows_[client_id];
+    if (window.unix_second != now)
+    {
+        window.unix_second = now;
+        window.count = 0;
+    }
+
+    if (window.count >= config.max_requests_per_client_per_second)
+    {
+        return false;
+    }
+
+    ++window.count;
+    return true;
 }
 
 std::vector<ClientReport> TcpServer::buildClientSnapshot()
@@ -794,6 +871,8 @@ std::vector<ClientReport> TcpServer::buildClientSnapshot()
 void TcpServer::closeConnection(int fd)
 {
     bool existed = false;
+    std::string client_id_to_cleanup;
+    bool was_authenticated = false;
     {
         std::lock_guard<std::mutex> lock(connections_mutex_);
         auto it = connections_.find(fd);
@@ -801,7 +880,13 @@ void TcpServer::closeConnection(int fd)
         {
             return;
         }
+        client_id_to_cleanup = it->second.client_id;
+        was_authenticated = it->second.authenticated;
         connections_.erase(it);
+        if (was_authenticated && countAuthenticatedConnectionsForClientLocked(client_id_to_cleanup, -1) == 0)
+        {
+            rate_limit_windows_.erase(client_id_to_cleanup);
+        }
         existed = true;
     }
 
