@@ -22,16 +22,28 @@ struct ClientReport
     std::string connected_at;
 };
 
+struct RuntimeConfig
+{
+    int64_t version = 1;
+    int auth_timeout_ms = 1000;
+    int max_payload_size = 4194314;
+    int max_connections_per_client = 2;
+    int max_requests_per_client_per_second = 100;
+    bool fail_open = false;
+};
+
 class ControlPlaneClient
 {
 public:
     ControlPlaneClient(std::string host, int port, int timeout_ms);
 
     bool checkAuth(const std::string &client_id, const std::string &token) const;
+    bool fetchConfig(RuntimeConfig &config) const;
     bool reportMetrics(const GatewayMetrics &metrics) const;
     bool reportClients(const std::string &gateway_id, const std::vector<ClientReport> &clients) const;
 
 private:
+    bool getJson(const std::string &path, std::string &response_body) const;
     bool postJson(const std::string &path, const std::string &body, std::string &response_body) const;
     int connectWithTimeout() const;
     bool sendAll(int fd, const std::string &data) const;

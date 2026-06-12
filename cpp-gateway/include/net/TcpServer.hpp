@@ -47,7 +47,9 @@ private:
     bool decodeAndEnqueue(int fd);
     bool modifyConnectionEvents(int fd, uint32_t events);
     void startMetricsReporter();
+    void startConfigPuller();
     void metricsReporterLoop();
+    void configPullerLoop();
     std::vector<ClientReport> buildClientSnapshot();
 
     int port_;
@@ -64,5 +66,8 @@ private:
     std::mutex connections_mutex_;
     std::vector<std::thread> workers_;
     std::thread metrics_reporter_;
+    std::thread config_puller_;
     ControlPlaneClient control_plane_;
+    RuntimeConfig runtime_config_{};
+    std::mutex runtime_config_mutex_;
 };

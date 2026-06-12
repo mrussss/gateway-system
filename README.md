@@ -16,6 +16,7 @@ C++ Gateway
   | epoll ET + non-blocking socket
   | request queue / worker threads / response queue
   | connection-level AUTH state
+  | runtime config puller
   |
   | HTTP JSON
   v
@@ -245,7 +246,7 @@ Current behavior:
 - Token registry data is in memory and is lost on restart.
 - Runtime config is stored in memory and is lost on restart.
 - AUTH now requires explicit token registration through `POST /tokens`.
-- C++ Gateway does not pull or enforce runtime config yet.
+- C++ Gateway pulls runtime config but does not enforce runtime config yet.
 - `checkAuth()` is synchronous HTTP, although it runs in worker threads instead of the epoll IO thread.
 - Connection state is mutex-protected, but the design is still a small in-process model rather than a fully isolated actor-style architecture.
 - There is no Redis, database, Prometheus, Grafana, or dashboard frontend.
@@ -258,6 +259,7 @@ Current behavior:
 - Expand protocol edge-case coverage before changing behavior.
 - Improve documentation so project behavior matches real code.
 - Let C++ Gateway fetch runtime config from the control plane.
+- Enforce `max_connections_per_client` and `max_requests_per_client_per_second` in the C++ Gateway.
 - Replace the in-memory token registry with Redis or a database when persistence is needed.
 - Add a manual GitHub Actions smoke workflow without making every push run Docker integration.
 

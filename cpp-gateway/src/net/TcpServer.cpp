@@ -158,6 +158,7 @@ std::cerr << "worker thread unknown error!" << std::endl;
                                 } });
     }
     startMetricsReporter();
+    startConfigPuller();
     loop();
 }
 
@@ -195,6 +196,10 @@ void TcpServer::stop()
     if (metrics_reporter_.joinable())
     {
         metrics_reporter_.join();
+    }
+    if (config_puller_.joinable())
+    {
+        config_puller_.join();
     }
 
     for (auto &worker : workers_)
@@ -696,6 +701,26 @@ void TcpServer::startMetricsReporter()
                                     { metricsReporterLoop(); });
 }
 
+void TcpServer::startConfigPuller()
+{
+    RuntimeConfig fetched;
+    if (control_plane_.fetchConfig(fetched))
+    {
+        std::lock_guard<std::mutex> lock(runtime_config_mutex_);
+        runtime_config_ = fetched;
+        LOG_INFO("runtime config initialized version=%lld",
+                 static_cast<long long>(runtime_config_.version));
+    }
+    else
+    {
+        LOG_INFO("runtime config fetch failed at startup, keeping default version=%lld",
+                 static_cast<long long>(runtime_config_.version));
+    }
+
+    config_puller_ = std::thread([this]()
+                                 { configPullerLoop(); });
+}
+
 void TcpServer::metricsReporterLoop()
 {
     while (running_)
@@ -711,6 +736,30 @@ void TcpServer::metricsReporterLoop()
             std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())};
         control_plane_.reportMetrics(metrics);
         control_plane_.reportClients(metrics.gateway_id, buildClientSnapshot());
+
+        for (int i = 0; i < 50 && running_; ++i)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    }
+}
+
+void TcpServer::configPullerLoop()
+{
+    while (running_)
+    {
+        RuntimeConfig fetched;
+        if (control_plane_.fetchConfig(fetched))
+        {
+            std::lock_guard<std::mutex> lock(runtime_config_mutex_);
+            if (fetched.version > runtime_config_.version)
+            {
+                LOG_INFO("runtime config updated version %lld -> %lld",
+                         static_cast<long long>(runtime_config_.version),
+                         static_cast<long long>(fetched.version));
+                runtime_config_ = fetched;
+            }
+        }
 
         for (int i = 0; i < 50 && running_; ++i)
         {

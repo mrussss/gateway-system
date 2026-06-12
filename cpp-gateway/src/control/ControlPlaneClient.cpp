@@ -52,6 +52,47 @@ bool ControlPlaneClient::checkAuth(const std::string &client_id, const std::stri
     }
 }
 
+bool ControlPlaneClient::fetchConfig(RuntimeConfig &config) const
+{
+    std::string response_body;
+    if (!getJson("/config", response_body))
+    {
+        LOG_ERROR("%s", "control plane config fetch failed");
+        return false;
+    }
+
+    try
+    {
+        auto json = nlohmann::json::parse(response_body);
+
+        RuntimeConfig parsed;
+        parsed.version = json.at("version").get<int64_t>();
+        parsed.auth_timeout_ms = json.at("auth_timeout_ms").get<int>();
+        parsed.max_payload_size = json.at("max_payload_size").get<int>();
+        parsed.max_connections_per_client = json.at("max_connections_per_client").get<int>();
+        parsed.max_requests_per_client_per_second = json.at("max_requests_per_client_per_second").get<int>();
+        parsed.fail_open = json.at("fail_open").get<bool>();
+
+        if (parsed.version <= 0 ||
+            parsed.auth_timeout_ms <= 0 ||
+            parsed.max_payload_size <= 0 ||
+            parsed.max_connections_per_client <= 0 ||
+            parsed.max_requests_per_client_per_second <= 0)
+        {
+            LOG_ERROR("%s", "control plane config validation failed");
+            return false;
+        }
+
+        config = parsed;
+        return true;
+    }
+    catch (const std::exception &e)
+    {
+        LOG_ERROR("control plane config parse failed: %s", e.what());
+        return false;
+    }
+}
+
 bool ControlPlaneClient::reportMetrics(const GatewayMetrics &metrics) const
 {
     nlohmann::json payload = {
@@ -105,6 +146,41 @@ bool ControlPlaneClient::reportClients(const std::string &gateway_id, const std:
     LOG_INFO("clients reported: gateway_id=%s count=%llu",
              gateway_id.c_str(),
              static_cast<unsigned long long>(clients.size()));
+    return true;
+}
+
+bool ControlPlaneClient::getJson(const std::string &path, std::string &response_body) const
+{
+    int fd = connectWithTimeout();
+    if (fd == -1)
+    {
+        LOG_ERROR("control plane connect failed: path=%s", path.c_str());
+        return false;
+    }
+
+    std::ostringstream req;
+    req << "GET " << path << " HTTP/1.1\r\n"
+        << "Host: " << host_ << ":" << port_ << "\r\n"
+        << "Connection: close\r\n\r\n";
+
+    if (!sendAll(fd, req.str()))
+    {
+        LOG_ERROR("control plane request send failed: path=%s", path.c_str());
+        close(fd);
+        return false;
+    }
+
+    std::string response = readResponse(fd);
+    close(fd);
+
+    size_t header_end = response.find("\r\n\r\n");
+    if (header_end == std::string::npos || response.find("HTTP/1.1 200") != 0)
+    {
+        LOG_ERROR("control plane returned invalid HTTP response: path=%s", path.c_str());
+        return false;
+    }
+
+    response_body = response.substr(header_end + 4);
     return true;
 }
 
