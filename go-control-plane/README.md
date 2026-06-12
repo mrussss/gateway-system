@@ -29,6 +29,12 @@ curl http://localhost:8080/health
 Valid auth request:
 
 ```bash
+curl -X POST http://localhost:8080/tokens \
+  -H "Content-Type: application/json" \
+  -d '{"client_id":"client_001","token":"test-token"}'
+```
+
+```bash
 curl -X POST http://localhost:8080/auth/check \
   -H "Content-Type: application/json" \
   -d '{"client_id":"client_001","token":"test-token"}'
@@ -70,8 +76,27 @@ Query online clients:
 curl http://localhost:8080/clients
 ```
 
+List registered token owners:
+
+```bash
+curl http://localhost:8080/tokens
+```
+
+Delete a registered token:
+
+```bash
+curl -X DELETE http://localhost:8080/tokens/client_001
+```
+
 Trigger config reload:
 
 ```bash
 curl -X POST http://localhost:8080/config/reload
 ```
+
+## Notes
+
+- `/auth/check` now validates `client_id + token` against an in-memory token registry.
+- `GET /tokens` only returns `client_id` values and does not expose token plaintext.
+- Registry data is in memory only and is cleared on restart.
+- `tcp-test-* + test-token` is still accepted as a compatibility path for the TCP smoke tests.

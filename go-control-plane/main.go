@@ -5,11 +5,12 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
 
-const validToken = "test-token"
+const fallbackTestToken = "test-token"
 
 var store = newMemoryStore()
 
@@ -67,15 +68,31 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
+type successResponse struct {
+	Success bool `json:"success"`
+}
+
+type tokenEntry struct {
+	ClientID string `json:"client_id"`
+}
+
+type tokenUpsertRequest struct {
+	ClientID string `json:"client_id"`
+	Token    string `json:"token"`
+}
+
 type memoryStore struct {
 	mu        sync.RWMutex
 	status    gatewayStatusResponse
 	hasStatus bool
 	clients   []clientInfo
+	tokens    map[string]string
 }
 
 func newMemoryStore() *memoryStore {
-	return &memoryStore{}
+	return &memoryStore{
+		tokens: map[string]string{},
+	}
 }
 
 func (s *memoryStore) saveMetrics(req metricsReportRequest) gatewayStatusResponse {
@@ -125,6 +142,40 @@ func (s *memoryStore) getClients() []clientInfo {
 	return copied
 }
 
+func (s *memoryStore) setToken(clientID string, token string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tokens[clientID] = token
+}
+
+func (s *memoryStore) deleteToken(clientID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.tokens, clientID)
+}
+
+func (s *memoryStore) isAllowed(clientID string, token string) bool {
+	if strings.HasPrefix(clientID, "tcp-test-") && token == fallbackTestToken {
+		return true
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	storedToken, ok := s.tokens[clientID]
+	return ok && storedToken == token
+}
+
+func (s *memoryStore) listTokens() []tokenEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	entries := make([]tokenEntry, 0, len(s.tokens))
+	for clientID := range s.tokens {
+		entries = append(entries, tokenEntry{ClientID: clientID})
+	}
+	return entries
+}
+
 func main() {
 	server := &http.Server{
 		Addr:              ":8080",
@@ -149,6 +200,9 @@ func routes() http.Handler {
 	mux.HandleFunc("GET /gateway/status", handleGatewayStatus)
 	mux.HandleFunc("POST /clients/report", handleClientsReport)
 	mux.HandleFunc("GET /clients", handleClients)
+	mux.HandleFunc("POST /tokens", handleTokensUpsert)
+	mux.HandleFunc("GET /tokens", handleTokensList)
+	mux.HandleFunc("DELETE /tokens/{client_id}", handleTokensDelete)
 	mux.HandleFunc("POST /config/reload", handleConfigReload)
 	return mux
 }
@@ -169,7 +223,15 @@ func handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Token != validToken {
+	if req.ClientID == "" || req.Token == "" {
+		writeJSON(w, http.StatusBadRequest, authCheckResponse{
+			Allowed: false,
+			Reason:  "client_id and token are required",
+		})
+		return
+	}
+
+	if !store.isAllowed(req.ClientID, req.Token) {
 		writeJSON(w, http.StatusOK, authCheckResponse{
 			Allowed: false,
 			Reason:  "invalid token",
@@ -231,6 +293,39 @@ func handleClientsReport(w http.ResponseWriter, r *http.Request) {
 
 func handleClients(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, store.getClients())
+}
+
+func handleTokensUpsert(w http.ResponseWriter, r *http.Request) {
+	var req tokenUpsertRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
+		return
+	}
+
+	if req.ClientID == "" || req.Token == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "client_id and token are required"})
+		return
+	}
+
+	store.setToken(req.ClientID, req.Token)
+	writeJSON(w, http.StatusOK, successResponse{Success: true})
+}
+
+func handleTokensList(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, store.listTokens())
+}
+
+func handleTokensDelete(w http.ResponseWriter, r *http.Request) {
+	clientID := r.PathValue("client_id")
+	if clientID == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "client_id is required"})
+		return
+	}
+
+	store.deleteToken(clientID)
+	writeJSON(w, http.StatusOK, successResponse{Success: true})
 }
 
 func handleConfigReload(w http.ResponseWriter, r *http.Request) {

@@ -23,9 +23,12 @@ Go Control Plane
   | POST /auth/check
   | POST /metrics/report
   | POST /clients/report
+  | POST /tokens
   | GET  /health
   | GET  /gateway/status
   | GET  /clients
+  | GET  /tokens
+  | DELETE /tokens/{client_id}
 ```
 
 ## Quick Start
@@ -114,6 +117,14 @@ curl -X POST http://localhost:8080/auth/check \
   -d '{"client_id":"client_001","token":"test-token"}'
 ```
 
+Register or update a token:
+
+```bash
+curl -X POST http://localhost:8080/tokens \
+  -H "Content-Type: application/json" \
+  -d '{"client_id":"client_001","token":"test-token"}'
+```
+
 Gateway status:
 
 ```bash
@@ -124,6 +135,18 @@ Clients:
 
 ```bash
 curl http://localhost:8080/clients
+```
+
+Token registry:
+
+```bash
+curl http://localhost:8080/tokens
+```
+
+Delete a token:
+
+```bash
+curl -X DELETE http://localhost:8080/tokens/client_001
 ```
 
 ## TCP Protocol
@@ -163,7 +186,7 @@ Current behavior:
 
 - Business requests before `AUTH` close the connection.
 - `AUTH` is queued to a worker thread, not handled directly in the epoll IO loop.
-- The worker validates JSON, required fields, field types, and token correctness through `POST /auth/check`.
+- The worker validates JSON, required fields, field types, and `client_id + token` correctness through `POST /auth/check`.
 - Invalid JSON, missing fields, bad field types, invalid token, or requests sent while `AUTH` is pending close the connection.
 - Successful `AUTH` stores the real `client_id` on the connection.
 - Repeated `AUTH` after success returns `ERROR_RESP`.
@@ -183,12 +206,14 @@ Current behavior:
 - Custom protocol codec with half-packet and sticky-packet handling.
 - AUTH-gated request flow with worker-thread dispatch.
 - Go control plane using standard `net/http`.
+- In-memory token registry managed over HTTP.
 - Docker Compose integration and repo-level smoke tests.
 
 ## Current Limitations
 
-- `AUTH` still uses the demo token `test-token`.
 - Control plane state is in memory and is lost on restart.
+- Token registry data is in memory and is lost on restart.
+- TCP smoke tests still allow `tcp-test-* + test-token` as a compatibility path while explicit registration is rolled in.
 - `checkAuth()` is synchronous HTTP, although it runs in worker threads instead of the epoll IO thread.
 - Connection state is mutex-protected, but the design is still a small in-process model rather than a fully isolated actor-style architecture.
 - There is no Redis, database, Prometheus, Grafana, or dashboard frontend.
@@ -200,6 +225,7 @@ Current behavior:
 - Keep the `AUTH` state machine strict and testable.
 - Expand protocol edge-case coverage before changing behavior.
 - Improve documentation so project behavior matches real code.
+- Replace the in-memory token registry with Redis or a database when persistence is needed.
 - Add a manual GitHub Actions smoke workflow without making every push run Docker integration.
 
 ## More Docs

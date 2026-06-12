@@ -28,9 +28,12 @@ Go Control Plane
   | POST /auth/check
   | POST /metrics/report
   | POST /clients/report
+  | POST /tokens
   | GET  /health
   | GET  /gateway/status
   | GET  /clients
+  | GET  /tokens
+  | DELETE /tokens/{client_id}
 ```
 
 ## C++ Gateway
@@ -91,7 +94,8 @@ Important property:
 Responsibilities:
 
 - answer `/health`
-- validate demo auth tokens through `/auth/check`
+- validate `client_id + token` through `/auth/check`
+- manage an in-memory token registry through `/tokens`
 - store the latest gateway metrics report
 - store the latest authenticated client snapshot
 - expose gateway state through `/gateway/status` and `/clients`
@@ -99,7 +103,7 @@ Responsibilities:
 Current storage model:
 
 - all runtime state is in memory
-- restart clears metrics and client state
+- restart clears metrics, client state, and registered tokens
 
 ## Deployment Modes
 
@@ -120,7 +124,8 @@ Docker Compose mode:
 - no external message broker
 - no dashboard frontend
 - no async auth client yet
-- auth still uses the demo token `test-token`
+- token registry is in memory only
+- `tcp-test-* + test-token` remains as a compatibility path for smoke tests
 - `/clients` visibility depends on periodic snapshot reporting rather than an immediate push-on-every-state-change model
 - smoke testing depends on Docker availability
 - GitHub Actions smoke coverage is manual `workflow_dispatch`
