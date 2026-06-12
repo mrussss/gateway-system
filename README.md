@@ -33,6 +33,14 @@ Go Control Plane
   | GET  /tokens
   | DELETE /tokens/{client_id}
   | POST /config/reload
+  |
+  | Redis client
+  v
+Redis State Plane
+  | tokens
+  | runtime config
+  | gateway status
+  | clients
 ```
 
 ## Quick Start
@@ -236,21 +244,18 @@ Current behavior:
 - Custom protocol codec with half-packet and sticky-packet handling.
 - AUTH-gated request flow with worker-thread dispatch.
 - Go control plane using standard `net/http`.
-- In-memory token registry managed over HTTP.
-- In-memory runtime config managed over HTTP.
+- Redis state plane for tokens, runtime config, gateway status, and clients.
+- MemoryStore kept for local tests and non-Redis runs.
 - C++ Gateway currently enforces `max_connections_per_client` and `max_requests_per_client_per_second` only.
 - Docker Compose integration and repo-level smoke tests.
 
 ## Current Limitations
 
-- Control plane state is in memory and is lost on restart.
-- Token registry data is in memory and is lost on restart.
-- Runtime config is stored in memory and is lost on restart.
 - AUTH now requires explicit token registration through `POST /tokens`.
-- C++ Gateway pulls runtime config but does not enforce runtime config yet.
+- Redis is used for state in Docker Compose, while `MemoryStore` is still available for local tests.
 - `checkAuth()` is synchronous HTTP, although it runs in worker threads instead of the epoll IO thread.
 - Connection state is mutex-protected, but the design is still a small in-process model rather than a fully isolated actor-style architecture.
-- There is no Redis, database, Prometheus, Grafana, or dashboard frontend.
+- There is no database, Prometheus, Grafana, or dashboard frontend.
 - The main smoke test depends on Docker being available in the local environment.
 - The smoke GitHub Actions workflow is manual `workflow_dispatch`, not an every-push integration job.
 
@@ -259,9 +264,8 @@ Current behavior:
 - Keep the `AUTH` state machine strict and testable.
 - Expand protocol edge-case coverage before changing behavior.
 - Improve documentation so project behavior matches real code.
-- Enforce runtime config in the C++ Gateway.
-- Enforce `max_connections_per_client` and `max_requests_per_client_per_second` in the C++ Gateway.
-- Replace the in-memory token registry with Redis or a database when persistence is needed.
+- Add multi-gateway status and clients APIs.
+- Expand smoke test coverage for Redis-backed state.
 - Add a manual GitHub Actions smoke workflow without making every push run Docker integration.
 
 ## More Docs

@@ -47,6 +47,14 @@ wait_for_health "http://localhost:8080/health"
 
 expect_http_ok "health" "http://localhost:8080/health"
 
+echo "[smoke] Checking Redis connectivity..."
+redis_ping="$("${COMPOSE[@]}" exec -T redis redis-cli PING)"
+if [[ "$redis_ping" != "PONG" ]]; then
+  echo "[smoke] FAIL: unexpected Redis PING response: $redis_ping" >&2
+  exit 1
+fi
+echo "$redis_ping"
+
 echo "[smoke] Waiting for gateway metrics report..."
 deadline=$((SECONDS + 70))
 until curl -fsS "http://localhost:8080/gateway/status" >/tmp/gateway_status.json; do

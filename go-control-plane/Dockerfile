@@ -1,7 +1,8 @@
 FROM golang:1.22-bookworm AS build
 
 WORKDIR /app
-COPY go.mod ./
+COPY go.mod go.sum ./
+RUN go mod download
 COPY *.go ./
 
 RUN go test ./... && go build -o /out/control-plane .

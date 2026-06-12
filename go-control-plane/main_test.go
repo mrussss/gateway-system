@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -32,7 +33,9 @@ func TestHealth(t *testing.T) {
 
 func TestAuthCheckAllowsValidToken(t *testing.T) {
 	store = newMemoryStore()
-	store.setToken("client_001", "registered-token")
+	if err := store.setToken("client_001", "registered-token"); err != nil {
+		t.Fatalf("set token: %v", err)
+	}
 	body := bytes.NewBufferString(`{"client_id":"client_001","token":"registered-token"}`)
 	req := httptest.NewRequest(http.MethodPost, "/auth/check", body)
 	resp := httptest.NewRecorder()
@@ -44,7 +47,9 @@ func TestAuthCheckAllowsValidToken(t *testing.T) {
 
 func TestAuthCheckRejectsInvalidToken(t *testing.T) {
 	store = newMemoryStore()
-	store.setToken("client_001", "registered-token")
+	if err := store.setToken("client_001", "registered-token"); err != nil {
+		t.Fatalf("set token: %v", err)
+	}
 	body := bytes.NewBufferString(`{"client_id":"client_001","token":"bad-token"}`)
 	req := httptest.NewRequest(http.MethodPost, "/auth/check", body)
 	resp := httptest.NewRecorder()
@@ -197,7 +202,7 @@ func TestConfigReload(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if !body.Success || body.Message != "memory config reload is a no-op" || body.Version != 2 {
+	if !body.Success || body.Message != "config reload is a no-op" || body.Version != 2 {
 		t.Fatalf("unexpected config reload response: %+v", body)
 	}
 }
@@ -417,12 +422,189 @@ func TestTokenRegistryConcurrentAccess(t *testing.T) {
 		go func(index int) {
 			defer writers.Done()
 			clientID := "client_" + string(rune('a'+index))
-			store.setToken(clientID, "token")
-			_ = store.isAllowed(clientID, "token")
-			store.listTokens()
+			if err := store.setToken(clientID, "token"); err != nil {
+				t.Errorf("set token: %v", err)
+			}
+			if _, err := store.isAllowed(clientID, "token"); err != nil {
+				t.Errorf("isAllowed: %v", err)
+			}
+			if _, err := store.listTokens(); err != nil {
+				t.Errorf("listTokens: %v", err)
+			}
 		}(i)
 	}
 	writers.Wait()
+}
+
+func TestStoreDefaultConfigMatchesExpected(t *testing.T) {
+	got := defaultRuntimeConfig()
+	want := runtimeConfig{
+		Version:                       1,
+		AuthTimeoutMS:                 1000,
+		MaxPayloadSize:                4194314,
+		MaxConnectionsPerClient:       2,
+		MaxRequestsPerClientPerSecond: 100,
+		FailOpen:                      false,
+	}
+	if got != want {
+		t.Fatalf("expected default config %+v, got %+v", want, got)
+	}
+}
+
+func TestHandlersReturnStoreError(t *testing.T) {
+	testCases := []struct {
+		name       string
+		method     string
+		path       string
+		body       string
+		wantStatus int
+		wantBody   string
+		authBody   authCheckResponse
+	}{
+		{
+			name:       "auth check",
+			method:     http.MethodPost,
+			path:       "/auth/check",
+			body:       `{"client_id":"client_001","token":"registered-token"}`,
+			wantStatus: http.StatusInternalServerError,
+			authBody: authCheckResponse{
+				Allowed: false,
+				Reason:  storeErrorMessage,
+			},
+		},
+		{
+			name:       "metrics report",
+			method:     http.MethodPost,
+			path:       "/metrics/report",
+			body:       `{"gateway_id":"gateway-001","active_connections":1,"total_messages":2,"bytes_in":3,"bytes_out":4,"error_count":5,"timestamp":1710000000}`,
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   storeErrorMessage,
+		},
+		{
+			name:       "gateway status",
+			method:     http.MethodGet,
+			path:       "/gateway/status",
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   storeErrorMessage,
+		},
+		{
+			name:       "clients report",
+			method:     http.MethodPost,
+			path:       "/clients/report",
+			body:       `{"gateway_id":"gateway-001","clients":[]}`,
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   storeErrorMessage,
+		},
+		{
+			name:       "clients list",
+			method:     http.MethodGet,
+			path:       "/clients",
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   storeErrorMessage,
+		},
+		{
+			name:       "tokens upsert",
+			method:     http.MethodPost,
+			path:       "/tokens",
+			body:       `{"client_id":"client_001","token":"abc123"}`,
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   storeErrorMessage,
+		},
+		{
+			name:       "tokens list",
+			method:     http.MethodGet,
+			path:       "/tokens",
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   storeErrorMessage,
+		},
+		{
+			name:       "tokens delete",
+			method:     http.MethodDelete,
+			path:       "/tokens/client_001",
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   storeErrorMessage,
+		},
+		{
+			name:       "config get",
+			method:     http.MethodGet,
+			path:       "/config",
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   storeErrorMessage,
+		},
+		{
+			name:       "config update",
+			method:     http.MethodPost,
+			path:       "/config",
+			body:       `{"auth_timeout_ms":1000,"max_payload_size":4194314,"max_connections_per_client":2,"max_requests_per_client_per_second":100,"fail_open":false}`,
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   storeErrorMessage,
+		},
+		{
+			name:       "config reload",
+			method:     http.MethodPost,
+			path:       "/config/reload",
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   storeErrorMessage,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			store = &errorStore{}
+			req := httptest.NewRequest(tc.method, tc.path, bytes.NewBufferString(tc.body))
+			resp := httptest.NewRecorder()
+
+			routes().ServeHTTP(resp, req)
+
+			if tc.authBody.Reason != "" {
+				assertAuthResponse(t, resp, tc.wantStatus, tc.authBody.Allowed, tc.authBody.Reason)
+				return
+			}
+			assertErrorResponse(t, resp, tc.wantStatus, tc.wantBody)
+		})
+	}
+}
+
+type errorStore struct{}
+
+func (s *errorStore) saveMetrics(req metricsReportRequest) (gatewayStatusResponse, error) {
+	return gatewayStatusResponse{}, errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) getStatus() (gatewayStatusResponse, bool, error) {
+	return gatewayStatusResponse{}, false, errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) saveClients(clients []clientInfo) error {
+	return errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) getClients() ([]clientInfo, error) {
+	return nil, errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) setToken(clientID string, token string) error {
+	return errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) deleteToken(clientID string) error {
+	return errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) isAllowed(clientID string, token string) (bool, error) {
+	return false, errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) listTokens() ([]tokenEntry, error) {
+	return nil, errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) getConfig() (runtimeConfig, error) {
+	return runtimeConfig{}, errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) updateConfig(req configUpdateRequest) (runtimeConfig, error) {
+	return runtimeConfig{}, errors.New(storeErrorMessage)
 }
 
 func assertAuthResponse(t *testing.T, resp *httptest.ResponseRecorder, wantStatus int, wantAllowed bool, wantReason string) {

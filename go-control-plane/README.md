@@ -11,6 +11,13 @@ go run .
 
 The service listens on `:8080`.
 
+For Docker Compose runs, the control plane uses Redis via:
+
+- `STORE_BACKEND=redis`
+- `REDIS_ADDR=redis:6379`
+
+Local tests can continue using the in-process `MemoryStore`.
+
 ## Test
 
 ```bash
@@ -116,10 +123,10 @@ curl -X POST http://localhost:8080/config/reload
 
 ## Notes
 
-- `/auth/check` now validates `client_id + token` against an in-memory token registry.
+- `/auth/check` validates `client_id + token` through the configured store backend.
 - `GET /tokens` only returns `client_id` values and does not expose token plaintext.
-- Registry data is in memory only and is cleared on restart.
-- Runtime config is in memory only and is cleared on restart.
+- Docker Compose defaults to Redis for tokens, runtime config, gateway status, and clients.
+- `MemoryStore` remains available for local tests and non-Redis runs.
 - `POST /config` replaces the full runtime config and increments `version`.
-- `POST /config/reload` is currently a memory-config no-op that returns the current `version`.
+- `POST /config/reload` is a no-op that returns the current `version`.
 - AUTH requires explicit token registration through `POST /tokens`.

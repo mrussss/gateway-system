@@ -140,6 +140,25 @@ def update_config(control_plane_url: str, config: dict) -> None:
         raise AssertionError(f"unexpected config update response: {body}")
 
 
+def default_config() -> dict:
+    return {
+        "auth_timeout_ms": 1000,
+        "max_payload_size": 4194314,
+        "max_connections_per_client": 2,
+        "max_requests_per_client_per_second": 100,
+        "fail_open": False,
+    }
+
+
+def wait_for_config_pull(seconds: float = 6.0) -> None:
+    time.sleep(seconds)
+
+
+def reset_default_config(control_plane_url: str) -> None:
+    update_config(control_plane_url, default_config())
+    wait_for_config_pull()
+
+
 def assert_response(resp: Response, msg_type: int, request_id: int, payload: bytes | None = None) -> None:
     if resp.version != VERSION:
         raise AssertionError(f"expected version={VERSION}, got {resp.version}")
@@ -439,76 +458,82 @@ def test_clients_remove_disconnected_client(host: str, port: int, control_plane_
 
 
 def test_max_connections_per_client(host: str, port: int, control_plane_url: str) -> None:
-    update_config(control_plane_url, {
-        "auth_timeout_ms": 1000,
-        "max_payload_size": 4194314,
-        "max_connections_per_client": 1,
-        "max_requests_per_client_per_second": 100,
-        "fail_open": False,
-    })
-    time.sleep(6.0)
-
-    client_id = "tcp-test-max-connections"
-    token = "test-token"
-    first = connect(host, port)
     try:
-        authenticate(first, control_plane_url, 5601, client_id=client_id, token=token)
-        second = connect(host, port)
+        update_config(control_plane_url, {
+            "auth_timeout_ms": 1000,
+            "max_payload_size": 4194314,
+            "max_connections_per_client": 1,
+            "max_requests_per_client_per_second": 100,
+            "fail_open": False,
+        })
+        wait_for_config_pull()
+
+        client_id = "tcp-test-max-connections"
+        token = "test-token"
+        first = connect(host, port)
         try:
-            register_token(control_plane_url, client_id, token)
-            payload = json.dumps({
-                "client_id": client_id,
-                "token": token,
-            }).encode("utf-8")
-            second.sendall(packet(AUTH, 5602, payload))
-            resp = recv_response(second)
-            assert_response(resp, AUTH_RESP, 5602)
-            body = json.loads(resp.payload.decode("utf-8"))
-            if body.get("allowed") is not False or body.get("reason") != "max connections exceeded":
-                raise AssertionError(f"unexpected max connections response: {body}")
-            expect_closed(second, "expected close after max connections exceeded")
+            authenticate(first, control_plane_url, 5601, client_id=client_id, token=token)
+            second = connect(host, port)
+            try:
+                register_token(control_plane_url, client_id, token)
+                payload = json.dumps({
+                    "client_id": client_id,
+                    "token": token,
+                }).encode("utf-8")
+                second.sendall(packet(AUTH, 5602, payload))
+                resp = recv_response(second)
+                assert_response(resp, AUTH_RESP, 5602)
+                body = json.loads(resp.payload.decode("utf-8"))
+                if body.get("allowed") is not False or body.get("reason") != "max connections exceeded":
+                    raise AssertionError(f"unexpected max connections response: {body}")
+                expect_closed(second, "expected close after max connections exceeded")
+            finally:
+                second.close()
         finally:
-            second.close()
+            first.close()
     finally:
-        first.close()
+        reset_default_config(control_plane_url)
 
     print("[tcp] PASS max_connections_per_client")
 
 
 def test_rate_limit_per_client(host: str, port: int, control_plane_url: str) -> None:
-    update_config(control_plane_url, {
-        "auth_timeout_ms": 1000,
-        "max_payload_size": 4194314,
-        "max_connections_per_client": 10,
-        "max_requests_per_client_per_second": 3,
-        "fail_open": False,
-    })
-    time.sleep(6.0)
+    try:
+        update_config(control_plane_url, {
+            "auth_timeout_ms": 1000,
+            "max_payload_size": 4194314,
+            "max_connections_per_client": 10,
+            "max_requests_per_client_per_second": 3,
+            "fail_open": False,
+        })
+        wait_for_config_pull()
 
-    with connect(host, port) as sock:
-        authenticate(sock, control_plane_url, 5701, client_id="tcp-test-rate-limit")
-        sock.sendall(
-            packet(PING, 5702) +
-            packet(PING, 5703) +
-            packet(PING, 5704) +
-            packet(PING, 5705)
-        )
-        responses = [recv_response(sock) for _ in range(4)]
-        response_by_id = {resp.request_id: resp for resp in responses}
+        with connect(host, port) as sock:
+            authenticate(sock, control_plane_url, 5701, client_id="tcp-test-rate-limit")
+            sock.sendall(
+                packet(PING, 5702) +
+                packet(PING, 5703) +
+                packet(PING, 5704) +
+                packet(PING, 5705)
+            )
+            responses = [recv_response(sock) for _ in range(4)]
+            response_by_id = {resp.request_id: resp for resp in responses}
 
-        for request_id in (5702, 5703, 5704):
-            assert_response(response_by_id[request_id], PONG, request_id)
+            for request_id in (5702, 5703, 5704):
+                assert_response(response_by_id[request_id], PONG, request_id)
 
-        limited = response_by_id[5705]
-        assert_response(limited, ERROR_RESP, 5705)
-        body = json.loads(limited.payload.decode("utf-8"))
-        if body.get("status") != 429 or body.get("message") != "rate limited":
-            raise AssertionError(f"unexpected rate limit response: {body}")
+            limited = response_by_id[5705]
+            assert_response(limited, ERROR_RESP, 5705)
+            body = json.loads(limited.payload.decode("utf-8"))
+            if body.get("status") != 429 or body.get("message") != "rate limited":
+                raise AssertionError(f"unexpected rate limit response: {body}")
 
-        time.sleep(1.1)
-        sock.sendall(packet(PING, 5706))
-        resp = recv_response(sock)
-        assert_response(resp, PONG, 5706)
+            time.sleep(1.1)
+            sock.sendall(packet(PING, 5706))
+            resp = recv_response(sock)
+            assert_response(resp, PONG, 5706)
+    finally:
+        reset_default_config(control_plane_url)
 
     print("[tcp] PASS max_requests_per_client_per_second")
 

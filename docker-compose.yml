@@ -1,9 +1,19 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
   go-control-plane:
     build:
       context: ./go-control-plane
+    environment:
+      STORE_BACKEND: redis
+      REDIS_ADDR: redis:6379
     ports:
       - "8080:8080"
+    depends_on:
+      - redis
 
   cpp-gateway:
     build:
