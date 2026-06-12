@@ -7,6 +7,7 @@ import socket
 import struct
 import threading
 import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
@@ -64,10 +65,39 @@ def connect(host: str, port: int) -> socket.socket:
     return sock
 
 
-def authenticate(sock: socket.socket, request_id: int = 9000, client_id: str | None = None) -> None:
+def register_token(control_plane_url: str, client_id: str, token: str) -> None:
     payload = json.dumps({
-        "client_id": client_id or f"tcp-test-{request_id}",
-        "token": "test-token",
+        "client_id": client_id,
+        "token": token,
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        f"{control_plane_url}/tokens",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=2.0) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.URLError as exc:
+        raise AssertionError(f"failed to register token for {client_id}: {exc}") from exc
+
+    if body.get("success") is not True:
+        raise AssertionError(f"token registration failed for {client_id}: {body}")
+
+
+def authenticate(
+    sock: socket.socket,
+    control_plane_url: str,
+    request_id: int = 9000,
+    client_id: str | None = None,
+    token: str = "test-token",
+) -> None:
+    resolved_client_id = client_id or f"tcp-test-{request_id}"
+    register_token(control_plane_url, resolved_client_id, token)
+    payload = json.dumps({
+        "client_id": resolved_client_id,
+        "token": token,
     }).encode("utf-8")
     sock.sendall(packet(AUTH, request_id, payload))
     resp = recv_response(sock)
@@ -103,9 +133,9 @@ def assert_response(resp: Response, msg_type: int, request_id: int, payload: byt
         raise AssertionError(f"expected payload={payload!r}, got {resp.payload!r}")
 
 
-def test_ping(host: str, port: int) -> None:
+def test_ping(host: str, port: int, control_plane_url: str) -> None:
     with connect(host, port) as sock:
-        authenticate(sock, 9001)
+        authenticate(sock, control_plane_url, 9001)
         sock.sendall(packet(PING, 1001))
         resp = recv_response(sock)
     assert_response(resp, PONG, 1001)
@@ -115,19 +145,19 @@ def test_ping(host: str, port: int) -> None:
     print("[tcp] PASS ping")
 
 
-def test_echo(host: str, port: int) -> None:
+def test_echo(host: str, port: int, control_plane_url: str) -> None:
     payload = b"hello gateway"
     with connect(host, port) as sock:
-        authenticate(sock, 9002)
+        authenticate(sock, control_plane_url, 9002)
         sock.sendall(packet(ECHO, 1002, payload))
         resp = recv_response(sock)
     assert_response(resp, ECHO_RESP, 1002, payload)
     print("[tcp] PASS echo")
 
 
-def test_stats(host: str, port: int) -> None:
+def test_stats(host: str, port: int, control_plane_url: str) -> None:
     with connect(host, port) as sock:
-        authenticate(sock, 9003)
+        authenticate(sock, control_plane_url, 9003)
         sock.sendall(packet(STATS, 1003))
         resp = recv_response(sock)
     assert_response(resp, STATS_RESP, 1003)
@@ -139,25 +169,25 @@ def test_stats(host: str, port: int) -> None:
     print("[tcp] PASS stats")
 
 
-def test_log_push(host: str, port: int) -> None:
+def test_log_push(host: str, port: int, control_plane_url: str) -> None:
     payload = json.dumps({
         "level": "INFO",
         "service": "tcp-protocol-test",
         "message": "log push smoke test",
     }).encode("utf-8")
     with connect(host, port) as sock:
-        authenticate(sock, 9004)
+        authenticate(sock, control_plane_url, 9004)
         sock.sendall(packet(LOG_PUSH, 1004, payload))
         resp = recv_response(sock)
     assert_response(resp, LOG_ACK, 1004)
     print("[tcp] PASS log_push")
 
 
-def test_half_packet(host: str, port: int) -> None:
+def test_half_packet(host: str, port: int, control_plane_url: str) -> None:
     payload = b"split payload"
     raw = packet(ECHO, 1005, payload)
     with connect(host, port) as sock:
-        authenticate(sock, 9005)
+        authenticate(sock, control_plane_url, 9005)
         sock.sendall(raw[:4])
         sock.settimeout(0.4)
         try:
@@ -173,14 +203,14 @@ def test_half_packet(host: str, port: int) -> None:
     print("[tcp] PASS half_packet")
 
 
-def test_sticky_packet(host: str, port: int) -> None:
+def test_sticky_packet(host: str, port: int, control_plane_url: str) -> None:
     expected = {
         2000 + i: f"sticky-{i}".encode("utf-8")
         for i in range(5)
     }
     packets = [packet(ECHO, request_id, payload) for request_id, payload in expected.items()]
     with connect(host, port) as sock:
-        authenticate(sock, 9006)
+        authenticate(sock, control_plane_url, 9006)
         sock.sendall(b"".join(packets))
         responses = [recv_response(sock) for _ in packets]
 
@@ -198,7 +228,7 @@ def test_sticky_packet(host: str, port: int) -> None:
     print("[tcp] PASS sticky_packet")
 
 
-def test_invalid_length(host: str, port: int) -> None:
+def test_invalid_length(host: str, port: int, control_plane_url: str) -> None:
     invalid_lengths = [0, 5, 9, MAX_BODY_SIZE + 1, 999999999]
     for body_length in invalid_lengths:
         with connect(host, port) as sock:
@@ -213,14 +243,14 @@ def test_invalid_length(host: str, port: int) -> None:
                 raise AssertionError(f"expected close for invalid length {body_length}, got data={data!r}")
 
     with connect(host, port) as sock:
-        authenticate(sock, 9007)
+        authenticate(sock, control_plane_url, 9007)
         sock.sendall(packet(PING, 3001))
         resp = recv_response(sock)
     assert_response(resp, PONG, 3001)
     print("[tcp] PASS invalid_length")
 
 
-def test_auth_required(host: str, port: int) -> None:
+def test_auth_required(host: str, port: int, control_plane_url: str) -> None:
     with connect(host, port) as sock:
         sock.sendall(packet(PING, 4001))
         expect_closed(sock, "expected close before AUTH")
@@ -236,7 +266,7 @@ def test_auth_required(host: str, port: int) -> None:
     print("[tcp] PASS auth_required")
 
 
-def test_auth_invalid_json(host: str, port: int) -> None:
+def test_auth_invalid_json(host: str, port: int, control_plane_url: str) -> None:
     with connect(host, port) as sock:
         sock.sendall(packet(AUTH, 4101, b"not-json"))
         expect_closed(sock, "expected close after invalid AUTH JSON")
@@ -244,7 +274,7 @@ def test_auth_invalid_json(host: str, port: int) -> None:
     print("[tcp] PASS auth_invalid_json")
 
 
-def test_auth_missing_fields(host: str, port: int) -> None:
+def test_auth_missing_fields(host: str, port: int, control_plane_url: str) -> None:
     cases = [
         (b'{"token":"test-token"}', "missing client_id"),
         (b'{"client_id":"tcp-test-missing-token"}', "missing token"),
@@ -257,7 +287,7 @@ def test_auth_missing_fields(host: str, port: int) -> None:
     print("[tcp] PASS auth_missing_fields")
 
 
-def test_auth_invalid_field_types(host: str, port: int) -> None:
+def test_auth_invalid_field_types(host: str, port: int, control_plane_url: str) -> None:
     cases = [
         (b'{"client_id":123,"token":"test-token"}', "non-string client_id"),
         (b'{"client_id":"tcp-test-type","token":123}', "non-string token"),
@@ -270,9 +300,9 @@ def test_auth_invalid_field_types(host: str, port: int) -> None:
     print("[tcp] PASS auth_invalid_field_types")
 
 
-def test_auth_duplicate(host: str, port: int) -> None:
+def test_auth_duplicate(host: str, port: int, control_plane_url: str) -> None:
     with connect(host, port) as sock:
-        authenticate(sock, 4104)
+        authenticate(sock, control_plane_url, 4104)
         payload = json.dumps({
             "client_id": "tcp-test-duplicate",
             "token": "test-token",
@@ -291,7 +321,7 @@ def test_auth_duplicate(host: str, port: int) -> None:
 def test_clients_reports_authenticated_id(host: str, port: int, control_plane_url: str) -> None:
     client_id = "tcp-test-real-client-id"
     with connect(host, port) as sock:
-        authenticate(sock, 4105, client_id=client_id)
+        authenticate(sock, control_plane_url, 4105, client_id=client_id)
         deadline = time.time() + 8.0
         while time.time() < deadline:
             clients = fetch_clients(control_plane_url)
@@ -316,10 +346,10 @@ def test_clients_excludes_unauthenticated(host: str, port: int, control_plane_ur
     print("[tcp] PASS clients_excludes_unauthenticated")
 
 
-def test_repeated_auth_ping_close(host: str, port: int) -> None:
+def test_repeated_auth_ping_close(host: str, port: int, control_plane_url: str) -> None:
     for i in range(5):
         with connect(host, port) as sock:
-            authenticate(sock, 5000 + i)
+            authenticate(sock, control_plane_url, 5000 + i)
             sock.sendall(packet(PING, 5100 + i))
             resp = recv_response(sock)
         assert_response(resp, PONG, 5100 + i)
@@ -327,14 +357,14 @@ def test_repeated_auth_ping_close(host: str, port: int) -> None:
     print("[tcp] PASS repeated_auth_ping_close")
 
 
-def test_concurrent_auth_echo(host: str, port: int) -> None:
+def test_concurrent_auth_echo(host: str, port: int, control_plane_url: str) -> None:
     errors: list[str] = []
 
     def worker(index: int) -> None:
         payload = f"concurrent-{index}".encode("utf-8")
         try:
             with connect(host, port) as sock:
-                authenticate(sock, 5200 + index)
+                authenticate(sock, control_plane_url, 5200 + index)
                 sock.sendall(packet(ECHO, 5300 + index, payload))
                 resp = recv_response(sock)
             assert_response(resp, ECHO_RESP, 5300 + index, payload)
@@ -353,7 +383,8 @@ def test_concurrent_auth_echo(host: str, port: int) -> None:
     print("[tcp] PASS concurrent_auth_echo")
 
 
-def test_auth_pending_second_request_closes(host: str, port: int) -> None:
+def test_auth_pending_second_request_closes(host: str, port: int, control_plane_url: str) -> None:
+    register_token(control_plane_url, "tcp-test-pending-close", "test-token")
     payload = json.dumps({
         "client_id": "tcp-test-pending-close",
         "token": "test-token",
@@ -368,7 +399,7 @@ def test_auth_pending_second_request_closes(host: str, port: int) -> None:
 def test_clients_remove_disconnected_client(host: str, port: int, control_plane_url: str) -> None:
     client_id = "tcp-test-disconnect-cleanup"
     with connect(host, port) as sock:
-        authenticate(sock, 5501, client_id=client_id)
+        authenticate(sock, control_plane_url, 5501, client_id=client_id)
         deadline = time.time() + 8.0
         while time.time() < deadline:
             clients = fetch_clients(control_plane_url)
@@ -412,12 +443,12 @@ def main() -> int:
     ]
 
     for test in tests:
-        test(args.host, args.port)
+        test(args.host, args.port, args.control_plane_url)
     test_clients_reports_authenticated_id(args.host, args.port, args.control_plane_url)
     test_clients_excludes_unauthenticated(args.host, args.port, args.control_plane_url)
-    test_repeated_auth_ping_close(args.host, args.port)
-    test_concurrent_auth_echo(args.host, args.port)
-    test_auth_pending_second_request_closes(args.host, args.port)
+    test_repeated_auth_ping_close(args.host, args.port, args.control_plane_url)
+    test_concurrent_auth_echo(args.host, args.port, args.control_plane_url)
+    test_auth_pending_second_request_closes(args.host, args.port, args.control_plane_url)
     test_clients_remove_disconnected_client(args.host, args.port, args.control_plane_url)
 
     print("[tcp] PASS all protocol checks")
