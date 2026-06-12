@@ -28,6 +28,9 @@ Go Control Plane
   | GET  /config
   | POST /config
   | GET  /health
+  | GET  /gateways
+  | GET  /gateways/{gateway_id}/status
+  | GET  /gateways/{gateway_id}/clients
   | GET  /gateway/status
   | GET  /clients
   | GET  /tokens
@@ -143,10 +146,28 @@ Gateway status:
 curl http://localhost:8080/gateway/status
 ```
 
+Gateways:
+
+```bash
+curl http://localhost:8080/gateways
+```
+
+Gateway status by id:
+
+```bash
+curl http://localhost:8080/gateways/gateway-001/status
+```
+
 Clients:
 
 ```bash
 curl http://localhost:8080/clients
+```
+
+Gateway clients by id:
+
+```bash
+curl http://localhost:8080/gateways/gateway-001/clients
 ```
 
 Token registry:
@@ -245,6 +266,7 @@ Current behavior:
 - AUTH-gated request flow with worker-thread dispatch.
 - Go control plane using standard `net/http`.
 - Redis state plane for tokens, runtime config, gateway status, and clients.
+- Multi-gateway status and client APIs backed by Redis.
 - MemoryStore kept for local tests and non-Redis runs.
 - C++ Gateway currently enforces `max_connections_per_client` and `max_requests_per_client_per_second` only.
 - Docker Compose integration and repo-level smoke tests.
@@ -253,6 +275,7 @@ Current behavior:
 
 - AUTH now requires explicit token registration through `POST /tokens`.
 - Redis is used for state in Docker Compose, while `MemoryStore` is still available for local tests.
+- Docker Compose starts one gateway by default; multiple gateway instances require distinct ports and `GATEWAY_ID` values.
 - `checkAuth()` is synchronous HTTP, although it runs in worker threads instead of the epoll IO thread.
 - Connection state is mutex-protected, but the design is still a small in-process model rather than a fully isolated actor-style architecture.
 - There is no database, Prometheus, Grafana, or dashboard frontend.

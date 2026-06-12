@@ -69,6 +69,18 @@ Query gateway status:
 curl http://localhost:8080/gateway/status
 ```
 
+List reported gateways:
+
+```bash
+curl http://localhost:8080/gateways
+```
+
+Query one gateway status:
+
+```bash
+curl http://localhost:8080/gateways/gateway-001/status
+```
+
 Report online clients:
 
 ```bash
@@ -81,6 +93,12 @@ Query online clients:
 
 ```bash
 curl http://localhost:8080/clients
+```
+
+Query one gateway's online clients:
+
+```bash
+curl http://localhost:8080/gateways/gateway-001/clients
 ```
 
 List registered token owners:
@@ -126,6 +144,8 @@ curl -X POST http://localhost:8080/config/reload
 - `/auth/check` validates `client_id + token` through the configured store backend.
 - `GET /tokens` only returns `client_id` values and does not expose token plaintext.
 - Docker Compose defaults to Redis for tokens, runtime config, gateway status, and clients.
+- Multi-gateway APIs are available through `/gateways`, `/gateways/{gateway_id}/status`, and `/gateways/{gateway_id}/clients`.
+- Legacy `GET /gateway/status` and `GET /clients` remain available and return the latest reported data.
 - `MemoryStore` remains available for local tests and non-Redis runs.
 - `POST /config` replaces the full runtime config and increments `version`.
 - `POST /config/reload` is a no-op that returns the current `version`.

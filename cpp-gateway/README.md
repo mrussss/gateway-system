@@ -140,7 +140,7 @@ make -j$(nproc)
 cd build
 ./message_server
 # 服务端默认监听 9000 端口，Ctrl+C 触发优雅关闭
-# 可用 GATEWAY_PORT、CONTROL_PLANE_HOST、CONTROL_PLANE_PORT 覆盖运行配置
+# 可用 GATEWAY_ID、GATEWAY_PORT、CONTROL_PLANE_HOST、CONTROL_PLANE_PORT 覆盖运行配置
 ```
 
 ### 运行测试

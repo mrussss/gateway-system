@@ -125,9 +125,7 @@ func TestGatewayStatusNotReported(t *testing.T) {
 
 	routes().ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusNotFound {
-		t.Fatalf("expected status 404, got %d", resp.Code)
-	}
+	assertErrorResponse(t, resp, http.StatusNotFound, "gateway status not reported")
 }
 
 func TestClientsReportAndList(t *testing.T) {
@@ -143,29 +141,158 @@ func TestClientsReportAndList(t *testing.T) {
 
 	routes().ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", resp.Code)
-	}
+	assertSuccessResponse(t, resp, http.StatusOK)
 
 	listReq := httptest.NewRequest(http.MethodGet, "/clients", nil)
 	listResp := httptest.NewRecorder()
 
 	routes().ServeHTTP(listResp, listReq)
 
-	if listResp.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", listResp.Code)
+	assertClientsResponse(t, listResp, http.StatusOK, []clientInfo{{
+		ClientID:    "client_001",
+		RemoteAddr:  "127.0.0.1:50001",
+		ConnectedAt: "2026-06-08T12:00:00Z",
+	}})
+}
+
+func TestListGatewaysReturnsSortedStatuses(t *testing.T) {
+	store = newMemoryStore()
+	router := routes()
+
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(`{
+		"gateway_id":"gateway-002",
+		"active_connections":2,
+		"total_messages":20,
+		"bytes_in":200,
+		"bytes_out":400,
+		"error_count":0,
+		"timestamp":1710000001
+	}`)))
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(`{
+		"gateway_id":"gateway-001",
+		"active_connections":1,
+		"total_messages":10,
+		"bytes_in":100,
+		"bytes_out":200,
+		"error_count":0,
+		"timestamp":1710000000
+	}`)))
+
+	req := httptest.NewRequest(http.MethodGet, "/gateways", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.Code)
 	}
 
-	var clients []clientInfo
-	if err := json.NewDecoder(listResp.Body).Decode(&clients); err != nil {
-		t.Fatalf("decode clients: %v", err)
+	var gateways []gatewayStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&gateways); err != nil {
+		t.Fatalf("decode gateways: %v", err)
 	}
-	if len(clients) != 1 ||
-		clients[0].ClientID != "client_001" ||
-		clients[0].RemoteAddr != "127.0.0.1:50001" ||
-		clients[0].ConnectedAt != "2026-06-08T12:00:00Z" {
-		t.Fatalf("unexpected clients: %+v", clients)
+	if len(gateways) != 2 {
+		t.Fatalf("expected 2 gateways, got %d", len(gateways))
 	}
+	if gateways[0].GatewayID != "gateway-001" || gateways[1].GatewayID != "gateway-002" {
+		t.Fatalf("expected sorted gateways, got %+v", gateways)
+	}
+}
+
+func TestGetGatewayStatusByID(t *testing.T) {
+	store = newMemoryStore()
+	router := routes()
+
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(`{
+		"gateway_id":"gateway-001",
+		"active_connections":12,
+		"total_messages":3456,
+		"bytes_in":102400,
+		"bytes_out":204800,
+		"error_count":3,
+		"timestamp":1710000000
+	}`)))
+
+	req := httptest.NewRequest(http.MethodGet, "/gateways/gateway-001/status", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	assertGatewayStatus(t, resp, http.StatusOK, "gateway-001", 12, 3456, "2024-03-09T16:00:00Z")
+
+	missingReq := httptest.NewRequest(http.MethodGet, "/gateways/missing/status", nil)
+	missingResp := httptest.NewRecorder()
+	router.ServeHTTP(missingResp, missingReq)
+	assertErrorResponse(t, missingResp, http.StatusNotFound, "gateway status not reported")
+}
+
+func TestGetGatewayClientsByID(t *testing.T) {
+	store = newMemoryStore()
+	router := routes()
+
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/clients/report", bytes.NewBufferString(`{
+		"gateway_id":"gateway-001",
+		"clients":[
+			{"client_id":"client_001","remote_addr":"127.0.0.1:50001","connected_at":"2026-06-08T12:00:00Z"}
+		]
+	}`)))
+
+	req := httptest.NewRequest(http.MethodGet, "/gateways/gateway-001/clients", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	assertClientsResponse(t, resp, http.StatusOK, []clientInfo{{
+		ClientID:    "client_001",
+		RemoteAddr:  "127.0.0.1:50001",
+		ConnectedAt: "2026-06-08T12:00:00Z",
+	}})
+
+	missingReq := httptest.NewRequest(http.MethodGet, "/gateways/missing/clients", nil)
+	missingResp := httptest.NewRecorder()
+	router.ServeHTTP(missingResp, missingReq)
+	assertErrorResponse(t, missingResp, http.StatusNotFound, "gateway clients not reported")
+}
+
+func TestLegacyStatusAndClientsStillReturnLatest(t *testing.T) {
+	store = newMemoryStore()
+	router := routes()
+
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(`{
+		"gateway_id":"gateway-001",
+		"active_connections":1,
+		"total_messages":10,
+		"bytes_in":100,
+		"bytes_out":200,
+		"error_count":0,
+		"timestamp":1710000000
+	}`)))
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(`{
+		"gateway_id":"gateway-002",
+		"active_connections":2,
+		"total_messages":20,
+		"bytes_in":200,
+		"bytes_out":400,
+		"error_count":1,
+		"timestamp":1710000001
+	}`)))
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/clients/report", bytes.NewBufferString(`{
+		"gateway_id":"gateway-001",
+		"clients":[{"client_id":"client_001","remote_addr":"127.0.0.1:50001","connected_at":"2026-06-08T12:00:00Z"}]
+	}`)))
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/clients/report", bytes.NewBufferString(`{
+		"gateway_id":"gateway-002",
+		"clients":[{"client_id":"client_002","remote_addr":"127.0.0.1:50002","connected_at":"2026-06-08T12:00:01Z"}]
+	}`)))
+
+	statusReq := httptest.NewRequest(http.MethodGet, "/gateway/status", nil)
+	statusResp := httptest.NewRecorder()
+	router.ServeHTTP(statusResp, statusReq)
+	assertGatewayStatus(t, statusResp, http.StatusOK, "gateway-002", 2, 20, "2024-03-09T16:00:01Z")
+
+	clientsReq := httptest.NewRequest(http.MethodGet, "/clients", nil)
+	clientsResp := httptest.NewRecorder()
+	router.ServeHTTP(clientsResp, clientsReq)
+	assertClientsResponse(t, clientsResp, http.StatusOK, []clientInfo{{
+		ClientID:    "client_002",
+		RemoteAddr:  "127.0.0.1:50002",
+		ConnectedAt: "2026-06-08T12:00:01Z",
+	}})
 }
 
 func TestConfigReload(t *testing.T) {
@@ -488,6 +615,20 @@ func TestHandlersReturnStoreError(t *testing.T) {
 			wantBody:   storeErrorMessage,
 		},
 		{
+			name:       "gateways list",
+			method:     http.MethodGet,
+			path:       "/gateways",
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   storeErrorMessage,
+		},
+		{
+			name:       "gateway status by id",
+			method:     http.MethodGet,
+			path:       "/gateways/gateway-001/status",
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   storeErrorMessage,
+		},
+		{
 			name:       "clients report",
 			method:     http.MethodPost,
 			path:       "/clients/report",
@@ -499,6 +640,13 @@ func TestHandlersReturnStoreError(t *testing.T) {
 			name:       "clients list",
 			method:     http.MethodGet,
 			path:       "/clients",
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   storeErrorMessage,
+		},
+		{
+			name:       "gateway clients by id",
+			method:     http.MethodGet,
+			path:       "/gateways/gateway-001/clients",
 			wantStatus: http.StatusInternalServerError,
 			wantBody:   storeErrorMessage,
 		},
@@ -575,12 +723,24 @@ func (s *errorStore) getStatus() (gatewayStatusResponse, bool, error) {
 	return gatewayStatusResponse{}, false, errors.New(storeErrorMessage)
 }
 
-func (s *errorStore) saveClients(clients []clientInfo) error {
+func (s *errorStore) saveClients(gatewayID string, clients []clientInfo) error {
 	return errors.New(storeErrorMessage)
 }
 
 func (s *errorStore) getClients() ([]clientInfo, error) {
 	return nil, errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) listGateways() ([]gatewayStatusResponse, error) {
+	return nil, errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) getGatewayStatus(gatewayID string) (gatewayStatusResponse, bool, error) {
+	return gatewayStatusResponse{}, false, errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) getGatewayClients(gatewayID string) ([]clientInfo, bool, error) {
+	return nil, false, errors.New(storeErrorMessage)
 }
 
 func (s *errorStore) setToken(clientID string, token string) error {
@@ -672,6 +832,27 @@ func assertGatewayStatus(t *testing.T, resp *httptest.ResponseRecorder, wantStat
 		body.TotalMessages != wantMessages ||
 		body.LastReportTime != wantReportTime {
 		t.Fatalf("unexpected gateway status: %+v", body)
+	}
+}
+
+func assertClientsResponse(t *testing.T, resp *httptest.ResponseRecorder, wantStatus int, want []clientInfo) {
+	t.Helper()
+
+	if resp.Code != wantStatus {
+		t.Fatalf("expected status %d, got %d", wantStatus, resp.Code)
+	}
+
+	var body []clientInfo
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode clients response: %v", err)
+	}
+	if len(body) != len(want) {
+		t.Fatalf("expected %d clients, got %d: %+v", len(want), len(body), body)
+	}
+	for i := range want {
+		if body[i] != want[i] {
+			t.Fatalf("expected clients %+v, got %+v", want, body)
+		}
 	}
 }
 

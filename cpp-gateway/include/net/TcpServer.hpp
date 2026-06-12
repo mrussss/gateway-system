@@ -18,6 +18,7 @@ class TcpServer
 public:
     TcpServer(int port);
     TcpServer(int port, std::string control_plane_host, int control_plane_port);
+    TcpServer(int port, std::string control_plane_host, int control_plane_port, std::string gateway_id);
     ~TcpServer();
 
     void start();
@@ -77,6 +78,7 @@ private:
     std::thread metrics_reporter_;
     std::thread config_puller_;
     ControlPlaneClient control_plane_;
+    std::string gateway_id_{"gateway-001"};
     RuntimeConfig runtime_config_{};
     std::mutex runtime_config_mutex_;
     std::unordered_map<std::string, RateLimitWindow> rate_limit_windows_;

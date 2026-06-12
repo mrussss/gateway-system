@@ -25,8 +25,11 @@ var store Store = newMemoryStore()
 type Store interface {
 	saveMetrics(req metricsReportRequest) (gatewayStatusResponse, error)
 	getStatus() (gatewayStatusResponse, bool, error)
-	saveClients(clients []clientInfo) error
+	saveClients(gatewayID string, clients []clientInfo) error
 	getClients() ([]clientInfo, error)
+	listGateways() ([]gatewayStatusResponse, error)
+	getGatewayStatus(gatewayID string) (gatewayStatusResponse, bool, error)
+	getGatewayClients(gatewayID string) ([]clientInfo, bool, error)
 	setToken(clientID string, token string) error
 	deleteToken(clientID string) error
 	isAllowed(clientID string, token string) (bool, error)
@@ -121,12 +124,15 @@ type tokenUpsertRequest struct {
 }
 
 type memoryStore struct {
-	mu        sync.RWMutex
-	status    gatewayStatusResponse
-	hasStatus bool
-	clients   []clientInfo
-	tokens    map[string]string
-	config    runtimeConfig
+	mu               sync.RWMutex
+	status           gatewayStatusResponse
+	hasStatus        bool
+	clients          []clientInfo
+	statusByGateway  map[string]gatewayStatusResponse
+	clientsByGateway map[string][]clientInfo
+	gateways         map[string]struct{}
+	tokens           map[string]string
+	config           runtimeConfig
 }
 
 type redisStore struct {
@@ -161,8 +167,11 @@ func newStoreFromEnv() Store {
 
 func newMemoryStore() *memoryStore {
 	return &memoryStore{
-		tokens: map[string]string{},
-		config: defaultRuntimeConfig(),
+		statusByGateway:  map[string]gatewayStatusResponse{},
+		clientsByGateway: map[string][]clientInfo{},
+		gateways:         map[string]struct{}{},
+		tokens:           map[string]string{},
+		config:           defaultRuntimeConfig(),
 	}
 }
 
@@ -171,7 +180,7 @@ func newRedisStore(addr string) *redisStore {
 		Addr: addr,
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := redisContext()
 	defer cancel()
 	if err := client.Ping(ctx).Err(); err != nil {
 		log.Fatalf("redis unavailable: %v", err)
@@ -187,6 +196,8 @@ func (s *memoryStore) saveMetrics(req metricsReportRequest) (gatewayStatusRespon
 	defer s.mu.Unlock()
 	s.status = status
 	s.hasStatus = true
+	s.statusByGateway[req.GatewayID] = status
+	s.gateways[req.GatewayID] = struct{}{}
 	return status, nil
 }
 
@@ -196,12 +207,14 @@ func (s *memoryStore) getStatus() (gatewayStatusResponse, bool, error) {
 	return s.status, s.hasStatus, nil
 }
 
-func (s *memoryStore) saveClients(clients []clientInfo) error {
+func (s *memoryStore) saveClients(gatewayID string, clients []clientInfo) error {
 	copied := append([]clientInfo(nil), clients...)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.clients = copied
+	s.clientsByGateway[gatewayID] = copied
+	s.gateways[gatewayID] = struct{}{}
 	return nil
 }
 
@@ -209,6 +222,35 @@ func (s *memoryStore) getClients() ([]clientInfo, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return append([]clientInfo(nil), s.clients...), nil
+}
+
+func (s *memoryStore) listGateways() ([]gatewayStatusResponse, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	statuses := make([]gatewayStatusResponse, 0, len(s.statusByGateway))
+	for _, status := range s.statusByGateway {
+		statuses = append(statuses, status)
+	}
+	sortGatewayStatuses(statuses)
+	return statuses, nil
+}
+
+func (s *memoryStore) getGatewayStatus(gatewayID string) (gatewayStatusResponse, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	status, ok := s.statusByGateway[gatewayID]
+	return status, ok, nil
+}
+
+func (s *memoryStore) getGatewayClients(gatewayID string) ([]clientInfo, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	clients, ok := s.clientsByGateway[gatewayID]
+	if !ok {
+		return nil, false, nil
+	}
+	return append([]clientInfo(nil), clients...), true, nil
 }
 
 func (s *memoryStore) setToken(clientID string, token string) error {
@@ -268,51 +310,99 @@ func (s *memoryStore) updateConfig(req configUpdateRequest) (runtimeConfig, erro
 }
 
 func (s *redisStore) saveMetrics(req metricsReportRequest) (gatewayStatusResponse, error) {
+	ctx, cancel := redisContext()
+	defer cancel()
+
 	status := statusFromMetrics(req)
-	if err := s.setJSON(redisContext(), "gateway:status", status); err != nil {
+	if err := s.setJSON(ctx, gatewayStatusKey(req.GatewayID), status); err != nil {
+		return gatewayStatusResponse{}, err
+	}
+	if err := s.client.SAdd(ctx, "gateways", req.GatewayID).Err(); err != nil {
+		return gatewayStatusResponse{}, err
+	}
+	if err := s.setJSON(ctx, "gateway:status", status); err != nil {
 		return gatewayStatusResponse{}, err
 	}
 	return status, nil
 }
 
 func (s *redisStore) getStatus() (gatewayStatusResponse, bool, error) {
-	raw, err := s.client.Get(redisContext(), "gateway:status").Result()
-	if errors.Is(err, redis.Nil) {
-		return gatewayStatusResponse{}, false, nil
-	}
-	if err != nil {
-		return gatewayStatusResponse{}, false, err
-	}
-
-	var status gatewayStatusResponse
-	if err := json.Unmarshal([]byte(raw), &status); err != nil {
-		return gatewayStatusResponse{}, false, err
-	}
-	return status, true, nil
+	ctx, cancel := redisContext()
+	defer cancel()
+	return s.getStatusByKey(ctx, "gateway:status")
 }
 
-func (s *redisStore) saveClients(clients []clientInfo) error {
-	return s.setJSON(redisContext(), "clients:current", clients)
+func (s *redisStore) saveClients(gatewayID string, clients []clientInfo) error {
+	ctx, cancel := redisContext()
+	defer cancel()
+
+	if err := s.setJSON(ctx, gatewayClientsKey(gatewayID), clients); err != nil {
+		return err
+	}
+	if err := s.client.SAdd(ctx, "gateways", gatewayID).Err(); err != nil {
+		return err
+	}
+	return s.setJSON(ctx, "clients:current", clients)
 }
 
 func (s *redisStore) getClients() ([]clientInfo, error) {
-	raw, err := s.client.Get(redisContext(), "clients:current").Result()
-	if errors.Is(err, redis.Nil) {
-		return []clientInfo{}, nil
-	}
+	ctx, cancel := redisContext()
+	defer cancel()
+	return s.getClientsByKey(ctx, "clients:current")
+}
+
+func (s *redisStore) listGateways() ([]gatewayStatusResponse, error) {
+	ctx, cancel := redisContext()
+	defer cancel()
+
+	gatewayIDs, err := s.client.SMembers(ctx, "gateways").Result()
 	if err != nil {
 		return nil, err
+	}
+	sort.Strings(gatewayIDs)
+
+	statuses := make([]gatewayStatusResponse, 0, len(gatewayIDs))
+	for _, gatewayID := range gatewayIDs {
+		status, ok, err := s.getStatusByKey(ctx, gatewayStatusKey(gatewayID))
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			statuses = append(statuses, status)
+		}
+	}
+	sortGatewayStatuses(statuses)
+	return statuses, nil
+}
+
+func (s *redisStore) getGatewayStatus(gatewayID string) (gatewayStatusResponse, bool, error) {
+	ctx, cancel := redisContext()
+	defer cancel()
+	return s.getStatusByKey(ctx, gatewayStatusKey(gatewayID))
+}
+
+func (s *redisStore) getGatewayClients(gatewayID string) ([]clientInfo, bool, error) {
+	ctx, cancel := redisContext()
+	defer cancel()
+
+	raw, err := s.client.Get(ctx, gatewayClientsKey(gatewayID)).Result()
+	if errors.Is(err, redis.Nil) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
 	}
 
 	var clients []clientInfo
 	if err := json.Unmarshal([]byte(raw), &clients); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return clients, nil
+	return clients, true, nil
 }
 
 func (s *redisStore) setToken(clientID string, token string) error {
-	ctx := redisContext()
+	ctx, cancel := redisContext()
+	defer cancel()
 	if err := s.client.Set(ctx, "token:"+clientID, token, 0).Err(); err != nil {
 		return err
 	}
@@ -320,7 +410,8 @@ func (s *redisStore) setToken(clientID string, token string) error {
 }
 
 func (s *redisStore) deleteToken(clientID string) error {
-	ctx := redisContext()
+	ctx, cancel := redisContext()
+	defer cancel()
 	if err := s.client.Del(ctx, "token:"+clientID).Err(); err != nil {
 		return err
 	}
@@ -328,7 +419,9 @@ func (s *redisStore) deleteToken(clientID string) error {
 }
 
 func (s *redisStore) isAllowed(clientID string, token string) (bool, error) {
-	raw, err := s.client.Get(redisContext(), "token:"+clientID).Result()
+	ctx, cancel := redisContext()
+	defer cancel()
+	raw, err := s.client.Get(ctx, "token:"+clientID).Result()
 	if errors.Is(err, redis.Nil) {
 		return false, nil
 	}
@@ -339,7 +432,9 @@ func (s *redisStore) isAllowed(clientID string, token string) (bool, error) {
 }
 
 func (s *redisStore) listTokens() ([]tokenEntry, error) {
-	clientIDs, err := s.client.SMembers(redisContext(), "tokens").Result()
+	ctx, cancel := redisContext()
+	defer cancel()
+	clientIDs, err := s.client.SMembers(ctx, "tokens").Result()
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +448,9 @@ func (s *redisStore) listTokens() ([]tokenEntry, error) {
 }
 
 func (s *redisStore) getConfig() (runtimeConfig, error) {
-	ctx := redisContext()
+	ctx, cancel := redisContext()
+	defer cancel()
+
 	raw, err := s.client.Get(ctx, "config:current").Result()
 	if errors.Is(err, redis.Nil) {
 		cfg := defaultRuntimeConfig()
@@ -387,10 +484,45 @@ func (s *redisStore) updateConfig(req configUpdateRequest) (runtimeConfig, error
 		MaxRequestsPerClientPerSecond: req.MaxRequestsPerClientPerSecond,
 		FailOpen:                      req.FailOpen,
 	}
-	if err := s.setJSON(redisContext(), "config:current", cfg); err != nil {
+
+	ctx, cancel := redisContext()
+	defer cancel()
+	if err := s.setJSON(ctx, "config:current", cfg); err != nil {
 		return runtimeConfig{}, err
 	}
 	return cfg, nil
+}
+
+func (s *redisStore) getStatusByKey(ctx context.Context, key string) (gatewayStatusResponse, bool, error) {
+	raw, err := s.client.Get(ctx, key).Result()
+	if errors.Is(err, redis.Nil) {
+		return gatewayStatusResponse{}, false, nil
+	}
+	if err != nil {
+		return gatewayStatusResponse{}, false, err
+	}
+
+	var status gatewayStatusResponse
+	if err := json.Unmarshal([]byte(raw), &status); err != nil {
+		return gatewayStatusResponse{}, false, err
+	}
+	return status, true, nil
+}
+
+func (s *redisStore) getClientsByKey(ctx context.Context, key string) ([]clientInfo, error) {
+	raw, err := s.client.Get(ctx, key).Result()
+	if errors.Is(err, redis.Nil) {
+		return []clientInfo{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var clients []clientInfo
+	if err := json.Unmarshal([]byte(raw), &clients); err != nil {
+		return nil, err
+	}
+	return clients, nil
 }
 
 func (s *redisStore) setJSON(ctx context.Context, key string, value any) error {
@@ -425,8 +557,11 @@ func routes() http.Handler {
 	mux.HandleFunc("POST /auth/check", handleAuthCheck)
 	mux.HandleFunc("POST /metrics/report", handleMetricsReport)
 	mux.HandleFunc("GET /gateway/status", handleGatewayStatus)
+	mux.HandleFunc("GET /gateways", handleGatewaysList)
+	mux.HandleFunc("GET /gateways/{gateway_id}/status", handleGatewayStatusByID)
 	mux.HandleFunc("POST /clients/report", handleClientsReport)
 	mux.HandleFunc("GET /clients", handleClients)
+	mux.HandleFunc("GET /gateways/{gateway_id}/clients", handleGatewayClientsByID)
 	mux.HandleFunc("POST /tokens", handleTokensUpsert)
 	mux.HandleFunc("GET /tokens", handleTokensList)
 	mux.HandleFunc("DELETE /tokens/{client_id}", handleTokensDelete)
@@ -518,6 +653,29 @@ func handleGatewayStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, status)
 }
 
+func handleGatewaysList(w http.ResponseWriter, r *http.Request) {
+	statuses, err := store.listGateways()
+	if err != nil {
+		writeStoreError(w)
+		return
+	}
+	writeJSON(w, http.StatusOK, statuses)
+}
+
+func handleGatewayStatusByID(w http.ResponseWriter, r *http.Request) {
+	gatewayID := r.PathValue("gateway_id")
+	status, ok, err := store.getGatewayStatus(gatewayID)
+	if err != nil {
+		writeStoreError(w)
+		return
+	}
+	if !ok {
+		writeJSON(w, http.StatusNotFound, errorResponse{Error: "gateway status not reported"})
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
 func handleClientsReport(w http.ResponseWriter, r *http.Request) {
 	var req clientsReportRequest
 	decoder := json.NewDecoder(r.Body)
@@ -532,7 +690,7 @@ func handleClientsReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := store.saveClients(req.Clients); err != nil {
+	if err := store.saveClients(req.GatewayID, req.Clients); err != nil {
 		writeStoreError(w)
 		return
 	}
@@ -543,6 +701,20 @@ func handleClients(w http.ResponseWriter, r *http.Request) {
 	clients, err := store.getClients()
 	if err != nil {
 		writeStoreError(w)
+		return
+	}
+	writeJSON(w, http.StatusOK, clients)
+}
+
+func handleGatewayClientsByID(w http.ResponseWriter, r *http.Request) {
+	gatewayID := r.PathValue("gateway_id")
+	clients, ok, err := store.getGatewayClients(gatewayID)
+	if err != nil {
+		writeStoreError(w)
+		return
+	}
+	if !ok {
+		writeJSON(w, http.StatusNotFound, errorResponse{Error: "gateway clients not reported"})
 		return
 	}
 	writeJSON(w, http.StatusOK, clients)
@@ -653,9 +825,22 @@ func statusFromMetrics(req metricsReportRequest) gatewayStatusResponse {
 	}
 }
 
-func redisContext() context.Context {
-	ctx, _ := context.WithTimeout(context.Background(), 2*time.Second)
-	return ctx
+func redisContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 2*time.Second)
+}
+
+func gatewayStatusKey(gatewayID string) string {
+	return "gateway:status:" + gatewayID
+}
+
+func gatewayClientsKey(gatewayID string) string {
+	return "gateway:clients:" + gatewayID
+}
+
+func sortGatewayStatuses(statuses []gatewayStatusResponse) {
+	sort.Slice(statuses, func(i, j int) bool {
+		return statuses[i].GatewayID < statuses[j].GatewayID
+	})
 }
 
 func writeStoreError(w http.ResponseWriter) {

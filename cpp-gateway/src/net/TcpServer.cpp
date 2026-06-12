@@ -53,14 +53,20 @@ namespace
 // =========================================================
 // 1. Construction & Destruction
 // =========================================================
-TcpServer::TcpServer(int port) : TcpServer(port, "127.0.0.1", 8080) {}
+TcpServer::TcpServer(int port) : TcpServer(port, "127.0.0.1", 8080, "gateway-001") {}
 
 TcpServer::TcpServer(int port, std::string control_plane_host, int control_plane_port)
+    : TcpServer(port, std::move(control_plane_host), control_plane_port, "gateway-001")
+{
+}
+
+TcpServer::TcpServer(int port, std::string control_plane_host, int control_plane_port, std::string gateway_id)
     : port_(port),
       listen_fd_(-1),
       epfd_(-1),
       running_(false),
-      control_plane_(std::move(control_plane_host), control_plane_port, 1000)
+      control_plane_(std::move(control_plane_host), control_plane_port, 1000),
+      gateway_id_(std::move(gateway_id))
 {
 }
 
@@ -758,7 +764,7 @@ void TcpServer::metricsReporterLoop()
     {
         auto &stats = business::StatsManager::getInstance();
         GatewayMetrics metrics{
-            "gateway-001",
+            gateway_id_,
             stats.getConnections(),
             stats.getTotalRequests(),
             stats.getReadBytes(),
