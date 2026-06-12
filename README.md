@@ -24,11 +24,14 @@ Go Control Plane
   | POST /metrics/report
   | POST /clients/report
   | POST /tokens
+  | GET  /config
+  | POST /config
   | GET  /health
   | GET  /gateway/status
   | GET  /clients
   | GET  /tokens
   | DELETE /tokens/{client_id}
+  | POST /config/reload
 ```
 
 ## Quick Start
@@ -149,6 +152,32 @@ Delete a token:
 curl -X DELETE http://localhost:8080/tokens/client_001
 ```
 
+Runtime config:
+
+```bash
+curl http://localhost:8080/config
+```
+
+Update runtime config:
+
+```bash
+curl -X POST http://localhost:8080/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "auth_timeout_ms":1000,
+    "max_payload_size":4194314,
+    "max_connections_per_client":2,
+    "max_requests_per_client_per_second":100,
+    "fail_open":false
+  }'
+```
+
+Reload runtime config:
+
+```bash
+curl -X POST http://localhost:8080/config/reload
+```
+
 ## TCP Protocol
 
 Each packet uses a 4-byte length prefix followed by a fixed header and optional payload:
@@ -207,13 +236,16 @@ Current behavior:
 - AUTH-gated request flow with worker-thread dispatch.
 - Go control plane using standard `net/http`.
 - In-memory token registry managed over HTTP.
+- In-memory runtime config managed over HTTP.
 - Docker Compose integration and repo-level smoke tests.
 
 ## Current Limitations
 
 - Control plane state is in memory and is lost on restart.
 - Token registry data is in memory and is lost on restart.
+- Runtime config is stored in memory and is lost on restart.
 - AUTH now requires explicit token registration through `POST /tokens`.
+- C++ Gateway does not pull or enforce runtime config yet.
 - `checkAuth()` is synchronous HTTP, although it runs in worker threads instead of the epoll IO thread.
 - Connection state is mutex-protected, but the design is still a small in-process model rather than a fully isolated actor-style architecture.
 - There is no Redis, database, Prometheus, Grafana, or dashboard frontend.
@@ -225,6 +257,7 @@ Current behavior:
 - Keep the `AUTH` state machine strict and testable.
 - Expand protocol edge-case coverage before changing behavior.
 - Improve documentation so project behavior matches real code.
+- Let C++ Gateway fetch runtime config from the control plane.
 - Replace the in-memory token registry with Redis or a database when persistence is needed.
 - Add a manual GitHub Actions smoke workflow without making every push run Docker integration.
 

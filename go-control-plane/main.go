@@ -28,6 +28,24 @@ type healthResponse struct {
 type configReloadResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
+	Version int64  `json:"version"`
+}
+
+type runtimeConfig struct {
+	Version                       int64 `json:"version"`
+	AuthTimeoutMS                 int   `json:"auth_timeout_ms"`
+	MaxPayloadSize                int   `json:"max_payload_size"`
+	MaxConnectionsPerClient       int   `json:"max_connections_per_client"`
+	MaxRequestsPerClientPerSecond int   `json:"max_requests_per_client_per_second"`
+	FailOpen                      bool  `json:"fail_open"`
+}
+
+type configUpdateRequest struct {
+	AuthTimeoutMS                 int  `json:"auth_timeout_ms"`
+	MaxPayloadSize                int  `json:"max_payload_size"`
+	MaxConnectionsPerClient       int  `json:"max_connections_per_client"`
+	MaxRequestsPerClientPerSecond int  `json:"max_requests_per_client_per_second"`
+	FailOpen                      bool `json:"fail_open"`
 }
 
 type metricsReportRequest struct {
@@ -84,11 +102,20 @@ type memoryStore struct {
 	hasStatus bool
 	clients   []clientInfo
 	tokens    map[string]string
+	config    runtimeConfig
 }
 
 func newMemoryStore() *memoryStore {
 	return &memoryStore{
 		tokens: map[string]string{},
+		config: runtimeConfig{
+			Version:                       1,
+			AuthTimeoutMS:                 1000,
+			MaxPayloadSize:                4194314,
+			MaxConnectionsPerClient:       2,
+			MaxRequestsPerClientPerSecond: 100,
+			FailOpen:                      false,
+		},
 	}
 }
 
@@ -169,6 +196,27 @@ func (s *memoryStore) listTokens() []tokenEntry {
 	return entries
 }
 
+func (s *memoryStore) getConfig() runtimeConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.config
+}
+
+func (s *memoryStore) updateConfig(req configUpdateRequest) runtimeConfig {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.config = runtimeConfig{
+		Version:                       s.config.Version + 1,
+		AuthTimeoutMS:                 req.AuthTimeoutMS,
+		MaxPayloadSize:                req.MaxPayloadSize,
+		MaxConnectionsPerClient:       req.MaxConnectionsPerClient,
+		MaxRequestsPerClientPerSecond: req.MaxRequestsPerClientPerSecond,
+		FailOpen:                      req.FailOpen,
+	}
+	return s.config
+}
+
 func main() {
 	server := &http.Server{
 		Addr:              ":8080",
@@ -196,6 +244,8 @@ func routes() http.Handler {
 	mux.HandleFunc("POST /tokens", handleTokensUpsert)
 	mux.HandleFunc("GET /tokens", handleTokensList)
 	mux.HandleFunc("DELETE /tokens/{client_id}", handleTokensDelete)
+	mux.HandleFunc("GET /config", handleConfigGet)
+	mux.HandleFunc("POST /config", handleConfigUpdate)
 	mux.HandleFunc("POST /config/reload", handleConfigReload)
 	return mux
 }
@@ -321,10 +371,32 @@ func handleTokensDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, successResponse{Success: true})
 }
 
+func handleConfigGet(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, store.getConfig())
+}
+
+func handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
+	var req configUpdateRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
+		return
+	}
+
+	if err := validateConfigUpdate(req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, store.updateConfig(req))
+}
+
 func handleConfigReload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, configReloadResponse{
 		Success: true,
-		Message: "config reload triggered",
+		Message: "memory config reload is a no-op",
+		Version: store.getConfig().Version,
 	})
 }
 
@@ -333,5 +405,20 @@ func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		log.Printf("write json response failed: %v", err)
+	}
+}
+
+func validateConfigUpdate(req configUpdateRequest) error {
+	switch {
+	case req.AuthTimeoutMS <= 0:
+		return errors.New("auth_timeout_ms must be positive")
+	case req.MaxPayloadSize <= 0:
+		return errors.New("max_payload_size must be positive")
+	case req.MaxConnectionsPerClient <= 0:
+		return errors.New("max_connections_per_client must be positive")
+	case req.MaxRequestsPerClientPerSecond <= 0:
+		return errors.New("max_requests_per_client_per_second must be positive")
+	default:
+		return nil
 	}
 }

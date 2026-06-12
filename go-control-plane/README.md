@@ -88,6 +88,26 @@ Delete a registered token:
 curl -X DELETE http://localhost:8080/tokens/client_001
 ```
 
+Read runtime config:
+
+```bash
+curl http://localhost:8080/config
+```
+
+Update runtime config:
+
+```bash
+curl -X POST http://localhost:8080/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "auth_timeout_ms":1000,
+    "max_payload_size":4194314,
+    "max_connections_per_client":2,
+    "max_requests_per_client_per_second":100,
+    "fail_open":false
+  }'
+```
+
 Trigger config reload:
 
 ```bash
@@ -99,4 +119,7 @@ curl -X POST http://localhost:8080/config/reload
 - `/auth/check` now validates `client_id + token` against an in-memory token registry.
 - `GET /tokens` only returns `client_id` values and does not expose token plaintext.
 - Registry data is in memory only and is cleared on restart.
+- Runtime config is in memory only and is cleared on restart.
+- `POST /config` replaces the full runtime config and increments `version`.
+- `POST /config/reload` is currently a memory-config no-op that returns the current `version`.
 - AUTH requires explicit token registration through `POST /tokens`.

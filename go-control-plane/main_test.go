@@ -165,10 +165,29 @@ func TestClientsReportAndList(t *testing.T) {
 
 func TestConfigReload(t *testing.T) {
 	store = newMemoryStore()
+	router := routes()
+
+	updateReq := httptest.NewRequest(http.MethodPost, "/config", bytes.NewBufferString(`{
+		"auth_timeout_ms":1500,
+		"max_payload_size":1048576,
+		"max_connections_per_client":1,
+		"max_requests_per_client_per_second":50,
+		"fail_open":true
+	}`))
+	updateResp := httptest.NewRecorder()
+	router.ServeHTTP(updateResp, updateReq)
+	assertConfigResponse(t, updateResp, http.StatusOK, runtimeConfig{
+		Version:                       2,
+		AuthTimeoutMS:                 1500,
+		MaxPayloadSize:                1048576,
+		MaxConnectionsPerClient:       1,
+		MaxRequestsPerClientPerSecond: 50,
+		FailOpen:                      true,
+	})
+
 	req := httptest.NewRequest(http.MethodPost, "/config/reload", nil)
 	resp := httptest.NewRecorder()
-
-	routes().ServeHTTP(resp, req)
+	router.ServeHTTP(resp, req)
 
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", resp.Code)
@@ -178,8 +197,159 @@ func TestConfigReload(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if !body.Success || body.Message != "config reload triggered" {
+	if !body.Success || body.Message != "memory config reload is a no-op" || body.Version != 2 {
 		t.Fatalf("unexpected config reload response: %+v", body)
+	}
+}
+
+func TestConfigGetReturnsDefault(t *testing.T) {
+	store = newMemoryStore()
+	req := httptest.NewRequest(http.MethodGet, "/config", nil)
+	resp := httptest.NewRecorder()
+
+	routes().ServeHTTP(resp, req)
+
+	assertConfigResponse(t, resp, http.StatusOK, runtimeConfig{
+		Version:                       1,
+		AuthTimeoutMS:                 1000,
+		MaxPayloadSize:                4194314,
+		MaxConnectionsPerClient:       2,
+		MaxRequestsPerClientPerSecond: 100,
+		FailOpen:                      false,
+	})
+}
+
+func TestConfigUpdate(t *testing.T) {
+	store = newMemoryStore()
+	router := routes()
+
+	req := httptest.NewRequest(http.MethodPost, "/config", bytes.NewBufferString(`{
+		"auth_timeout_ms":1500,
+		"max_payload_size":1048576,
+		"max_connections_per_client":1,
+		"max_requests_per_client_per_second":50,
+		"fail_open":true
+	}`))
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	assertConfigResponse(t, resp, http.StatusOK, runtimeConfig{
+		Version:                       2,
+		AuthTimeoutMS:                 1500,
+		MaxPayloadSize:                1048576,
+		MaxConnectionsPerClient:       1,
+		MaxRequestsPerClientPerSecond: 50,
+		FailOpen:                      true,
+	})
+
+	getReq := httptest.NewRequest(http.MethodGet, "/config", nil)
+	getResp := httptest.NewRecorder()
+	router.ServeHTTP(getResp, getReq)
+
+	assertConfigResponse(t, getResp, http.StatusOK, runtimeConfig{
+		Version:                       2,
+		AuthTimeoutMS:                 1500,
+		MaxPayloadSize:                1048576,
+		MaxConnectionsPerClient:       1,
+		MaxRequestsPerClientPerSecond: 50,
+		FailOpen:                      true,
+	})
+}
+
+func TestConfigUpdateRejectsInvalidBody(t *testing.T) {
+	store = newMemoryStore()
+
+	for _, body := range []string{
+		`{"auth_timeout_ms":`,
+		`{
+			"auth_timeout_ms":1000,
+			"max_payload_size":4194314,
+			"max_connections_per_client":2,
+			"max_requests_per_client_per_second":100,
+			"fail_open":false,
+			"unknown":true
+		}`,
+		`{
+			"version":99,
+			"auth_timeout_ms":1000,
+			"max_payload_size":4194314,
+			"max_connections_per_client":2,
+			"max_requests_per_client_per_second":100,
+			"fail_open":false
+		}`,
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/config", bytes.NewBufferString(body))
+		resp := httptest.NewRecorder()
+
+		routes().ServeHTTP(resp, req)
+
+		assertErrorResponse(t, resp, http.StatusBadRequest, "invalid request body")
+	}
+}
+
+func TestConfigUpdateRejectsInvalidValues(t *testing.T) {
+	store = newMemoryStore()
+
+	testCases := []struct {
+		name      string
+		body      string
+		wantError string
+	}{
+		{
+			name: "auth_timeout_ms",
+			body: `{
+				"auth_timeout_ms":0,
+				"max_payload_size":4194314,
+				"max_connections_per_client":2,
+				"max_requests_per_client_per_second":100,
+				"fail_open":false
+			}`,
+			wantError: "auth_timeout_ms must be positive",
+		},
+		{
+			name: "max_payload_size",
+			body: `{
+				"auth_timeout_ms":1000,
+				"max_payload_size":0,
+				"max_connections_per_client":2,
+				"max_requests_per_client_per_second":100,
+				"fail_open":false
+			}`,
+			wantError: "max_payload_size must be positive",
+		},
+		{
+			name: "max_connections_per_client",
+			body: `{
+				"auth_timeout_ms":1000,
+				"max_payload_size":4194314,
+				"max_connections_per_client":0,
+				"max_requests_per_client_per_second":100,
+				"fail_open":false
+			}`,
+			wantError: "max_connections_per_client must be positive",
+		},
+		{
+			name: "max_requests_per_client_per_second",
+			body: `{
+				"auth_timeout_ms":1000,
+				"max_payload_size":4194314,
+				"max_connections_per_client":2,
+				"max_requests_per_client_per_second":0,
+				"fail_open":false
+			}`,
+			wantError: "max_requests_per_client_per_second must be positive",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/config", bytes.NewBufferString(tc.body))
+			resp := httptest.NewRecorder()
+
+			routes().ServeHTTP(resp, req)
+
+			assertErrorResponse(t, resp, http.StatusBadRequest, tc.wantError)
+		})
 	}
 }
 
@@ -320,5 +490,21 @@ func assertGatewayStatus(t *testing.T, resp *httptest.ResponseRecorder, wantStat
 		body.TotalMessages != wantMessages ||
 		body.LastReportTime != wantReportTime {
 		t.Fatalf("unexpected gateway status: %+v", body)
+	}
+}
+
+func assertConfigResponse(t *testing.T, resp *httptest.ResponseRecorder, wantStatus int, want runtimeConfig) {
+	t.Helper()
+
+	if resp.Code != wantStatus {
+		t.Fatalf("expected status %d, got %d", wantStatus, resp.Code)
+	}
+
+	var body runtimeConfig
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body != want {
+		t.Fatalf("expected config %+v, got %+v", want, body)
 	}
 }
