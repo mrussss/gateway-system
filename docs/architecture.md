@@ -95,15 +95,17 @@ Responsibilities:
 
 - answer `/health`
 - validate `client_id + token` through `/auth/check`
-- manage an in-memory token registry through `/tokens`
+- manage token registration through `/tokens`
+- store runtime config
 - store the latest gateway metrics report
 - store the latest authenticated client snapshot
-- expose gateway state through `/gateway/status` and `/clients`
+- expose gateway state through `/gateway/status`, `/gateways`, and `/clients`
 
 Current storage model:
 
-- all runtime state is in memory
-- restart clears metrics, client state, and registered tokens
+- Docker Compose uses Redis for tokens, runtime config, gateway status, and clients
+- `MemoryStore` still exists for local tests and non-Redis runs
+- Redis stores the latest reported state; derived liveness is computed when status APIs are read
 
 ## Deployment Modes
 
@@ -124,8 +126,10 @@ Docker Compose mode:
 - no external message broker
 - no dashboard frontend
 - no async auth client yet
-- token registry is in memory only
+- Docker Compose state depends on Redis availability
 - AUTH requires explicit token registration through `POST /tokens`
 - `/clients` visibility depends on periodic snapshot reporting rather than an immediate push-on-every-state-change model
+- gateway offline state is query-time derived from `last_report_time`
+- offline gateway records are not automatically removed from Redis
 - smoke testing depends on Docker availability
 - GitHub Actions smoke coverage is manual `workflow_dispatch`

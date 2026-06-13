@@ -316,11 +316,11 @@ Current behavior:
 - Keep the `AUTH` state machine strict and testable.
 - Expand protocol edge-case coverage before changing behavior.
 - Improve documentation so project behavior matches real code.
-- Add failure-case documentation.
 - Add optional gateway unregister / cleanup API.
 
 ## More Docs
 
 - [Architecture](docs/architecture.md)
 - [Protocol](docs/protocol.md)
+- [Failure Cases](docs/failure_cases.md)
 - [Development Plan](docs/vibe_coding.md)

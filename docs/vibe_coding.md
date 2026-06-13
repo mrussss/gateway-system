@@ -57,6 +57,7 @@ Choose the smallest useful validation:
 - keep `/clients` aligned with authenticated state
 - keep gateway liveness, Redis-backed status views, and docs aligned
 - keep manual smoke coverage working before considering auto CI
+- document real failure behavior without inventing recovery paths
 - keep README and docs aligned with real behavior
 
 ## Current Constraints
