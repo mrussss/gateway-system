@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestHealth(t *testing.T) {
@@ -108,7 +109,7 @@ func TestMetricsReportAndGatewayStatus(t *testing.T) {
 
 	routes().ServeHTTP(resp, req)
 
-	assertGatewayStatus(t, resp, http.StatusOK, "gateway-001", 12, 3456, "2024-03-09T16:00:00Z")
+	assertStoredGatewayStatus(t, resp, http.StatusOK, "gateway-001", 12, 3456, "2024-03-09T16:00:00Z")
 
 	statusReq := httptest.NewRequest(http.MethodGet, "/gateway/status", nil)
 	statusResp := httptest.NewRecorder()
@@ -126,6 +127,41 @@ func TestGatewayStatusNotReported(t *testing.T) {
 	routes().ServeHTTP(resp, req)
 
 	assertErrorResponse(t, resp, http.StatusNotFound, "gateway status not reported")
+}
+
+func TestGatewayStatusViewOnline(t *testing.T) {
+	now := time.Date(2026, 6, 13, 12, 0, 10, 0, time.UTC)
+	view := gatewayStatusToView(gatewayStatusResponse{
+		GatewayID:      "gateway-001",
+		LastReportTime: "2026-06-13T12:00:00Z",
+	}, now)
+
+	if !view.Online || view.Status != "online" || view.SecondsSinceLastReport != 10 {
+		t.Fatalf("unexpected gateway status view: %+v", view)
+	}
+}
+
+func TestGatewayStatusViewOffline(t *testing.T) {
+	now := time.Date(2026, 6, 13, 12, 0, 31, 0, time.UTC)
+	view := gatewayStatusToView(gatewayStatusResponse{
+		GatewayID:      "gateway-001",
+		LastReportTime: "2026-06-13T12:00:00Z",
+	}, now)
+
+	if view.Online || view.Status != "offline" || view.SecondsSinceLastReport != 31 {
+		t.Fatalf("unexpected gateway status view: %+v", view)
+	}
+}
+
+func TestGatewayStatusViewInvalidTimeIsOffline(t *testing.T) {
+	view := gatewayStatusToView(gatewayStatusResponse{
+		GatewayID:      "gateway-001",
+		LastReportTime: "bad-time",
+	}, time.Date(2026, 6, 13, 12, 0, 31, 0, time.UTC))
+
+	if view.Online || view.Status != "offline" || view.SecondsSinceLastReport != -1 {
+		t.Fatalf("unexpected gateway status view: %+v", view)
+	}
 }
 
 func TestClientsReportAndList(t *testing.T) {
@@ -186,7 +222,7 @@ func TestListGatewaysReturnsSortedStatuses(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", resp.Code)
 	}
 
-	var gateways []gatewayStatusResponse
+	var gateways []gatewayStatusView
 	if err := json.NewDecoder(resp.Body).Decode(&gateways); err != nil {
 		t.Fatalf("decode gateways: %v", err)
 	}
@@ -195,6 +231,9 @@ func TestListGatewaysReturnsSortedStatuses(t *testing.T) {
 	}
 	if gateways[0].GatewayID != "gateway-001" || gateways[1].GatewayID != "gateway-002" {
 		t.Fatalf("expected sorted gateways, got %+v", gateways)
+	}
+	if gateways[0].Online || gateways[0].Status != "offline" || gateways[0].SecondsSinceLastReport < 0 {
+		t.Fatalf("expected offline derived status, got %+v", gateways[0])
 	}
 }
 
@@ -823,7 +862,7 @@ func assertGatewayStatus(t *testing.T, resp *httptest.ResponseRecorder, wantStat
 		t.Fatalf("expected status %d, got %d", wantStatus, resp.Code)
 	}
 
-	var body gatewayStatusResponse
+	var body gatewayStatusView
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -832,6 +871,28 @@ func assertGatewayStatus(t *testing.T, resp *httptest.ResponseRecorder, wantStat
 		body.TotalMessages != wantMessages ||
 		body.LastReportTime != wantReportTime {
 		t.Fatalf("unexpected gateway status: %+v", body)
+	}
+	if body.Status == "" || body.SecondsSinceLastReport < -1 {
+		t.Fatalf("missing liveness fields: %+v", body)
+	}
+}
+
+func assertStoredGatewayStatus(t *testing.T, resp *httptest.ResponseRecorder, wantStatus int, wantGatewayID string, wantConnections int64, wantMessages int64, wantReportTime string) {
+	t.Helper()
+
+	if resp.Code != wantStatus {
+		t.Fatalf("expected status %d, got %d", wantStatus, resp.Code)
+	}
+
+	var body gatewayStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.GatewayID != wantGatewayID ||
+		body.ActiveConnections != wantConnections ||
+		body.TotalMessages != wantMessages ||
+		body.LastReportTime != wantReportTime {
+		t.Fatalf("unexpected stored gateway status: %+v", body)
 	}
 }
 

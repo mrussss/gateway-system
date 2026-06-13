@@ -70,6 +70,14 @@ echo
 expect_http_ok "gateways" "http://localhost:8080/gateways"
 expect_http_ok "gateway status by id" "http://localhost:8080/gateways/gateway-001/status"
 
+for path in "/gateway/status" "/gateways/gateway-001/status"; do
+  echo "[smoke] Checking liveness fields on $path"
+  body="$(curl -fsS "http://localhost:8080$path")"
+  [[ "$body" == *"\"online\""* ]] || { echo "[smoke] FAIL: missing online in $path" >&2; exit 1; }
+  [[ "$body" == *"\"status\""* ]] || { echo "[smoke] FAIL: missing status in $path" >&2; exit 1; }
+  [[ "$body" == *"\"seconds_since_last_report\""* ]] || { echo "[smoke] FAIL: missing seconds_since_last_report in $path" >&2; exit 1; }
+done
+
 expect_http_ok "clients" "http://localhost:8080/clients"
 
 echo "[smoke] Waiting for gateway clients by id..."

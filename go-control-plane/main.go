@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	defaultStoreBackend = "memory"
-	defaultRedisAddr    = "localhost:6379"
-	storeErrorMessage   = "store error"
+	defaultStoreBackend        = "memory"
+	defaultRedisAddr           = "localhost:6379"
+	defaultGatewayOfflineAfter = 15 * time.Second
+	storeErrorMessage          = "store error"
 )
 
 var store Store = newMemoryStore()
@@ -93,6 +94,19 @@ type gatewayStatusResponse struct {
 	BytesOut          int64  `json:"bytes_out"`
 	ErrorCount        int64  `json:"error_count"`
 	LastReportTime    string `json:"last_report_time"`
+}
+
+type gatewayStatusView struct {
+	GatewayID              string `json:"gateway_id"`
+	ActiveConnections      int64  `json:"active_connections"`
+	TotalMessages          int64  `json:"total_messages"`
+	BytesIn                int64  `json:"bytes_in"`
+	BytesOut               int64  `json:"bytes_out"`
+	ErrorCount             int64  `json:"error_count"`
+	LastReportTime         string `json:"last_report_time"`
+	Online                 bool   `json:"online"`
+	Status                 string `json:"status"`
+	SecondsSinceLastReport int64  `json:"seconds_since_last_report"`
 }
 
 type clientInfo struct {
@@ -650,7 +664,7 @@ func handleGatewayStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, status)
+	writeJSON(w, http.StatusOK, gatewayStatusToView(status, time.Now().UTC()))
 }
 
 func handleGatewaysList(w http.ResponseWriter, r *http.Request) {
@@ -659,7 +673,12 @@ func handleGatewaysList(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, statuses)
+	now := time.Now().UTC()
+	views := make([]gatewayStatusView, 0, len(statuses))
+	for _, status := range statuses {
+		views = append(views, gatewayStatusToView(status, now))
+	}
+	writeJSON(w, http.StatusOK, views)
 }
 
 func handleGatewayStatusByID(w http.ResponseWriter, r *http.Request) {
@@ -673,7 +692,7 @@ func handleGatewayStatusByID(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, errorResponse{Error: "gateway status not reported"})
 		return
 	}
-	writeJSON(w, http.StatusOK, status)
+	writeJSON(w, http.StatusOK, gatewayStatusToView(status, time.Now().UTC()))
 }
 
 func handleClientsReport(w http.ResponseWriter, r *http.Request) {
@@ -822,6 +841,39 @@ func statusFromMetrics(req metricsReportRequest) gatewayStatusResponse {
 		BytesOut:          req.BytesOut,
 		ErrorCount:        req.ErrorCount,
 		LastReportTime:    reportTime.Format(time.RFC3339),
+	}
+}
+
+func gatewayStatusToView(status gatewayStatusResponse, now time.Time) gatewayStatusView {
+	secondsSince := int64(-1)
+	online := false
+
+	lastReportTime, err := time.Parse(time.RFC3339, status.LastReportTime)
+	if err == nil {
+		delta := now.Sub(lastReportTime)
+		if delta < 0 {
+			delta = 0
+		}
+		secondsSince = int64(delta.Seconds())
+		online = delta <= defaultGatewayOfflineAfter
+	}
+
+	state := "offline"
+	if online {
+		state = "online"
+	}
+
+	return gatewayStatusView{
+		GatewayID:              status.GatewayID,
+		ActiveConnections:      status.ActiveConnections,
+		TotalMessages:          status.TotalMessages,
+		BytesIn:                status.BytesIn,
+		BytesOut:               status.BytesOut,
+		ErrorCount:             status.ErrorCount,
+		LastReportTime:         status.LastReportTime,
+		Online:                 online,
+		Status:                 state,
+		SecondsSinceLastReport: secondsSince,
 	}
 }
 

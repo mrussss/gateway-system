@@ -80,6 +80,8 @@ bash scripts/smoke_test.sh
 
 This starts Docker Compose, waits for `GET /health`, checks Redis `PING`, `GET /gateway/status`, `GET /gateways`, `GET /gateways/gateway-001/status`, `GET /clients`, and `GET /gateways/gateway-001/clients`, then runs the TCP protocol test against `localhost:9000`.
 
+Gateway status APIs derive liveness at read time. A gateway is considered `online` when its `last_report_time` is within the default `15s` offline window; otherwise it is returned as `offline`. These derived fields are not stored back into Redis.
+
 TCP protocol test only:
 
 ```bash
@@ -144,6 +146,23 @@ Gateway status:
 
 ```bash
 curl http://localhost:8080/gateway/status
+```
+
+Example response:
+
+```json
+{
+  "gateway_id": "gateway-001",
+  "active_connections": 0,
+  "total_messages": 10,
+  "bytes_in": 100,
+  "bytes_out": 200,
+  "error_count": 0,
+  "last_report_time": "2026-06-13T12:00:00Z",
+  "online": true,
+  "status": "online",
+  "seconds_since_last_report": 3
+}
 ```
 
 Gateways:
