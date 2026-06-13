@@ -286,6 +286,7 @@ Current behavior:
 - Go control plane using standard `net/http`.
 - Redis state plane for tokens, runtime config, gateway status, and clients.
 - Multi-gateway status and client APIs backed by Redis.
+- Gateway liveness is derived from the latest metrics report timestamp.
 - MemoryStore kept for local tests and non-Redis runs.
 - C++ Gateway currently enforces `max_connections_per_client` and `max_requests_per_client_per_second` only.
 - Docker Compose integration and repo-level smoke tests.
@@ -296,6 +297,8 @@ Current behavior:
 - Redis is used for state in Docker Compose, while `MemoryStore` is still available for local tests.
 - Docker Compose starts one gateway by default; multiple gateway instances require distinct ports and `GATEWAY_ID` values.
 - Multi-gateway APIs expose reported state only; they do not perform service discovery or load balancing.
+- Gateway liveness is query-time derived only; the system does not actively probe gateways.
+- Offline gateways are not automatically removed from Redis.
 - `checkAuth()` is synchronous HTTP, although it runs in worker threads instead of the epoll IO thread.
 - Connection state is mutex-protected, but the design is still a small in-process model rather than a fully isolated actor-style architecture.
 - There is no database, Prometheus, Grafana, or dashboard frontend.
@@ -307,9 +310,9 @@ Current behavior:
 - Keep the `AUTH` state machine strict and testable.
 - Expand protocol edge-case coverage before changing behavior.
 - Improve documentation so project behavior matches real code.
-- Add gateway liveness / offline detection.
-- Expand smoke test coverage for Redis-backed state.
-- Add a manual GitHub Actions smoke workflow without making every push run Docker integration.
+- Add failure-case documentation.
+- Add GitHub Actions smoke workflow.
+- Add optional gateway unregister / cleanup API.
 
 ## More Docs
 
