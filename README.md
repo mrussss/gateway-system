@@ -4,6 +4,14 @@
 
 It is intentionally small in scope: one custom TCP protocol server, one HTTP control plane, Docker Compose for local integration, and smoke tests that exercise the full path.
 
+## Project Status
+
+This repository is currently a stage-complete practice project for a `C++ Data Plane + Go Control Plane + Redis State Plane` design.
+
+- implemented: custom TCP protocol, connection-level `AUTH`, runtime config pull, per-process connection limit, per-process rate limit, Redis-backed shared state, multi-gateway status views, protocol tests, smoke tests, and a lightweight benchmark entry point
+- suitable for: internship-level discussion around Linux networking, `epoll`, request dispatch, control-plane/data-plane separation, and operational tradeoffs
+- current limits: not a production-grade gateway, no cross-gateway global connection limit or rate limit, query-time derived liveness only, and intentionally lightweight control-plane / benchmark tooling
+
 ## Architecture
 
 ```text

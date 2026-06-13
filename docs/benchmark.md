@@ -63,6 +63,55 @@ p95_latency_ms=12.34
 
 These numbers are examples of the output format only. Re-run the benchmark in your own environment to get real results.
 
+## Test Environment
+
+The current reference runs were collected on:
+
+- `Linux 6.6.87.2-microsoft-standard-WSL2`
+- `Intel(R) Core(TM) i9-14900HX`
+- `32 vCPU`
+- `15 GiB RAM`
+
+These numbers are local validation results only. They are useful for this repo's current baseline, not as a production performance claim.
+
+## Observed Results
+
+Small local check:
+
+```bash
+python3 scripts/benchmark_tcp.py --clients 5 --requests-per-client 10
+```
+
+Observed output:
+
+```text
+total_requests=50
+success=50
+failed=0
+elapsed_seconds=0.217
+requests_per_second=230.36
+avg_latency_ms=4.56
+p95_latency_ms=0.80
+```
+
+Higher-pressure local check:
+
+```bash
+python3 scripts/benchmark_tcp.py --clients 50 --requests-per-client 100
+```
+
+Observed output:
+
+```text
+total_requests=5000
+success=5000
+failed=0
+elapsed_seconds=0.843
+requests_per_second=5933.40
+avg_latency_ms=6.46
+p95_latency_ms=11.76
+```
+
 ## Suggested Runs
 
 Small local check:

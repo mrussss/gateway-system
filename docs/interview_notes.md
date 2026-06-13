@@ -72,6 +72,15 @@
 - `/clients` is eventually consistent because it reflects periodic snapshots, not live socket enumeration from the control plane
 - Redis keeps the design simple for shared state, but the project does not include a durable relational database or analytics stack
 
+## What I Would Improve Next
+
+- split the Go control plane out of one large `main.go` into clearer store, handler, config, and liveness modules
+- do a formatting-only cleanup pass on `TcpServer.cpp` before attempting any deeper C++ refactor
+- separate config pulling, metrics reporting, and client reporting out of `TcpServer` into narrower gateway-side components
+- design a cross-gateway connection limit and rate-limit path if multi-gateway fairness becomes a real requirement
+- upgrade the benchmark flow with warmup, broader percentile reporting, and service-side resource sampling
+- keep documentation and interview framing aligned with the real implementation instead of overselling production readiness
+
 ## Demo Commands
 
 Start the full stack:
