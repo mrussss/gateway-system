@@ -329,4 +329,5 @@ Current behavior:
 - [Protocol](docs/protocol.md)
 - [Benchmark](docs/benchmark.md)
 - [Failure Cases](docs/failure_cases.md)
+- [Interview Notes](docs/interview_notes.md)
 - [Development Plan](docs/vibe_coding.md)
