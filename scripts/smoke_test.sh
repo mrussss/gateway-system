@@ -67,7 +67,22 @@ done
 cat /tmp/gateway_status.json
 echo
 
+expect_http_ok "gateways" "http://localhost:8080/gateways"
+expect_http_ok "gateway status by id" "http://localhost:8080/gateways/gateway-001/status"
+
 expect_http_ok "clients" "http://localhost:8080/clients"
+
+echo "[smoke] Waiting for gateway clients by id..."
+deadline=$((SECONDS + 70))
+until curl -fsS "http://localhost:8080/gateways/gateway-001/clients" >/tmp/gateway_clients.json; do
+  if (( SECONDS >= deadline )); then
+    echo "[smoke] FAIL: timed out waiting for /gateways/gateway-001/clients" >&2
+    exit 1
+  fi
+  sleep 1
+done
+cat /tmp/gateway_clients.json
+echo
 
 echo "[smoke] Running TCP protocol checks against localhost:9000..."
 python3 scripts/tcp_protocol_test.py

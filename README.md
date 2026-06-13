@@ -42,8 +42,8 @@ Go Control Plane
 Redis State Plane
   | tokens
   | runtime config
-  | gateway status
-  | clients
+  | gateway status by gateway_id
+  | clients by gateway_id
 ```
 
 ## Quick Start
@@ -78,7 +78,7 @@ Full smoke test:
 bash scripts/smoke_test.sh
 ```
 
-This starts Docker Compose, waits for `GET /health`, checks `GET /gateway/status` and `GET /clients`, then runs the TCP protocol test against `localhost:9000`.
+This starts Docker Compose, waits for `GET /health`, checks Redis `PING`, `GET /gateway/status`, `GET /gateways`, `GET /gateways/gateway-001/status`, `GET /clients`, and `GET /gateways/gateway-001/clients`, then runs the TCP protocol test against `localhost:9000`.
 
 TCP protocol test only:
 
@@ -276,6 +276,7 @@ Current behavior:
 - AUTH now requires explicit token registration through `POST /tokens`.
 - Redis is used for state in Docker Compose, while `MemoryStore` is still available for local tests.
 - Docker Compose starts one gateway by default; multiple gateway instances require distinct ports and `GATEWAY_ID` values.
+- Multi-gateway APIs expose reported state only; they do not perform service discovery or load balancing.
 - `checkAuth()` is synchronous HTTP, although it runs in worker threads instead of the epoll IO thread.
 - Connection state is mutex-protected, but the design is still a small in-process model rather than a fully isolated actor-style architecture.
 - There is no database, Prometheus, Grafana, or dashboard frontend.
@@ -287,7 +288,7 @@ Current behavior:
 - Keep the `AUTH` state machine strict and testable.
 - Expand protocol edge-case coverage before changing behavior.
 - Improve documentation so project behavior matches real code.
-- Add multi-gateway status and clients APIs.
+- Add gateway liveness / offline detection.
 - Expand smoke test coverage for Redis-backed state.
 - Add a manual GitHub Actions smoke workflow without making every push run Docker integration.
 
