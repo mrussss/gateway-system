@@ -94,6 +94,12 @@ TCP protocol test only:
 python3 scripts/tcp_protocol_test.py
 ```
 
+Lightweight benchmark:
+
+```bash
+python3 scripts/benchmark_tcp.py --clients 5 --requests-per-client 10
+```
+
 Current protocol checks cover:
 
 - `AUTH`, `PING`, `ECHO`, `LOG_PUSH`, `STATS`
@@ -322,5 +328,6 @@ Current behavior:
 
 - [Architecture](docs/architecture.md)
 - [Protocol](docs/protocol.md)
+- [Benchmark](docs/benchmark.md)
 - [Failure Cases](docs/failure_cases.md)
 - [Development Plan](docs/vibe_coding.md)
