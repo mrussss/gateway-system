@@ -29,7 +29,13 @@ Go Control Plane
   | POST /metrics/report
   | POST /clients/report
   | POST /tokens
+  | GET  /config
+  | POST /config
+  | POST /config/reload
   | GET  /health
+  | GET  /gateways
+  | GET  /gateways/{gateway_id}/status
+  | GET  /gateways/{gateway_id}/clients
   | GET  /gateway/status
   | GET  /clients
   | GET  /tokens
@@ -47,6 +53,8 @@ Responsibilities:
 - dispatch business requests to worker threads
 - send protocol responses back through the IO loop
 - report metrics and client snapshots to the control plane
+- poll runtime config from the control plane
+- enforce per-process connection limit and rate limit after auth
 
 Connection model:
 
@@ -88,6 +96,55 @@ Important property:
 - `checkAuth()` is synchronous HTTP, but it runs in worker threads rather than the epoll IO loop
 - once auth succeeds, the IO side marks the connection authenticated and later client snapshots report that real `client_id`
 - if auth is invalid or a second request arrives while auth is pending, the connection is closed
+- if auth succeeds but the per-process connection limit is already reached for that `client_id`, the gateway returns `AUTH_RESP` with `allowed=false` and closes the new connection
+
+## Config Flow
+
+The current config flow is:
+
+```text
+gateway startup
+  -> GET /config
+  -> use fetched config on success
+  -> otherwise keep built-in defaults
+
+background poller
+  -> GET /config every polling interval
+  -> replace in-process config only when version increases
+  -> keep current config on fetch or parse failure
+```
+
+Important property:
+
+- `POST /config` replaces the full runtime config in the control plane store
+- `POST /config/reload` is currently a no-op that returns the current version
+- config delivery is pull-based, not push-based
+
+## Metrics And Clients Flow
+
+The current reporting flow is:
+
+```text
+gateway metrics reporter thread
+  -> build gateway counters snapshot
+  -> POST /metrics/report
+  -> build authenticated client snapshot
+  -> POST /clients/report
+
+control plane read APIs
+  -> GET /gateway/status
+  -> GET /gateways
+  -> GET /gateways/{gateway_id}/status
+  -> GET /clients
+  -> GET /gateways/{gateway_id}/clients
+```
+
+Important property:
+
+- `/clients` and `/gateways/{gateway_id}/clients` expose the latest reported authenticated snapshot, not a live socket inspection
+- gateway liveness is computed when status APIs are read
+- query-time liveness is derived from `last_report_time`; it is not written back into Redis
+- offline gateway records are not automatically removed from Redis
 
 ## Go Control Plane
 
@@ -106,6 +163,7 @@ Current storage model:
 - Docker Compose uses Redis for tokens, runtime config, gateway status, and clients
 - `MemoryStore` still exists for local tests and non-Redis runs
 - Redis stores the latest reported state; derived liveness is computed when status APIs are read
+- the control plane does not perform active gateway probing or cleanup of stale gateway keys
 
 ## Deployment Modes
 

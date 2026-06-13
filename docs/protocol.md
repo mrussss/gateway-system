@@ -65,6 +65,7 @@ Rules:
 
 - request payload: JSON object with `client_id` and `token`
 - response type: `AUTH_RESP` on success
+- response type: `AUTH_RESP` with `allowed=false` when the per-process connection limit is exceeded after auth validation
 - connection close on malformed or rejected auth
 
 ## AUTH Rules
@@ -90,6 +91,7 @@ Success path:
 - `token` must be a string
 - the Go control plane must allow the token
 - the connection is then marked authenticated
+- successful `AUTH` returns `{"allowed":true,"reason":"ok"}`
 
 Failure path:
 
@@ -97,12 +99,32 @@ Failure path:
 - missing `client_id` or `token` closes the connection
 - invalid field types close the connection
 - rejected token closes the connection
+- when the control plane is unreachable or returns a store error, auth also fails closed
+
+AUTH pending behavior:
+
+- the first `AUTH` request is queued to a worker thread
+- the connection stays unauthenticated while that worker request is in flight
+- any second packet that arrives before the auth result is applied closes the connection
 
 After auth succeeds:
 
 - business messages are allowed
-- a repeated `AUTH` request returns `ERROR_RESP`
+- a repeated `AUTH` request returns `ERROR_RESP` with `{"status":400,"message":"already authenticated"}`
 - `/clients` reports the authenticated `client_id`
+
+Connection limit behavior:
+
+- after a successful auth result is ready, the gateway counts other authenticated connections for the same `client_id` in the local process
+- if that count would exceed `max_connections_per_client`, the gateway returns `AUTH_RESP` with `{"allowed":false,"reason":"max connections exceeded"}`
+- that response is followed by connection close
+
+Rate-limit behavior:
+
+- after auth succeeds, the gateway enforces `max_requests_per_client_per_second`
+- when the current per-second window is exceeded, the gateway returns `ERROR_RESP`
+- the rate-limit payload is `{"status":429,"message":"rate limited"}`
+- the connection stays open
 
 ## Error Handling
 
@@ -110,6 +132,7 @@ The protocol currently uses two styles of failure:
 
 - `ERROR_RESP` for business-level errors such as duplicate `AUTH` or invalid business payloads
 - direct connection close for malformed protocol frames and rejected auth
+- `AUTH_RESP` with `allowed=false` for connection-limit rejection after otherwise valid auth
 
 ## Test Coverage
 
@@ -124,5 +147,8 @@ Current repo-level protocol tests cover:
 - invalid auth JSON
 - missing auth fields
 - invalid auth field types
+- auth pending second-request rejection
 - duplicate auth rejection
+- per-process max connection rejection
+- per-process rate limiting
 - `/clients` visibility for authenticated clients only

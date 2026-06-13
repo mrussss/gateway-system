@@ -321,7 +321,6 @@ Current behavior:
 
 - Keep the `AUTH` state machine strict and testable.
 - Expand protocol edge-case coverage before changing behavior.
-- Improve documentation so project behavior matches real code.
 - Add optional gateway unregister / cleanup API.
 
 ## More Docs
