@@ -132,36 +132,35 @@ void TcpServer::start()
                                               LOG_INFO("Worker %u received shutdown signal, exiting gracefully.", worker_id);
                                               break;
                                           }
-try
-{
-     Response resp = Dispatch.dispatch(req);
-                                          response_queue_.push(resp);
-                                          LOG_INFO("Worker %u generated Response! fd=%d, type=%d, id=%llu, payload=%s",
-                                                   worker_id,
-                                                   resp.fd,
-                                                   static_cast<int>(resp.type),
-                                                   (unsigned long long)resp.request_id,
-                                                   resp.payload.c_str());
-}
-catch(const std::exception& e)
-{
-   std::cerr << "failed to push response: " << e.what() << std::endl;
-}
-catch(...){
-    std::cerr << "unknown error pushing response!" << std::endl;
-}
-
-                                         
-
+                                          try
+                                          {
+                                              Response resp = Dispatch.dispatch(req);
+                                              response_queue_.push(resp);
+                                              LOG_INFO("Worker %u generated Response! fd=%d, type=%d, id=%llu, payload=%s",
+                                                       worker_id,
+                                                       resp.fd,
+                                                       static_cast<int>(resp.type),
+                                                       (unsigned long long)resp.request_id,
+                                                       resp.payload.c_str());
+                                          }
+                                          catch (const std::exception &e)
+                                          {
+                                              std::cerr << "failed to push response: " << e.what() << std::endl;
+                                          }
+                                          catch (...)
+                                          {
+                                              std::cerr << "unknown error pushing response!" << std::endl;
+                                          }
                                       }
                                   }
                                   catch (const std::exception &e)
                                   {
                                       std::cerr << "worker thread failed: " << e.what() << std::endl;
                                   }
-                                catch(...){
-std::cerr << "worker thread unknown error!" << std::endl;
-                                } });
+                                  catch (...)
+                                  {
+                                      std::cerr << "worker thread unknown error!" << std::endl;
+                                  } });
     }
     startMetricsReporter();
     startConfigPuller();
