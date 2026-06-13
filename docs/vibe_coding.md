@@ -55,17 +55,19 @@ Choose the smallest useful validation:
 
 - keep the AUTH state machine strict
 - keep `/clients` aligned with authenticated state
-- expand edge-case protocol coverage before large design changes
+- keep gateway liveness, Redis-backed status views, and docs aligned
+- keep manual smoke coverage working before considering auto CI
 - keep README and docs aligned with real behavior
-- add smoke CI manually before making it automatic
 
 ## Current Constraints
 
-- auth token is still a demo token
-- control plane state is in memory only
+- AUTH requires explicit token registration through `POST /tokens`
+- Docker Compose uses Redis for tokens, runtime config, gateway status, and clients
+- `MemoryStore` still exists for local tests and non-Redis runs
 - Docker is required for the repo-level smoke test
 - `checkAuth()` is synchronous HTTP, but it already runs in worker threads instead of the epoll thread
-- this is not the phase to add Redis, MySQL, Prometheus, Grafana, or a dashboard frontend
+- the smoke workflow is manual `workflow_dispatch`, not an every-push CI job
+- this is not the phase for broad AI edits, whole-repo refactors, or speculative platform additions
 
 ## What Not To Do Yet
 

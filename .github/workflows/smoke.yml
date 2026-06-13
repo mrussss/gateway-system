@@ -16,3 +16,13 @@ jobs:
 
       - name: Run smoke test
         run: bash scripts/smoke_test.sh
+
+      - name: Dump docker compose state on failure
+        if: failure()
+        run: |
+          docker compose ps
+          docker compose logs --tail=80
+
+      - name: Clean up containers
+        if: always()
+        run: docker compose down --volumes --remove-orphans

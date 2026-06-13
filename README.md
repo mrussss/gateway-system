@@ -78,6 +78,12 @@ Full smoke test:
 bash scripts/smoke_test.sh
 ```
 
+Manual GitHub Actions smoke run:
+
+1. Open the repository Actions tab.
+2. Select the `Smoke` workflow.
+3. Click `Run workflow` on the default branch.
+
 This starts Docker Compose, waits for `GET /health`, checks Redis `PING`, `GET /gateway/status`, `GET /gateways`, `GET /gateways/gateway-001/status`, `GET /clients`, and `GET /gateways/gateway-001/clients`, then runs the TCP protocol test against `localhost:9000`.
 
 Gateway status APIs derive liveness at read time. A gateway is considered `online` when its `last_report_time` is within the default `15s` offline window; otherwise it is returned as `offline`. These derived fields are not stored back into Redis.
@@ -311,7 +317,6 @@ Current behavior:
 - Expand protocol edge-case coverage before changing behavior.
 - Improve documentation so project behavior matches real code.
 - Add failure-case documentation.
-- Add GitHub Actions smoke workflow.
 - Add optional gateway unregister / cleanup API.
 
 ## More Docs
