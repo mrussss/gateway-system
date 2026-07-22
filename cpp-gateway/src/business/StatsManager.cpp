@@ -79,4 +79,24 @@ namespace business
         return active_connections.load();
     }
 
+    void StatsManager::incrementRequestQueueRejected()
+    {
+        request_queue_rejected_++;
+    }
+
+    void StatsManager::incrementResponseQueueRejected()
+    {
+        response_queue_rejected_++;
+    }
+
+    uint64_t StatsManager::getRequestQueueRejected() const
+    {
+        return request_queue_rejected_.load();
+    }
+
+    uint64_t StatsManager::getResponseQueueRejected() const
+    {
+        return response_queue_rejected_.load();
+    }
+
 }

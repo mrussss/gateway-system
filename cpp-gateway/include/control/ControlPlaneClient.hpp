@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 
+#include "control/RuntimeConfig.hpp"
+
 struct GatewayMetrics
 {
     std::string gateway_id;
@@ -20,16 +22,6 @@ struct ClientReport
     std::string client_id;
     std::string remote_addr;
     std::string connected_at;
-};
-
-struct RuntimeConfig
-{
-    int64_t version = 1;
-    int auth_timeout_ms = 1000;
-    int max_payload_size = 4194314;
-    int max_connections_per_client = 2;
-    int max_requests_per_client_per_second = 100;
-    bool fail_open = false;
 };
 
 class ControlPlaneClient

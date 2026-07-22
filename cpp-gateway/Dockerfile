@@ -10,7 +10,11 @@ COPY CMakeLists.txt ./
 COPY include ./include
 COPY src ./src
 
-RUN cmake -S . -B build && cmake --build build
+RUN cmake -S . -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_TESTING=OFF \
+        -DGATEWAY_WARNINGS_AS_ERRORS=ON \
+    && cmake --build build --parallel
 
 FROM ubuntu:22.04
 

@@ -1,20 +1,20 @@
-# 1. 声明最低要求的 CMake 版本和项目名称
-cmake_minimum_required(VERSION 3.10)
-project(MessageServer)
+cmake_minimum_required(VERSION 3.16)
+project(gateway_system VERSION 1.0.0 LANGUAGES CXX)
 
-# 2. 查找系统多线程库
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+include(CTest)
 find_package(Threads REQUIRED)
 
-# 3. 指定头文件搜索路径
-# 这样在 cpp 文件中就可以直接 #include "net/TcpServer.hpp" 
-# 而不用写繁琐的 "../../include/net/TcpServer.hpp" 了
-include_directories(include)
+option(GATEWAY_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+option(GATEWAY_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
-# 4. 定义要编译的源文件列表
-set(SRC_FILES
-    src/main.cpp
+set(GATEWAY_CORE_SOURCES
+    src/common/Logger.cpp
+    src/net/ReactorNotifier.cpp
     src/net/TcpServer.cpp
     src/control/ControlPlaneClient.cpp
+    src/control/RuntimeConfig.cpp
     src/protocol/ProtocolCodec.cpp
     src/business/Dispatcher.cpp
     src/business/Handlers.cpp
@@ -22,12 +22,54 @@ set(SRC_FILES
     src/business/LogStorage.cpp
 )
 
-# 5. 生成可执行文件
-add_executable(message_server ${SRC_FILES})
+add_library(gateway_core STATIC ${GATEWAY_CORE_SOURCES})
+target_include_directories(gateway_core PUBLIC include)
+target_compile_features(gateway_core PUBLIC cxx_std_17)
+target_compile_options(gateway_core PRIVATE -Wall -Wextra -Wpedantic -Wformat=2)
+target_link_libraries(gateway_core PUBLIC Threads::Threads)
 
-# 6. 设置现代 C++ 编译选项
-target_compile_features(message_server PRIVATE cxx_std_17)
-target_compile_options(message_server PRIVATE -Wall -Wextra -O2)
+if(GATEWAY_WARNINGS_AS_ERRORS)
+    target_compile_options(gateway_core PRIVATE -Werror)
+endif()
 
-# 7. 链接跨平台线程库
-target_link_libraries(message_server PRIVATE Threads::Threads)
+if(GATEWAY_ENABLE_SANITIZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        message(FATAL_ERROR "Sanitizers are supported only with GCC or Clang")
+    endif()
+    target_compile_options(gateway_core PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_link_options(gateway_core PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer)
+endif()
+
+add_executable(message_server src/main.cpp)
+target_link_libraries(message_server PRIVATE gateway_core)
+target_compile_options(message_server PRIVATE -Wall -Wextra -Wpedantic -Wformat=2)
+if(GATEWAY_WARNINGS_AS_ERRORS)
+    target_compile_options(message_server PRIVATE -Werror)
+endif()
+
+if(BUILD_TESTING)
+    function(add_gateway_test name source)
+        add_executable(${name} ${source})
+        target_link_libraries(${name} PRIVATE gateway_core)
+        target_compile_options(${name} PRIVATE -Wall -Wextra -Wpedantic -Wformat=2)
+        if(GATEWAY_WARNINGS_AS_ERRORS)
+            target_compile_options(${name} PRIVATE -Werror)
+        endif()
+        add_test(NAME ${name} COMMAND ${name})
+        set_tests_properties(${name} PROPERTIES TIMEOUT 20)
+    endfunction()
+
+    add_gateway_test(protocol_codec_test tests/ProtocolCodecTest.cpp)
+    add_gateway_test(block_queue_test tests/BlockQueueTest.cpp)
+    add_gateway_test(runtime_config_test tests/RuntimeConfigTest.cpp)
+    add_gateway_test(reactor_notifier_test tests/ReactorNotifierTest.cpp)
+    add_gateway_test(server_stop_test tests/ServerStopTest.cpp)
+
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(
+        NAME graceful_shutdown_test
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/GracefulShutdownTest.py
+                $<TARGET_FILE:message_server>
+    )
+    set_tests_properties(graceful_shutdown_test PROPERTIES TIMEOUT 30)
+endif()

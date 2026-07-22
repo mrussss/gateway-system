@@ -10,6 +10,7 @@ struct Connection
     uint64_t conn_id;
     std::string input_buffer;
     std::string output_buffer;
+    size_t write_offset = 0;
     std::string client_id;
     std::string remote_addr;
     std::string connected_at;

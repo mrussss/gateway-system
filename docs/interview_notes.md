@@ -11,7 +11,10 @@
 - added runtime config pull from the control plane into the gateway
 - added Redis-backed control-plane storage for tokens, config, gateway status, and client snapshots
 - added multi-gateway status and per-gateway client visibility APIs
-- added repo-level smoke coverage and a lightweight benchmark entry point
+- added bounded queues with explicit overload policy and rejection telemetry
+- replaced 100ms response polling with eventfd Reactor wakeups
+- added deadline-bounded graceful shutdown and offset-based output buffers
+- added CTest, sanitizer CI, shutdown/overload integration tests, and reproducible benchmarks
 
 ## Component Split
 
@@ -72,14 +75,19 @@
 - `/clients` is eventually consistent because it reflects periodic snapshots, not live socket enumeration from the control plane
 - Redis keeps the design simple for shared state, but the project does not include a durable relational database or analytics stack
 
-## What I Would Improve Next
+## Concurrency And Shutdown
 
-- split the Go control plane out of one large `main.go` into clearer store, handler, config, and liveness modules
-- do a formatting-only cleanup pass on `TcpServer.cpp` before attempting any deeper C++ refactor
-- separate config pulling, metrics reporting, and client reporting out of `TcpServer` into narrower gateway-side components
-- design a cross-gateway connection limit and rate-limit path if multi-gateway fairness becomes a real requirement
-- upgrade the benchmark flow with warmup, broader percentile reporting, and service-side resource sampling
-- keep documentation and interview framing aligned with the real implementation instead of overselling production readiness
+- the Reactor is the sole owner of connection and epoll mutation
+- each response carries fd + conn_id so delayed work cannot target a reused fd
+- Request and Response queues are bounded and all push results are handled
+- successful Worker response pushes notify an eventfd registered in epoll
+- SIGINT/SIGTERM transitions RUNNING → DRAINING → STOPPED and force-closes at a deadline
+
+## Frozen Boundaries
+
+- do not add Kafka, Kubernetes, multi-Reactor, TLS, or a dashboard without measured need
+- synchronous Worker AUTH, single-Reactor IO, and per-process limits are explicit current constraints
+- the next step is ownership learning and fault reproduction, not expanding the stack
 
 ## Demo Commands
 
@@ -126,6 +134,6 @@ python3 scripts/benchmark_tcp.py --clients 5 --requests-per-client 10
 
 ## Resume Bullets
 
-- Built a C++17 TCP gateway with `epoll`, worker-thread request processing, and a custom AUTH-gated binary protocol.
+- Built a C++17 TCP gateway with `epoll` ET, eventfd cross-thread wakeups, bounded Worker queues, fd-generation checks, and an AUTH-gated binary protocol.
 - Implemented a Go control plane with Redis-backed APIs for auth, runtime config, gateway metrics, and multi-gateway client visibility.
-- Added runtime config pull, per-process rate limiting, connection-limit enforcement, smoke automation, and local benchmark tooling for end-to-end verification.
+- Added atomic runtime config updates, explicit overload protection, deadline-bounded shutdown, CTest/sanitizer CI, smoke automation, and percentile/resource benchmark evidence.

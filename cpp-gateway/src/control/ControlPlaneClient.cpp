@@ -41,8 +41,8 @@ bool ControlPlaneClient::checkAuth(const std::string &client_id, const std::stri
         auto json = nlohmann::json::parse(response_body);
         bool allowed = json.value("allowed", false);
         std::string reason = json.value("reason", "");
-        LOG_INFO("control plane auth result: client_id=%s allowed=%d reason=%s",
-                 client_id.c_str(), allowed ? 1 : 0, reason.c_str());
+        LOG_DEBUG("control plane auth result: client_id=%s allowed=%d reason=%s",
+                  client_id.c_str(), allowed ? 1 : 0, reason.c_str());
         return allowed;
     }
     catch (const std::exception &e)
@@ -61,36 +61,14 @@ bool ControlPlaneClient::fetchConfig(RuntimeConfig &config) const
         return false;
     }
 
-    try
+    RuntimeConfig parsed;
+    if (!parseRuntimeConfig(response_body, parsed))
     {
-        auto json = nlohmann::json::parse(response_body);
-
-        RuntimeConfig parsed;
-        parsed.version = json.at("version").get<int64_t>();
-        parsed.auth_timeout_ms = json.at("auth_timeout_ms").get<int>();
-        parsed.max_payload_size = json.at("max_payload_size").get<int>();
-        parsed.max_connections_per_client = json.at("max_connections_per_client").get<int>();
-        parsed.max_requests_per_client_per_second = json.at("max_requests_per_client_per_second").get<int>();
-        parsed.fail_open = json.at("fail_open").get<bool>();
-
-        if (parsed.version <= 0 ||
-            parsed.auth_timeout_ms <= 0 ||
-            parsed.max_payload_size <= 0 ||
-            parsed.max_connections_per_client <= 0 ||
-            parsed.max_requests_per_client_per_second <= 0)
-        {
-            LOG_ERROR("%s", "control plane config validation failed");
-            return false;
-        }
-
-        config = parsed;
-        return true;
-    }
-    catch (const std::exception &e)
-    {
-        LOG_ERROR("control plane config parse failed: %s", e.what());
+        LOG_ERROR("%s", "control plane config parse or validation failed");
         return false;
     }
+    config = parsed;
+    return true;
 }
 
 bool ControlPlaneClient::reportMetrics(const GatewayMetrics &metrics) const
@@ -240,7 +218,7 @@ int ControlPlaneClient::connectWithTimeout() const
 
     for (addrinfo *rp = result; rp != nullptr; rp = rp->ai_next)
     {
-        int fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        int fd = socket(rp->ai_family, rp->ai_socktype | SOCK_CLOEXEC, rp->ai_protocol);
         if (fd == -1)
         {
             continue;
@@ -254,7 +232,7 @@ int ControlPlaneClient::connectWithTimeout() const
         }
 
         int ret = connect(fd, rp->ai_addr, rp->ai_addrlen);
-        if (ret == -1 && errno != EINPROGRESS)
+        if (ret == -1 && errno != EINPROGRESS && errno != EINTR)
         {
             close(fd);
             continue;
@@ -311,11 +289,19 @@ bool ControlPlaneClient::sendAll(int fd, const std::string &data) const
     while (sent < data.size())
     {
         ssize_t n = send(fd, data.data() + sent, data.size() - sent, MSG_NOSIGNAL);
+        if (n > 0)
+        {
+            sent += static_cast<size_t>(n);
+            continue;
+        }
+        if (n == -1 && errno == EINTR)
+        {
+            continue;
+        }
         if (n <= 0)
         {
             return false;
         }
-        sent += static_cast<size_t>(n);
     }
     return true;
 }
@@ -335,6 +321,10 @@ std::string ControlPlaneClient::readResponse(int fd) const
         if (n == 0)
         {
             break;
+        }
+        if (errno == EINTR)
+        {
+            continue;
         }
         if (errno == EAGAIN || errno == EWOULDBLOCK)
         {

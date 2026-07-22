@@ -191,6 +191,21 @@ func TestClientsReportAndList(t *testing.T) {
 	}})
 }
 
+func TestClientsListUsesEmptyArrayInsteadOfNull(t *testing.T) {
+	store = newMemoryStore()
+	req := httptest.NewRequest(http.MethodGet, "/clients", nil)
+	resp := httptest.NewRecorder()
+
+	routes().ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.Code)
+	}
+	if strings.TrimSpace(resp.Body.String()) != "[]" {
+		t.Fatalf("expected empty JSON array, got %q", resp.Body.String())
+	}
+}
+
 func TestListGatewaysReturnsSortedStatuses(t *testing.T) {
 	store = newMemoryStore()
 	router := routes()

@@ -59,7 +59,20 @@ Rules:
 
 - request payload: empty
 - response type: `STATS_RESP`
-- response payload: JSON counters for requests, errors, bytes, active connections, and queue backlog
+- response payload: JSON counters for requests, errors, bytes, active connections, and queue state
+
+Queue fields:
+
+```text
+total_request_queue_backlog
+total_response_queue_backlog
+request_queue_capacity
+response_queue_capacity
+request_queue_peak
+response_queue_peak
+request_queue_rejected
+response_queue_rejected
+```
 
 `AUTH`
 
@@ -67,6 +80,7 @@ Rules:
 - response type: `AUTH_RESP` on success
 - response type: `AUTH_RESP` with `allowed=false` when the per-process connection limit is exceeded after auth validation
 - connection close on malformed or rejected auth
+- `AUTH_RESP` with status 503 followed by close when the Request Queue is full
 
 ## AUTH Rules
 
@@ -133,6 +147,7 @@ The protocol currently uses two styles of failure:
 - `ERROR_RESP` for business-level errors such as duplicate `AUTH` or invalid business payloads
 - direct connection close for malformed protocol frames and rejected auth
 - `AUTH_RESP` with `allowed=false` for connection-limit rejection after otherwise valid auth
+- an explicit status 503 response for Request Queue overload
 
 ## Test Coverage
 
@@ -152,3 +167,6 @@ Current repo-level protocol tests cover:
 - per-process max connection rejection
 - per-process rate limiting
 - `/clients` visibility for authenticated clients only
+- queue capacity/peak/rejection telemetry
+- Request Queue overload response and close policy
+- bounded graceful shutdown and slow-client deadline (CTest integration)

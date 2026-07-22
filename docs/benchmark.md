@@ -1,132 +1,52 @@
 # Benchmark
 
-`scripts/benchmark_tcp.py` is a lightweight benchmark entry point for the current TCP gateway. It is meant for local pressure checks, not for publishing fixed performance numbers.
+`scripts/benchmark_tcp.py` reports success/failure, QPS, average, P50/P95/P99/Max, optional gateway CPU/RSS, and Request/Response Queue telemetry.
 
-## What It Does
+## Modes
 
-Each benchmark client does the following:
+- `--mode steady`: register tokens, connect, and authenticate all clients before starting the timer. This isolates the authenticated TCP data path.
+- `--mode full`: include token registration, TCP connect, and AUTH in total elapsed time. Per-request latency still measures the selected business request.
 
-- registers its own token through `POST /tokens`
-- opens one TCP connection to the gateway
-- sends `AUTH`
-- sends the configured number of requests and waits for each response
-- closes the connection
-
-The script does not update `/config`, so it avoids mutating shared runtime limits during a benchmark run.
-
-## Supported Arguments
+Example:
 
 ```bash
 python3 scripts/benchmark_tcp.py \
-  --host 127.0.0.1 \
-  --port 9000 \
-  --control-plane http://127.0.0.1:8080 \
-  --clients 5 \
-  --requests-per-client 10 \
-  --message echo \
-  --payload "benchmark payload" \
-  --client-id-prefix bench-client
+  --mode steady \
+  --build-mode Release \
+  --clients 10 \
+  --requests-per-client 100 \
+  --message ping \
+  --gateway-pid "$(pgrep -n -x message_server)"
 ```
 
-Supported `--message` values:
+`--gateway-pid` works only when the gateway is a local Linux process. It samples `/proc`; omit it for Docker or remote targets.
 
-- `ping`
-- `echo`
-- `log_push`
-- `stats`
+## Eventfd result
 
-Each client uses a distinct `client_id` derived from `--client-id-prefix`.
-
-## Output Fields
-
-The script always prints:
-
-- `total_requests`
-- `success`
-- `failed`
-- `elapsed_seconds`
-- `requests_per_second`
-- `avg_latency_ms`
-- `p95_latency_ms`
-
-Example output shape:
+Before this change, the Reactor called `epoll_wait(..., 100)` and drained the Response Queue only after epoll returned. The historical one-connection average was approximately 100ms. The current Worker path performs:
 
 ```text
-total_requests=50
-success=50
-failed=0
-elapsed_seconds=0.428
-requests_per_second=116.75
-avg_latency_ms=7.91
-p95_latency_ms=12.34
+successful response_queue.push
+  → eventfd write
+  → epoll_wait returns immediately
+  → eventfd read until EAGAIN
+  → Response Queue drain
 ```
 
-These numbers are examples of the output format only. Re-run the benchmark in your own environment to get real results.
+Reference runs on 2026-07-22 used a local Release build, the in-memory Go control plane, ping requests, 4 workers, and queue capacities of 8192:
 
-## Test Environment
+| Clients × requests | Success | QPS | Avg | P50 | P95 | P99 | Max | Gateway CPU | Peak RSS |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 × 100 | 100 | 2947.57 | 0.33ms | 0.28ms | 0.60ms | 0.82ms | 0.93ms | 29.48% | 3584 KiB |
+| 10 × 100 | 1000 | 3699.42 | 2.64ms | 2.47ms | 4.77ms | 5.90ms | 7.98ms | 33.29% | 3840 KiB |
+| 100 × 100 | 10000 | 4459.63 | 21.78ms | 20.54ms | 39.57ms | 49.77ms | 71.57ms | 32.56% | 3840 KiB |
 
-The current reference runs were collected on:
+No Request/Response Queue rejection occurred. Process-lifetime observed queue peaks were 1 at one client and 5 at 10/100 clients.
 
-- `Ubuntu 22.04.5 LTS on WSL2`
-- `Intel(R) Core(TM) i9-14900HX`
-- `32 vCPU`
-- `15 GiB RAM`
-- `Docker Engine 29.5.3`
-- `Docker Compose 5.1.4`
-- `Test date: 2026-06-13`
+A 10-client × 20-request full-path Echo run completed 200/200 requests at 2513.29 QPS; request P50/P95/P99 were 2.57/5.11/6.91ms. Full-path QPS is not directly comparable with steady-state QPS because it includes HTTP token registration and AUTH setup.
 
-These numbers are local validation results only. They are useful for this repo's current baseline, not as a production performance claim.
+## Interpretation and limits
 
-## Observed Results
+The important result is removal of the deterministic ~100ms low-load wait, not an absolute QPS claim. These runs use loopback, a short request/response pattern, one machine, and no TLS. Python client scheduling affects higher-concurrency percentiles. Re-run on the target machine and record CPU model, kernel, compiler, build flags, payload, process placement, and control-plane backend before publishing other numbers.
 
-Small local check:
-
-```bash
-python3 scripts/benchmark_tcp.py --clients 5 --requests-per-client 10
-```
-
-Observed output:
-
-```text
-total_requests=50
-success=50
-failed=0
-elapsed_seconds=0.114
-requests_per_second=439.60
-avg_latency_ms=2.45
-p95_latency_ms=1.02
-```
-
-Higher-pressure local check:
-
-```bash
-python3 scripts/benchmark_tcp.py --clients 50 --requests-per-client 100 --message ping
-```
-
-Observed output:
-
-```text
-total_requests=5000
-success=5000
-failed=0
-elapsed_seconds=0.930
-requests_per_second=5377.02
-avg_latency_ms=6.47
-p95_latency_ms=11.71
-```
-
-## Suggested Runs
-
-Small local check:
-
-```bash
-python3 scripts/benchmark_tcp.py --clients 5 --requests-per-client 10
-```
-
-Higher-pressure local check:
-
-```bash
-python3 scripts/benchmark_tcp.py --clients 50 --requests-per-client 100 --message ping
-```
-
-Run Docker Compose first if the gateway and control plane are not already running.
+Useful scenarios are 1/10/100/500 clients, slow readers, and deliberately small queue capacities. Overload tests should report rejection counters rather than hiding failed requests.

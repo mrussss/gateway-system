@@ -1,79 +1,124 @@
 #pragma once
 
 #include <atomic>
-#include <vector>
+#include <chrono>
+#include <condition_variable>
+#include <csignal>
+#include <cstddef>
+#include <cstdint>
+#include <mutex>
+#include <string>
 #include <thread>
 #include <unordered_map>
-#include <string>
-#include <mutex>
-#include <sys/epoll.h>
-#include "net/Connection.hpp"
-#include "protocol/Request.hpp"
-#include "protocol/Response.hpp"
+#include <utility>
+#include <vector>
+
 #include "concurrent/BlockQueue.hpp"
 #include "control/ControlPlaneClient.hpp"
+#include "net/Connection.hpp"
+#include "net/ReactorNotifier.hpp"
+#include "protocol/Request.hpp"
+#include "protocol/Response.hpp"
+
+enum class ServerState
+{
+    RUNNING,
+    DRAINING,
+    STOPPED,
+};
 
 class TcpServer
 {
 public:
-    TcpServer(int port);
+    explicit TcpServer(int port);
     TcpServer(int port, std::string control_plane_host, int control_plane_port);
-    TcpServer(int port, std::string control_plane_host, int control_plane_port, std::string gateway_id);
+    TcpServer(int port, std::string control_plane_host, int control_plane_port,
+              std::string gateway_id, size_t request_queue_capacity = 4096,
+              size_t response_queue_capacity = 4096, int shutdown_timeout_ms = 5000,
+              unsigned int worker_count = 0);
     ~TcpServer();
+
+    TcpServer(const TcpServer &) = delete;
+    TcpServer &operator=(const TcpServer &) = delete;
 
     void start();
     void stop();
-    static void static_sigint_handler(int sig);
-    static TcpServer *getInstance()
-    {
-        return instance_;
-    }
-    size_t getRequestQueueSize()
-    {
-        return request_queue_.size();
-    }
-    size_t getResponseQueueSize()
-    {
-        return response_queue_.size();
-    }
+    static void staticSignalHandler(int signal_number);
+    static TcpServer *getInstance() { return instance_; }
+
+    size_t getRequestQueueSize() const { return request_queue_.size(); }
+    size_t getResponseQueueSize() const { return response_queue_.size(); }
+    size_t getRequestQueueCapacity() const { return request_queue_.capacity(); }
+    size_t getResponseQueueCapacity() const { return response_queue_.capacity(); }
+    size_t getRequestQueuePeakSize() const { return request_queue_.peakSize(); }
+    size_t getResponseQueuePeakSize() const { return response_queue_.peakSize(); }
     RuntimeConfig getRuntimeConfigSnapshot();
+    ServerState state() const noexcept { return state_.load(); }
 
 private:
     void initServer();
     void loop();
+    void beginDraining();
+    void finishShutdown();
+    bool drainComplete();
+    int epollTimeoutMs() const;
+    void closeListener();
+
     void handleAccept();
     void handleRead(int fd);
     void handleWrite(int fd);
     void drainResponseQueue();
+    void drainRejectedResponses();
+    void applyResponse(Response response);
+    bool enqueueWorkerResponse(Response response);
     void closeConnection(int fd);
     bool decodeAndEnqueue(int fd);
     bool modifyConnectionEvents(int fd, uint32_t events);
+    uint32_t connectionEvents(bool wants_write) const;
+
     void startMetricsReporter();
     void startConfigPuller();
     void metricsReporterLoop();
     void configPullerLoop();
-    size_t countAuthenticatedConnectionsForClientLocked(const std::string &client_id, int exclude_fd) const;
-    bool allowRequestForClientLocked(const std::string &client_id, const RuntimeConfig &config);
+    size_t countAuthenticatedConnectionsForClientLocked(const std::string &client_id,
+                                                        int exclude_fd) const;
+    bool allowRequestForClientLocked(const std::string &client_id,
+                                     const RuntimeConfig &config);
     std::vector<ClientReport> buildClientSnapshot();
 
     struct RateLimitWindow
     {
-        int64_t unix_second = 0;
+        std::chrono::steady_clock::time_point started_at{};
         int count = 0;
     };
 
     int port_;
-    int listen_fd_;
-    int epfd_;
+    int listen_fd_ = -1;
+    int epfd_ = -1;
     static TcpServer *instance_;
-    std::atomic<bool> running_{false};
-    std::atomic<bool> is_stopped_{false};
-    std::atomic<uint64_t> next_conn_id_{1};
+    static volatile std::sig_atomic_t signal_stop_requested_;
 
+    std::atomic<ServerState> state_{ServerState::STOPPED};
+    std::atomic<bool> started_{false};
+    std::atomic<bool> shutdown_finished_{false};
+    std::atomic<bool> stop_requested_{false};
+    std::atomic<unsigned int> workers_remaining_{0};
+    std::thread::id loop_thread_id_{};
+    std::chrono::steady_clock::time_point shutdown_deadline_{};
+    const std::chrono::milliseconds shutdown_timeout_;
+    const unsigned int configured_worker_count_;
+    std::mutex stopped_mutex_;
+    std::condition_variable stopped_cv_;
+
+    std::atomic<uint64_t> next_conn_id_{1};
     BlockQueue<Request> request_queue_;
     BlockQueue<Response> response_queue_;
+    ReactorNotifier notifier_;
+    std::mutex rejected_responses_mutex_;
+    std::unordered_map<int, uint64_t> rejected_response_connections_;
+
     std::unordered_map<int, Connection> connections_;
-    std::mutex connections_mutex_;
+    mutable std::mutex connections_mutex_;
     std::vector<std::thread> workers_;
     std::thread metrics_reporter_;
     std::thread config_puller_;

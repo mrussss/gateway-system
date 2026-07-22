@@ -4,28 +4,76 @@ on:
   push:
   pull_request:
 
-jobs:
-  verify:
-    runs-on: ubuntu-latest
+permissions:
+  contents: read
 
+jobs:
+  cpp:
+    name: C++ build and CTest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Configure Debug build
+        run: >-
+          cmake -S cpp-gateway -B cpp-gateway/build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DGATEWAY_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build cpp-gateway/build --parallel 2
+      - name: Run CTest
+        run: ctest --test-dir cpp-gateway/build --output-on-failure
 
+  cpp-sanitizers:
+    name: C++ ASan and UBSan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure sanitizer build
+        run: >-
+          cmake -S cpp-gateway -B cpp-gateway/build-sanitized
+          -DCMAKE_BUILD_TYPE=Debug
+          -DGATEWAY_WARNINGS_AS_ERRORS=ON
+          -DGATEWAY_ENABLE_SANITIZERS=ON
+      - name: Build
+        run: cmake --build cpp-gateway/build-sanitized --parallel 2
+      - name: Run CTest under sanitizers
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir cpp-gateway/build-sanitized --output-on-failure
+
+  go:
+    name: Go test, race, and vet
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go-control-plane/go.mod
-
-      - name: Test Go control plane
+          cache-dependency-path: go-control-plane/go.sum
+      - name: Unit tests
         working-directory: go-control-plane
         run: go test ./...
+      - name: Race detector
+        working-directory: go-control-plane
+        run: go test -race ./...
+      - name: Vet
+        working-directory: go-control-plane
+        run: go vet ./...
 
-      - name: Build C++ gateway
-        working-directory: cpp-gateway
-        run: |
-          cmake -S . -B build
-          cmake --build build
-
+  config-and-scripts:
+    name: Compose and script checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
       - name: Validate Docker Compose config
         run: docker compose config
+      - name: Check shell syntax
+        run: bash -n scripts/*.sh
+      - name: Check Python syntax
+        run: python3 -m compileall -q scripts cpp-gateway/scripts cpp-gateway/tests

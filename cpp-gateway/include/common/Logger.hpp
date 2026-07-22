@@ -1,41 +1,18 @@
 #pragma once
-#include <iostream>
-#include <thread>
+
 #include <cstdio>
-#include <functional>
-#include <mutex>
 
-inline std::mutex g_log_mutex;
+#if defined(__GNUC__) || defined(__clang__)
+#define GATEWAY_PRINTF_FORMAT(string_index, first_argument) \
+    __attribute__((format(printf, string_index, first_argument)))
+#else
+#define GATEWAY_PRINTF_FORMAT(string_index, first_argument)
+#endif
 
-// variadic template logging
-template <typename... Args>
-inline void LOG_INFO(const char *fmt, Args... args)
-{
-    std::lock_guard<std::mutex> lock(g_log_mutex);
-    printf("[INFO] [Thread %zu] ", std::hash<std::thread::id>{}(std::this_thread::get_id()));
-    if constexpr (sizeof...(Args) == 0)
-    {
-        printf("%s", fmt);
-    }
-    else
-    {
-        printf(fmt, args...);
-    }
-    printf("\n");
-}
+void gatewayLog(FILE *stream, const char *level, const char *format, ...)
+    GATEWAY_PRINTF_FORMAT(3, 4);
+void gatewayDebugLog(const char *format, ...) GATEWAY_PRINTF_FORMAT(1, 2);
 
-template <typename... Args>
-inline void LOG_ERROR(const char *fmt, Args... args)
-{
-    std::lock_guard<std::mutex> lock(g_log_mutex);
-    fprintf(stderr, "[ERROR] [Thread %zu] ", std::hash<std::thread::id>{}(std::this_thread::get_id()));
-    if constexpr (sizeof...(Args) == 0)
-    {
-        fprintf(stderr, "%s", fmt);
-    }
-    else
-    {
-        fprintf(stderr, fmt, args...);
-    }
-    fprintf(stderr, "\n");
-}
+#define LOG_DEBUG(...) gatewayDebugLog(__VA_ARGS__)
+#define LOG_INFO(...) gatewayLog(stdout, "INFO", __VA_ARGS__)
+#define LOG_ERROR(...) gatewayLog(stderr, "ERROR", __VA_ARGS__)

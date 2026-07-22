@@ -164,6 +164,9 @@ func handleClients(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w)
 		return
 	}
+	if clients == nil {
+		clients = make([]clientInfo, 0)
+	}
 	writeJSON(w, http.StatusOK, clients)
 }
 
@@ -177,6 +180,9 @@ func handleGatewayClientsByID(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		writeJSON(w, http.StatusNotFound, errorResponse{Error: "gateway clients not reported"})
 		return
+	}
+	if clients == nil {
+		clients = make([]clientInfo, 0)
 	}
 	writeJSON(w, http.StatusOK, clients)
 }

@@ -20,6 +20,8 @@ namespace business
         void incrementWriteBytes(size_t byte_nums);
         void incrementConnections();
         void decrementConnections();
+        void incrementRequestQueueRejected();
+        void incrementResponseQueueRejected();
 
         uint64_t getTotalRequests() const;
         uint64_t getTotalLogMessages() const;
@@ -27,6 +29,8 @@ namespace business
         uint64_t getReadBytes() const;
         uint64_t getWriteBytes() const;
         uint64_t getConnections() const;
+        uint64_t getRequestQueueRejected() const;
+        uint64_t getResponseQueueRejected() const;
 
     private:
         StatsManager() = default;
@@ -38,5 +42,7 @@ namespace business
         std::atomic<uint64_t> active_connections{0};
         std::atomic<uint64_t> total_bytes_read{0};
         std::atomic<uint64_t> total_bytes_sent{0};
+        std::atomic<uint64_t> request_queue_rejected_{0};
+        std::atomic<uint64_t> response_queue_rejected_{0};
     };
 }

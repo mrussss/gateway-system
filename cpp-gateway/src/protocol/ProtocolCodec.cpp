@@ -43,6 +43,10 @@ DecodeStatus ProtocolCodec::decode(std::string &input_buffer, int fd, std::vecto
     {
 
         size_t remaining = input_buffer.size() - read_index;
+        if (remaining == 0)
+        {
+            break;
+        }
         // not enough for 4-byte header → need more data
         if (remaining < 4)
         {

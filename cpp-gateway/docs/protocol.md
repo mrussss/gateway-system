@@ -132,6 +132,12 @@ STATS_RESP 的 payload 为 JSON 格式，包含以下统计字段：
 | active_connections | uint64 | 当前活跃连接数 |
 | total_request_queue_backlog | uint64 | 请求队列积压数 |
 | total_response_queue_backlog | uint64 | 响应队列积压数 |
+| request_queue_capacity | uint64 | 请求队列容量 |
+| response_queue_capacity | uint64 | 响应队列容量 |
+| request_queue_peak | uint64 | 进程生命周期内请求队列峰值 |
+| response_queue_peak | uint64 | 进程生命周期内响应队列峰值 |
+| request_queue_rejected | uint64 | 请求队列拒绝数 |
+| response_queue_rejected | uint64 | 响应队列拒绝数 |
 
 ### 4.6 ERROR_RESP
 
@@ -151,6 +157,7 @@ STATS_RESP 的 payload 为 JSON 格式，包含以下统计字段：
 | JSON 格式错误 | `{"status":400,"message":"invalid json"}` |
 | JSON 字段校验失败 | `{"status":400,"message":"invalid log format"}` |
 | 日志写入失败 | `{"status":500,"message":"log write failed."}` |
+| 请求队列过载 | `{"status":503,"message":"gateway overloaded"}` |
 
 ---
 

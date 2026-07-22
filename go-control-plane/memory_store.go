@@ -19,6 +19,7 @@ type memoryStore struct {
 
 func newMemoryStore() *memoryStore {
 	return &memoryStore{
+		clients:          make([]clientInfo, 0),
 		statusByGateway:  map[string]gatewayStatusResponse{},
 		clientsByGateway: map[string][]clientInfo{},
 		gateways:         map[string]struct{}{},
@@ -46,7 +47,7 @@ func (s *memoryStore) getStatus() (gatewayStatusResponse, bool, error) {
 }
 
 func (s *memoryStore) saveClients(gatewayID string, clients []clientInfo) error {
-	copied := append([]clientInfo(nil), clients...)
+	copied := append(make([]clientInfo, 0, len(clients)), clients...)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -59,7 +60,7 @@ func (s *memoryStore) saveClients(gatewayID string, clients []clientInfo) error 
 func (s *memoryStore) getClients() ([]clientInfo, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return append([]clientInfo(nil), s.clients...), nil
+	return append(make([]clientInfo, 0, len(s.clients)), s.clients...), nil
 }
 
 func (s *memoryStore) listGateways() ([]gatewayStatusResponse, error) {
@@ -88,7 +89,7 @@ func (s *memoryStore) getGatewayClients(gatewayID string) ([]clientInfo, bool, e
 	if !ok {
 		return nil, false, nil
 	}
-	return append([]clientInfo(nil), clients...), true, nil
+	return append(make([]clientInfo, 0, len(clients)), clients...), true, nil
 }
 
 func (s *memoryStore) setToken(clientID string, token string) error {

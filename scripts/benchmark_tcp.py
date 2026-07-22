@@ -4,6 +4,7 @@
 import argparse
 import json
 import math
+import os
 import socket
 import struct
 import threading
@@ -111,11 +112,44 @@ def build_payload(message: str, payload_text: str) -> bytes:
 
 
 def percentile_95(latencies_ms: list[float]) -> float:
+    return percentile(latencies_ms, 0.95)
+
+
+def percentile(latencies_ms: list[float], fraction: float) -> float:
     if not latencies_ms:
         return 0.0
     sorted_values = sorted(latencies_ms)
-    index = max(0, min(len(sorted_values) - 1, math.ceil(len(sorted_values) * 0.95) - 1))
+    index = max(0, min(len(sorted_values) - 1, math.ceil(len(sorted_values) * fraction) - 1))
     return sorted_values[index]
+
+
+def read_process_sample(pid: int | None) -> tuple[float, int, int] | None:
+    if pid is None:
+        return None
+    try:
+        stat_fields = open(f"/proc/{pid}/stat", encoding="utf-8").read().split()
+        cpu_seconds = (int(stat_fields[13]) + int(stat_fields[14])) / os.sysconf("SC_CLK_TCK")
+        status = open(f"/proc/{pid}/status", encoding="utf-8").read().splitlines()
+        values = {line.split(":", 1)[0]: line.split()[1] for line in status if ":" in line and len(line.split()) >= 2}
+        rss_kib = int(values.get("VmRSS", "0"))
+        peak_rss_kib = int(values.get("VmHWM", "0"))
+        return cpu_seconds, rss_kib, peak_rss_kib
+    except (FileNotFoundError, IndexError, OSError, ValueError):
+        return None
+
+
+def fetch_gateway_stats(args: argparse.Namespace) -> dict[str, int]:
+    client_id = f"{args.client_id_prefix}-stats-observer"
+    token = "benchmark-stats-token"
+    register_token(args.control_plane, client_id, token)
+    with socket.create_connection((args.host, args.port), timeout=5.0) as sock:
+        sock.settimeout(5.0)
+        authenticate(sock, client_id, token)
+        sock.sendall(packet(STATS, 2))
+        response = recv_response(sock)
+        if response.msg_type != STATS_RESP:
+            raise RuntimeError(f"unexpected STATS response: {response}")
+        return json.loads(response.payload.decode("utf-8"))
 
 
 def run_client(
@@ -124,6 +158,9 @@ def run_client(
     latencies_ms: list[float],
     counters: dict[str, int],
     lock: threading.Lock,
+    ready_condition: threading.Condition,
+    ready_count: list[int],
+    start_event: threading.Event,
 ) -> None:
     client_id = f"{args.client_id_prefix}-{client_index:04d}"
     token = f"benchmark-token-{client_index:04d}"
@@ -135,6 +172,11 @@ def run_client(
         with socket.create_connection((args.host, args.port), timeout=5.0) as sock:
             sock.settimeout(5.0)
             authenticate(sock, client_id, token)
+            if args.mode == "steady":
+                with ready_condition:
+                    ready_count[0] += 1
+                    ready_condition.notify_all()
+                start_event.wait()
             local_success = 0
             local_failed = 0
             local_latencies: list[float] = []
@@ -166,6 +208,10 @@ def run_client(
     except Exception:
         with lock:
             counters["failed"] += args.requests_per_client
+        if args.mode == "steady" and not start_event.is_set():
+            with ready_condition:
+                ready_count[0] += 1
+                ready_condition.notify_all()
 
 
 def parse_args() -> argparse.Namespace:
@@ -178,6 +224,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--message", choices=sorted(MESSAGE_TYPES.keys()), default="echo")
     parser.add_argument("--payload", default="benchmark payload")
     parser.add_argument("--client-id-prefix", default="bench-client")
+    parser.add_argument(
+        "--mode",
+        choices=("steady", "full"),
+        default="steady",
+        help="steady excludes token registration/connect/AUTH from elapsed time; full includes setup",
+    )
+    parser.add_argument("--gateway-pid", type=int, help="optional local PID for CPU/RSS sampling")
+    parser.add_argument("--build-mode", default="unknown", help="label printed with the result")
     return parser.parse_args()
 
 
@@ -192,17 +246,31 @@ def main() -> int:
     }
     latencies_ms: list[float] = []
     lock = threading.Lock()
+    ready_condition = threading.Condition()
+    ready_count = [0]
+    start_event = threading.Event()
     threads = []
-    started = time.perf_counter()
+    started = time.perf_counter() if args.mode == "full" else 0.0
+    process_before = read_process_sample(args.gateway_pid) if args.mode == "full" else None
 
     for client_index in range(args.clients):
         thread = threading.Thread(
             target=run_client,
-            args=(client_index, args, latencies_ms, counters, lock),
+            args=(client_index, args, latencies_ms, counters, lock,
+                  ready_condition, ready_count, start_event),
             daemon=False,
         )
         thread.start()
         threads.append(thread)
+
+    if args.mode == "steady":
+        with ready_condition:
+            ready_condition.wait_for(lambda: ready_count[0] == args.clients, timeout=30.0)
+        if ready_count[0] != args.clients:
+            raise RuntimeError("timed out preparing steady-state clients")
+        process_before = read_process_sample(args.gateway_pid)
+        started = time.perf_counter()
+        start_event.set()
 
     for thread in threads:
         thread.join()
@@ -211,14 +279,43 @@ def main() -> int:
     total_requests = args.clients * args.requests_per_client
     avg_latency_ms = sum(latencies_ms) / len(latencies_ms) if latencies_ms else 0.0
     requests_per_second = counters["success"] / elapsed_seconds if elapsed_seconds > 0 else 0.0
+    process_after = read_process_sample(args.gateway_pid)
 
+    print(f"mode={args.mode}")
+    print(f"build_mode={args.build_mode}")
+    print(f"clients={args.clients}")
     print(f"total_requests={total_requests}")
     print(f"success={counters['success']}")
     print(f"failed={counters['failed']}")
     print(f"elapsed_seconds={elapsed_seconds:.3f}")
     print(f"requests_per_second={requests_per_second:.2f}")
     print(f"avg_latency_ms={avg_latency_ms:.2f}")
+    print(f"p50_latency_ms={percentile(latencies_ms, 0.50):.2f}")
     print(f"p95_latency_ms={percentile_95(latencies_ms):.2f}")
+    print(f"p99_latency_ms={percentile(latencies_ms, 0.99):.2f}")
+    print(f"max_latency_ms={max(latencies_ms, default=0.0):.2f}")
+    if process_before is not None and process_after is not None:
+        cpu_delta = max(0.0, process_after[0] - process_before[0])
+        cpu_percent = cpu_delta / elapsed_seconds * 100.0 if elapsed_seconds > 0 else 0.0
+        print(f"gateway_cpu_percent={cpu_percent:.2f}")
+        print(f"gateway_rss_kib={process_after[1]}")
+        print(f"gateway_peak_rss_kib={process_after[2]}")
+    try:
+        stats = fetch_gateway_stats(args)
+        for field in (
+            "total_request_queue_backlog",
+            "total_response_queue_backlog",
+            "request_queue_capacity",
+            "response_queue_capacity",
+            "request_queue_peak",
+            "response_queue_peak",
+            "request_queue_rejected",
+            "response_queue_rejected",
+        ):
+            if field in stats:
+                print(f"{field}={stats[field]}")
+    except Exception as error:  # benchmark results remain useful if observability fails
+        print(f"stats_error={error}")
     return 0 if counters["failed"] == 0 else 1
 
 

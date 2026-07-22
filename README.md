@@ -1,70 +1,54 @@
 # Gateway System
 
-`gateway-system` is a backend infrastructure practice project built around a C++ TCP gateway and a Go control plane.
+`gateway-system` is a compact C++/Go backend system built around a custom TCP data plane and an HTTP control plane. The repository focuses on Linux networking correctness, bounded concurrency, observable overload behavior, deterministic shutdown, and repeatable tests rather than adding more infrastructure products.
 
-It is intentionally small in scope: one custom TCP protocol server, one HTTP control plane, Docker Compose for local integration, and smoke tests that exercise the full path.
+## What is implemented
 
-## Project Status
-
-This repository is currently a stage-complete practice project for a `C++ Data Plane + Go Control Plane + Redis State Plane` design.
-
-- implemented: custom TCP protocol, connection-level `AUTH`, runtime config pull, per-process connection limit, per-process rate limit, Redis-backed shared state, multi-gateway status views, protocol tests, smoke tests, and a lightweight benchmark entry point
-- suitable for: internship-level discussion around Linux networking, `epoll`, request dispatch, control-plane/data-plane separation, and operational tradeoffs
-- current limits: not a production-grade gateway, no cross-gateway global connection limit or rate limit, query-time derived liveness only, and intentionally lightweight control-plane / benchmark tooling
+- C++17 TCP gateway using non-blocking sockets, edge-triggered `epoll`, `accept4`, and `eventfd`
+- length-prefixed binary protocol with half-packet, sticky-packet, and length validation
+- connection-level AUTH and `conn_id` protection against stale responses after fd reuse
+- bounded Request/Response queues with explicit `OK`, `FULL`, and `STOPPED` results
+- overload rejection counters and queue capacity/peak/backlog telemetry
+- single Reactor ownership of connections; workers never mutate socket state
+- offset-based output buffers without per-send copies or front erases
+- `RUNNING → DRAINING → STOPPED` shutdown with a configurable deadline
+- Go HTTP control plane with Redis or in-memory storage
+- runtime config snapshots with validation and monotonic version updates
+- CTest unit/integration tests, ASan/UBSan, Go race tests, and push/PR CI
+- manual Docker Compose smoke workflow and a two-mode benchmark tool
 
 ## Architecture
 
 ```text
-Client
-  |
-  | TCP length-prefixed protocol
-  | AUTH / PING / ECHO / LOG_PUSH / STATS
-  v
-C++ Gateway
-  | epoll ET + non-blocking socket
-  | request queue / worker threads / response queue
-  | connection-level AUTH state
-  | runtime config puller
-  |
-  | HTTP JSON
-  v
-Go Control Plane
-  | POST /auth/check
-  | POST /metrics/report
-  | POST /clients/report
-  | POST /tokens
-  | GET  /config
-  | POST /config
-  | GET  /health
-  | GET  /gateways
-  | GET  /gateways/{gateway_id}/status
-  | GET  /gateways/{gateway_id}/clients
-  | GET  /gateway/status
-  | GET  /clients
-  | GET  /tokens
-  | DELETE /tokens/{client_id}
-  | POST /config/reload
-  |
-  | Redis client
-  v
-Redis State Plane
-  | tokens
-  | runtime config
-  | gateway status by gateway_id
-  | clients by gateway_id
+TCP client
+   │ custom protocol
+   ▼
+C++ Reactor (epoll ET)
+   ├─ Connection/input/output state
+   ├─ bounded Request Queue ──► Worker pool ──► bounded Response Queue
+   │                                                  │
+   └──────────────────── eventfd wakeup ◄─────────────┘
+                              │
+                              ▼ HTTP/JSON
+                       Go control plane
+                              │
+                              ▼
+                            Redis
 ```
 
-## Quick Start
+The Reactor is the only code that accepts, reads, writes, changes epoll interest, or closes client sockets. A worker returns a value object tagged with both `fd` and `conn_id`; the Reactor discards the response if the fd now belongs to another connection.
 
-Run with Docker Compose:
+See [architecture](docs/architecture.md), [protocol](docs/protocol.md), and [design decisions](docs/design_decisions.md).
+
+## Quick start
+
+Docker Compose:
 
 ```bash
-docker compose up -d --build
+docker compose up --build
 ```
 
-The gateway listens on `localhost:9000` and the control plane listens on `localhost:8080`.
-
-Run locally without Docker:
+Local development:
 
 ```bash
 cd go-control-plane
@@ -72,270 +56,100 @@ go run .
 ```
 
 ```bash
-cd cpp-gateway
-cmake -S . -B build
-cmake --build build
-./build/message_server
+cmake -S cpp-gateway -B cpp-gateway/build -DCMAKE_BUILD_TYPE=Debug
+cmake --build cpp-gateway/build --parallel
+./cpp-gateway/build/message_server
 ```
+
+Default endpoints are TCP `localhost:9000`, HTTP `localhost:8080`, and Redis `localhost:6379`.
 
 ## Verification
 
-Full smoke test:
+C++ tests:
 
 ```bash
+cmake -S cpp-gateway -B cpp-gateway/build \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DGATEWAY_WARNINGS_AS_ERRORS=ON
+cmake --build cpp-gateway/build --parallel
+ctest --test-dir cpp-gateway/build --output-on-failure
+```
+
+Sanitizers:
+
+```bash
+cmake -S cpp-gateway -B cpp-gateway/build-sanitized \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DGATEWAY_WARNINGS_AS_ERRORS=ON \
+  -DGATEWAY_ENABLE_SANITIZERS=ON
+cmake --build cpp-gateway/build-sanitized --parallel
+ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+ctest --test-dir cpp-gateway/build-sanitized --output-on-failure
+```
+
+Go and full-system checks:
+
+```bash
+(cd go-control-plane && go test ./... && go test -race ./... && go vet ./...)
 bash scripts/smoke_test.sh
 ```
 
-Manual GitHub Actions smoke run:
+The fast CI workflow runs on every push and pull request. The Docker smoke workflow remains manual because it builds and starts Redis, Go, and C++ containers.
 
-1. Open the repository Actions tab.
-2. Select the `Smoke` workflow.
-3. Click `Run workflow` on the default branch.
+See [testing](docs/testing.md) for the test matrix and [failure cases](docs/failure_cases.md) for verified behavior.
 
-This starts Docker Compose, waits for `GET /health`, checks Redis `PING`, `GET /gateway/status`, `GET /gateways`, `GET /gateways/gateway-001/status`, `GET /clients`, and `GET /gateways/gateway-001/clients`, then runs the TCP protocol test against `localhost:9000`.
+## Overload policy
 
-Gateway status APIs derive liveness at read time. A gateway is considered `online` when its `last_report_time` is within the default `15s` offline window; otherwise it is returned as `offline`. These derived fields are not stored back into Redis.
+Both inter-thread queues are bounded and configured independently:
 
-TCP protocol test only:
+- Request Queue full: return status `503`; an AUTH request is closed after the response.
+- Request Queue stopped: treat it as shutdown and reject rather than silently drop.
+- Response Queue full/stopped unexpectedly: increment a critical counter, wake the Reactor, and close the matching `fd + conn_id` connection.
+- output buffer above 8 MiB: close that slow connection without affecting other clients.
 
-```bash
-python3 scripts/tcp_protocol_test.py
-```
+The STATS response exposes backlog, capacity, process-lifetime peak, and rejection counters for both queues.
 
-Lightweight benchmark:
+## Graceful shutdown
 
-```bash
-python3 scripts/benchmark_tcp.py --clients 5 --requests-per-client 10
-```
+SIGINT, SIGTERM, or `TcpServer::stop()` wakes `epoll_wait()` through `eventfd` and enters `DRAINING`. The gateway closes the listener, stops accepting/decoding new work, drains accepted requests and generated responses, flushes output buffers, and exits. A slow client cannot block shutdown beyond `SHUTDOWN_TIMEOUT_MS`.
 
-Current protocol checks cover:
+See [shutdown](docs/shutdown.md) for exact guarantees and non-guarantees.
 
-- `AUTH`, `PING`, `ECHO`, `LOG_PUSH`, `STATS`
-- half-packet and sticky-packet handling
-- invalid packet length rejection
-- unauthenticated request rejection
-- invalid `AUTH` JSON rejection
-- missing `AUTH` fields rejection
-- invalid `AUTH` field type rejection
-- duplicate `AUTH` rejection
-- `/clients` reporting of authenticated `client_id`
-- `/clients` exclusion of unauthenticated placeholder clients
-- repeated `AUTH + PING + close`
-- concurrent client `AUTH + ECHO`
-- connection close when a second request arrives while `AUTH` is pending
-- `/clients` cleanup after an authenticated client disconnects
+## Runtime configuration
 
-Component-level checks:
+| Variable | Default | Meaning |
+| --- | ---: | --- |
+| `GATEWAY_PORT` | `9000` | TCP listen port |
+| `CONTROL_PLANE_HOST` | `127.0.0.1` | control-plane host |
+| `CONTROL_PLANE_PORT` | `8080` | control-plane port |
+| `GATEWAY_ID` | `gateway-001` | reporting identity |
+| `WORKER_COUNT` | auto, max 4 | worker threads; `0` selects auto |
+| `REQUEST_QUEUE_CAPACITY` | `4096` | accepted work capacity |
+| `RESPONSE_QUEUE_CAPACITY` | `4096` | completed work capacity |
+| `SHUTDOWN_TIMEOUT_MS` | `5000` | graceful shutdown deadline |
+| `GATEWAY_LOG_LEVEL` | `INFO` | set `DEBUG` for per-request metadata |
+| `GATEWAY_LOG_PATH` | `logs/access.log` | LOG_PUSH storage path |
 
-```bash
-cd go-control-plane
-go test ./...
-```
+Runtime rate and connection limits are pulled from the control plane as an immutable validated snapshot. A failed pull or invalid payload leaves the active snapshot unchanged; an equal or lower version cannot overwrite a newer one.
 
-```bash
-cd cpp-gateway
-cmake -S . -B build
-cmake --build build
-```
+## Performance
 
-## HTTP API
+The previous implementation drained responses only after `epoll_wait(..., 100)` returned, producing about 100ms latency in a one-connection low-load case. Workers now notify an `EFD_NONBLOCK | EFD_CLOEXEC` eventfd after a successful response push, and normal operation uses an infinite epoll timeout.
 
-Health:
+The current local Release reference run measured single-connection steady-state P50 `0.28ms` and P95 `0.60ms`. These are local comparison data, not production capacity claims. Method, environment, 10/100-client results, CPU/RSS, and limitations are in [benchmark](docs/benchmark.md).
 
-```bash
-curl http://localhost:8080/health
-```
+## Project boundaries
 
-Auth check:
+The project intentionally does not add Kafka, Kubernetes, a dashboard, multi-Reactor sharding, TLS, or an asynchronous HTTP client. Current known limits include a single Reactor, synchronous control-plane HTTP inside workers, per-process rate limiting, and snapshot-based client reporting. These boundaries are deliberate and recorded in [design decisions](docs/design_decisions.md).
 
-```bash
-curl -X POST http://localhost:8080/auth/check \
-  -H "Content-Type: application/json" \
-  -d '{"client_id":"client_001","token":"test-token"}'
-```
-
-Register or update a token:
-
-```bash
-curl -X POST http://localhost:8080/tokens \
-  -H "Content-Type: application/json" \
-  -d '{"client_id":"client_001","token":"test-token"}'
-```
-
-Gateway status:
-
-```bash
-curl http://localhost:8080/gateway/status
-```
-
-Example response:
-
-```json
-{
-  "gateway_id": "gateway-001",
-  "active_connections": 0,
-  "total_messages": 10,
-  "bytes_in": 100,
-  "bytes_out": 200,
-  "error_count": 0,
-  "last_report_time": "2026-06-13T12:00:00Z",
-  "online": true,
-  "status": "online",
-  "seconds_since_last_report": 3
-}
-```
-
-Gateways:
-
-```bash
-curl http://localhost:8080/gateways
-```
-
-Gateway status by id:
-
-```bash
-curl http://localhost:8080/gateways/gateway-001/status
-```
-
-Clients:
-
-```bash
-curl http://localhost:8080/clients
-```
-
-Gateway clients by id:
-
-```bash
-curl http://localhost:8080/gateways/gateway-001/clients
-```
-
-Token registry:
-
-```bash
-curl http://localhost:8080/tokens
-```
-
-Delete a token:
-
-```bash
-curl -X DELETE http://localhost:8080/tokens/client_001
-```
-
-Runtime config:
-
-```bash
-curl http://localhost:8080/config
-```
-
-Update runtime config:
-
-```bash
-curl -X POST http://localhost:8080/config \
-  -H "Content-Type: application/json" \
-  -d '{
-    "auth_timeout_ms":1000,
-    "max_payload_size":4194314,
-    "max_connections_per_client":2,
-    "max_requests_per_client_per_second":100,
-    "fail_open":false
-  }'
-```
-
-Reload runtime config:
-
-```bash
-curl -X POST http://localhost:8080/config/reload
-```
-
-## TCP Protocol
-
-Each packet uses a 4-byte length prefix followed by a fixed header and optional payload:
-
-```text
-uint32 body_length
-uint8  version
-uint8  message_type
-uint64 request_id
-bytes  payload
-```
-
-`body_length` covers `version + message_type + request_id + payload`. Multi-byte integers use network byte order.
-
-Message types:
-
-```text
-1  PING       -> 5  PONG
-2  ECHO       -> 6  ECHO_RESP
-3  LOG_PUSH   -> 8  LOG_ACK
-4  STATS      -> 9  STATS_RESP
-7  ERROR_RESP
-10 AUTH       -> 11 AUTH_RESP
-```
-
-## AUTH State Machine
-
-New connections start unauthenticated. Only `AUTH` is accepted before authentication:
-
-```json
-{"client_id":"client_001","token":"test-token"}
-```
-
-Current behavior:
-
-- Business requests before `AUTH` close the connection.
-- `AUTH` is queued to a worker thread, not handled directly in the epoll IO loop.
-- The worker validates JSON, required fields, field types, and `client_id + token` correctness through `POST /auth/check`.
-- Invalid JSON, missing fields, bad field types, invalid token, or requests sent while `AUTH` is pending close the connection.
-- Successful `AUTH` stores the real `client_id` on the connection.
-- Repeated `AUTH` after success returns `ERROR_RESP`.
-- `/clients` only reports authenticated connections.
-
-## Concurrency Model
-
-- The epoll IO thread owns socket accept, read, write, decode, response draining, and connection close decisions.
-- Worker threads only process queued requests and produce `Response` objects.
-- `AUTH` is checked in worker threads through `POST /auth/check`; the epoll IO thread does not call the control plane directly.
-- Connection records in `connections_` are protected by `connections_mutex_`.
-- The metrics reporter thread only reads connection snapshots under the same mutex and reports authenticated clients only.
-
-## Highlights
-
-- C++17 gateway using `epoll` and non-blocking sockets.
-- Custom protocol codec with half-packet and sticky-packet handling.
-- AUTH-gated request flow with worker-thread dispatch.
-- Go control plane using standard `net/http`.
-- Redis state plane for tokens, runtime config, gateway status, and clients.
-- Multi-gateway status and client APIs backed by Redis.
-- Gateway liveness is derived from the latest metrics report timestamp.
-- MemoryStore kept for local tests and non-Redis runs.
-- C++ Gateway currently enforces `max_connections_per_client` and `max_requests_per_client_per_second` only.
-- Docker Compose integration and repo-level smoke tests.
-
-## Current Limitations
-
-- AUTH now requires explicit token registration through `POST /tokens`.
-- Redis is used for state in Docker Compose, while `MemoryStore` is still available for local tests.
-- Docker Compose starts one gateway by default; multiple gateway instances require distinct ports and `GATEWAY_ID` values.
-- Multi-gateway APIs expose reported state only; they do not perform service discovery or load balancing.
-- Gateway liveness is query-time derived only; the system does not actively probe gateways.
-- Offline gateways are not automatically removed from Redis.
-- `checkAuth()` is synchronous HTTP, although it runs in worker threads instead of the epoll IO thread.
-- Connection state is mutex-protected, but the design is still a small in-process model rather than a fully isolated actor-style architecture.
-- There is no database, Prometheus, Grafana, or dashboard frontend.
-- The main smoke test depends on Docker being available in the local environment.
-- The smoke GitHub Actions workflow is manual `workflow_dispatch`, not an every-push integration job.
-
-## Roadmap
-
-- Keep the `AUTH` state machine strict and testable.
-- Expand protocol edge-case coverage before changing behavior.
-- Add optional gateway unregister / cleanup API.
-
-## More Docs
+## Documentation
 
 - [Architecture](docs/architecture.md)
 - [Protocol](docs/protocol.md)
+- [Testing](docs/testing.md)
+- [Shutdown](docs/shutdown.md)
+- [Failure cases](docs/failure_cases.md)
 - [Benchmark](docs/benchmark.md)
-- [Failure Cases](docs/failure_cases.md)
-- [Interview Notes](docs/interview_notes.md)
-- [Development Plan](docs/vibe_coding.md)
+- [Design decisions](docs/design_decisions.md)
+- [Development workflow](docs/development_workflow.md)

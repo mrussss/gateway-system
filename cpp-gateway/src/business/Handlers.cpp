@@ -182,6 +182,12 @@ namespace business
         TcpServer *instance_ = TcpServer::getInstance();
         uint64_t request_queue_backlog = instance_->getRequestQueueSize();
         uint64_t response_queue_backlog = instance_->getResponseQueueSize();
+        uint64_t request_queue_capacity = instance_->getRequestQueueCapacity();
+        uint64_t response_queue_capacity = instance_->getResponseQueueCapacity();
+        uint64_t request_queue_peak = instance_->getRequestQueuePeakSize();
+        uint64_t response_queue_peak = instance_->getResponseQueuePeakSize();
+        uint64_t request_queue_rejected = StatsManager::getInstance().getRequestQueueRejected();
+        uint64_t response_queue_rejected = StatsManager::getInstance().getResponseQueueRejected();
 
         std::string json = "{\"total_requests\": ";
         json += std::to_string(requests);
@@ -199,6 +205,18 @@ namespace business
         json += std::to_string(request_queue_backlog);
         json += ", \"total_response_queue_backlog\": ";
         json += std::to_string(response_queue_backlog);
+        json += ", \"request_queue_capacity\": ";
+        json += std::to_string(request_queue_capacity);
+        json += ", \"response_queue_capacity\": ";
+        json += std::to_string(response_queue_capacity);
+        json += ", \"request_queue_peak\": ";
+        json += std::to_string(request_queue_peak);
+        json += ", \"response_queue_peak\": ";
+        json += std::to_string(response_queue_peak);
+        json += ", \"request_queue_rejected\": ";
+        json += std::to_string(request_queue_rejected);
+        json += ", \"response_queue_rejected\": ";
+        json += std::to_string(response_queue_rejected);
         json += "}";
         resp.payload = json;
         return resp;
