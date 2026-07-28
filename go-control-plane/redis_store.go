@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -118,40 +119,87 @@ func (s *redisStore) getGatewayClients(gatewayID string) ([]clientInfo, bool, er
 }
 
 func (s *redisStore) setToken(clientID string, token string) error {
-	ctx, cancel := redisContext()
-	defer cancel()
-	if err := s.client.Set(ctx, "token:"+clientID, token, 0).Err(); err != nil {
-		return err
-	}
-	return s.client.SAdd(ctx, "tokens", clientID).Err()
+	now := nowRFC3339()
+	return s.createToken(tokenRecord{tokenEntry: tokenEntry{ClientID: clientID, Generation: 1, CreatedAt: now, UpdatedAt: now}, Digest: tokenServiceFromEnv().digest(token)})
 }
 
 func (s *redisStore) deleteToken(clientID string) error {
-	ctx, cancel := redisContext()
-	defer cancel()
-	if err := s.client.Del(ctx, "token:"+clientID).Err(); err != nil {
-		return err
-	}
-	return s.client.SRem(ctx, "tokens", clientID).Err()
+	return s.disableToken(clientID, nowRFC3339())
 }
 
 func (s *redisStore) isAllowed(clientID string, token string) (bool, error) {
+	return s.isDigestAllowed(clientID, tokenServiceFromEnv().digest(token))
+}
+
+func (s *redisStore) isDigestAllowed(clientID, digest string) (bool, error) {
 	ctx, cancel := redisContext()
 	defer cancel()
-	raw, err := s.client.Get(ctx, "token:"+clientID).Result()
-	if errors.Is(err, redis.Nil) {
-		return false, nil
-	}
+	values, err := s.client.HMGet(ctx, "token:"+clientID, "digest", "disabled").Result()
 	if err != nil {
 		return false, err
 	}
-	return raw == token, nil
+	if len(values) != 2 || values[0] == nil {
+		return false, nil
+	}
+	disabled := values[1] != nil && values[1].(string) == "1"
+	return !disabled && digestEqual(values[0].(string), digest), nil
+}
+
+func (s *redisStore) createToken(record tokenRecord) error {
+	ctx, cancel := redisContext()
+	defer cancel()
+	key := "token:" + record.ClientID
+	script := redis.NewScript(`if redis.call('EXISTS', KEYS[1]) == 1 then return 0 end redis.call('HSET', KEYS[1], 'digest', ARGV[1], 'generation', 1, 'created_at', ARGV[2], 'updated_at', ARGV[2], 'disabled', 0) redis.call('SADD', KEYS[2], ARGV[3]) return 1`)
+	created, err := script.Run(ctx, s.client, []string{key, "token:index"}, record.Digest, record.CreatedAt, record.ClientID).Int()
+	if err != nil {
+		return err
+	}
+	if created == 0 {
+		return errTokenExists
+	}
+	return nil
+}
+
+func (s *redisStore) rotateToken(clientID string, expected int64, digest, updatedAt string) (tokenRecord, error) {
+	ctx, cancel := redisContext()
+	defer cancel()
+	script := redis.NewScript(`local current=redis.call('HGET',KEYS[1],'generation'); if not current then return -1 end; if tonumber(current)~=tonumber(ARGV[1]) then return 0 end; local next=tonumber(current)+1; redis.call('HSET',KEYS[1],'digest',ARGV[2],'generation',next,'updated_at',ARGV[3],'disabled',0); return next`)
+	next, err := script.Run(ctx, s.client, []string{"token:" + clientID}, expected, digest, updatedAt).Int64()
+	if err != nil {
+		return tokenRecord{}, err
+	}
+	if next == -1 {
+		return tokenRecord{}, errTokenNotFound
+	}
+	if next == 0 {
+		return tokenRecord{}, errTokenConflict
+	}
+	return tokenRecord{tokenEntry: tokenEntry{ClientID: clientID, Generation: next, UpdatedAt: updatedAt}, Digest: digest}, nil
+}
+
+func (s *redisStore) disableToken(clientID, updatedAt string) error {
+	ctx, cancel := redisContext()
+	defer cancel()
+	changed, err := s.client.HSet(ctx, "token:"+clientID, "disabled", 1, "updated_at", updatedAt).Result()
+	if err != nil {
+		return err
+	}
+	if changed == 0 {
+		exists, err := s.client.Exists(ctx, "token:"+clientID).Result()
+		if err != nil {
+			return err
+		}
+		if exists == 0 {
+			return errTokenNotFound
+		}
+	}
+	return nil
 }
 
 func (s *redisStore) listTokens() ([]tokenEntry, error) {
 	ctx, cancel := redisContext()
 	defer cancel()
-	clientIDs, err := s.client.SMembers(ctx, "tokens").Result()
+	clientIDs, err := s.client.SMembers(ctx, "token:index").Result()
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +207,15 @@ func (s *redisStore) listTokens() ([]tokenEntry, error) {
 	sort.Strings(clientIDs)
 	entries := make([]tokenEntry, 0, len(clientIDs))
 	for _, clientID := range clientIDs {
-		entries = append(entries, tokenEntry{ClientID: clientID})
+		values, err := s.client.HGetAll(ctx, "token:"+clientID).Result()
+		if err != nil {
+			return nil, err
+		}
+		if len(values) == 0 {
+			continue
+		}
+		generation, _ := strconv.ParseInt(values["generation"], 10, 64)
+		entries = append(entries, tokenEntry{ClientID: clientID, Generation: generation, CreatedAt: values["created_at"], UpdatedAt: values["updated_at"], Disabled: values["disabled"] == "1"})
 	}
 	return entries, nil
 }

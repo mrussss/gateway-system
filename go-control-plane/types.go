@@ -90,10 +90,24 @@ type successResponse struct {
 }
 
 type tokenEntry struct {
-	ClientID string `json:"client_id"`
+	ClientID   string `json:"client_id"`
+	Generation int64  `json:"generation"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
+	Disabled   bool   `json:"disabled"`
 }
 
 type tokenUpsertRequest struct {
 	ClientID string `json:"client_id"`
-	Token    string `json:"token"`
+}
+
+type tokenRecord struct {
+	tokenEntry
+	Digest string `json:"-"`
+}
+
+type tokenSecretResponse struct {
+	ClientID   string `json:"client_id"`
+	Token      string `json:"token"`
+	Generation int64  `json:"generation"`
 }

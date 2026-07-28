@@ -545,12 +545,21 @@ func TestTokensCRUDAndAuthFlow(t *testing.T) {
 	store = newMemoryStore()
 	router := routesWithStore(store)
 
-	createReq := httptest.NewRequest(http.MethodPost, "/tokens", bytes.NewBufferString(`{"client_id":"client_001","token":"abc123"}`))
+	createReq := httptest.NewRequest(http.MethodPost, "/tokens", bytes.NewBufferString(`{"client_id":"client_001"}`))
 	createResp := httptest.NewRecorder()
 	router.ServeHTTP(createResp, createReq)
-	assertSuccessResponse(t, createResp, http.StatusOK)
+	if createResp.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", createResp.Code)
+	}
+	var created tokenSecretResponse
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode token: %v", err)
+	}
+	if created.Token == "" || created.Generation != 1 {
+		t.Fatalf("unexpected token response: %+v", created)
+	}
 
-	authReq := httptest.NewRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{"client_id":"client_001","token":"abc123"}`))
+	authReq := httptest.NewRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{"client_id":"client_001","token":"`+created.Token+`"}`))
 	authResp := httptest.NewRecorder()
 	router.ServeHTTP(authResp, authReq)
 	assertAuthResponse(t, authResp, http.StatusOK, true, "ok")
@@ -564,7 +573,7 @@ func TestTokensCRUDAndAuthFlow(t *testing.T) {
 	}
 
 	rawBody := listResp.Body.String()
-	if strings.Contains(rawBody, "abc123") {
+	if strings.Contains(rawBody, created.Token) {
 		t.Fatalf("token list leaked token value: %s", rawBody)
 	}
 
@@ -581,7 +590,7 @@ func TestTokensCRUDAndAuthFlow(t *testing.T) {
 	router.ServeHTTP(deleteResp, deleteReq)
 	assertSuccessResponse(t, deleteResp, http.StatusOK)
 
-	deniedReq := httptest.NewRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{"client_id":"client_001","token":"abc123"}`))
+	deniedReq := httptest.NewRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{"client_id":"client_001","token":"`+created.Token+`"}`))
 	deniedResp := httptest.NewRecorder()
 	router.ServeHTTP(deniedResp, deniedReq)
 	assertAuthResponse(t, deniedResp, http.StatusOK, false, "invalid token")
@@ -589,12 +598,12 @@ func TestTokensCRUDAndAuthFlow(t *testing.T) {
 
 func TestTokensUpsertRejectsMissingFields(t *testing.T) {
 	store = newMemoryStore()
-	req := httptest.NewRequest(http.MethodPost, "/tokens", bytes.NewBufferString(`{"client_id":"client_001"}`))
+	req := httptest.NewRequest(http.MethodPost, "/tokens", bytes.NewBufferString(`{}`))
 	resp := httptest.NewRecorder()
 
 	routesWithStore(store).ServeHTTP(resp, req)
 
-	assertErrorResponse(t, resp, http.StatusBadRequest, "client_id and token are required")
+	assertErrorResponse(t, resp, http.StatusBadRequest, "client_id is required")
 }
 
 func TestTokenRegistryConcurrentAccess(t *testing.T) {
@@ -710,7 +719,7 @@ func TestHandlersReturnStoreError(t *testing.T) {
 			name:       "tokens upsert",
 			method:     http.MethodPost,
 			path:       "/tokens",
-			body:       `{"client_id":"client_001","token":"abc123"}`,
+			body:       `{"client_id":"client_001"}`,
 			wantStatus: http.StatusInternalServerError,
 			wantBody:   storeErrorMessage,
 		},
@@ -809,6 +818,22 @@ func (s *errorStore) deleteToken(clientID string) error {
 
 func (s *errorStore) isAllowed(clientID string, token string) (bool, error) {
 	return false, errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) isDigestAllowed(clientID string, digest string) (bool, error) {
+	return false, errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) createToken(record tokenRecord) error {
+	return errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) rotateToken(clientID string, expected int64, digest, updatedAt string) (tokenRecord, error) {
+	return tokenRecord{}, errors.New(storeErrorMessage)
+}
+
+func (s *errorStore) disableToken(clientID string, updatedAt string) error {
+	return errors.New(storeErrorMessage)
 }
 
 func (s *errorStore) listTokens() ([]tokenEntry, error) {

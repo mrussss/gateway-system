@@ -13,7 +13,7 @@ type memoryStore struct {
 	statusByGateway  map[string]gatewayStatusResponse
 	clientsByGateway map[string][]clientInfo
 	gateways         map[string]struct{}
-	tokens           map[string]string
+	tokens           map[string]tokenRecord
 	config           runtimeConfig
 }
 
@@ -23,7 +23,7 @@ func newMemoryStore() *memoryStore {
 		statusByGateway:  map[string]gatewayStatusResponse{},
 		clientsByGateway: map[string][]clientInfo{},
 		gateways:         map[string]struct{}{},
-		tokens:           map[string]string{},
+		tokens:           map[string]tokenRecord{},
 		config:           defaultRuntimeConfig(),
 	}
 }
@@ -93,24 +93,76 @@ func (s *memoryStore) getGatewayClients(gatewayID string) ([]clientInfo, bool, e
 }
 
 func (s *memoryStore) setToken(clientID string, token string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.tokens[clientID] = token
-	return nil
+	now := nowRFC3339()
+	return s.createToken(tokenRecord{tokenEntry: tokenEntry{ClientID: clientID, Generation: 1, CreatedAt: now, UpdatedAt: now}, Digest: tokenServiceFromEnv().digest(token)})
 }
 
 func (s *memoryStore) deleteToken(clientID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.tokens, clientID)
+	record, ok := s.tokens[clientID]
+	if !ok {
+		return errTokenNotFound
+	}
+	record.Disabled = true
+	record.UpdatedAt = nowRFC3339()
+	s.tokens[clientID] = record
 	return nil
 }
 
 func (s *memoryStore) isAllowed(clientID string, token string) (bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	storedToken, ok := s.tokens[clientID]
-	return ok && storedToken == token, nil
+	record, ok := s.tokens[clientID]
+	return ok && !record.Disabled && digestEqual(record.Digest, tokenServiceFromEnv().digest(token)), nil
+}
+
+func (s *memoryStore) isDigestAllowed(clientID, digest string) (bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	record, ok := s.tokens[clientID]
+	return ok && !record.Disabled && digestEqual(record.Digest, digest), nil
+}
+
+func (s *memoryStore) createToken(record tokenRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.tokens[record.ClientID]; exists {
+		return errTokenExists
+	}
+	s.tokens[record.ClientID] = record
+	return nil
+}
+
+func (s *memoryStore) rotateToken(clientID string, expected int64, digest, updatedAt string) (tokenRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.tokens[clientID]
+	if !ok {
+		return tokenRecord{}, errTokenNotFound
+	}
+	if record.Generation != expected {
+		return tokenRecord{}, errTokenConflict
+	}
+	record.Generation++
+	record.Digest = digest
+	record.UpdatedAt = updatedAt
+	record.Disabled = false
+	s.tokens[clientID] = record
+	return record, nil
+}
+
+func (s *memoryStore) disableToken(clientID, updatedAt string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.tokens[clientID]
+	if !ok {
+		return errTokenNotFound
+	}
+	record.Disabled = true
+	record.UpdatedAt = updatedAt
+	s.tokens[clientID] = record
+	return nil
 }
 
 func (s *memoryStore) listTokens() ([]tokenEntry, error) {
@@ -118,8 +170,8 @@ func (s *memoryStore) listTokens() ([]tokenEntry, error) {
 	defer s.mu.RUnlock()
 
 	entries := make([]tokenEntry, 0, len(s.tokens))
-	for clientID := range s.tokens {
-		entries = append(entries, tokenEntry{ClientID: clientID})
+	for _, record := range s.tokens {
+		entries = append(entries, record.tokenEntry)
 	}
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].ClientID < entries[j].ClientID
