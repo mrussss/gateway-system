@@ -64,6 +64,7 @@ if(BUILD_TESTING)
     add_gateway_test(runtime_config_test tests/RuntimeConfigTest.cpp)
     add_gateway_test(reactor_notifier_test tests/ReactorNotifierTest.cpp)
     add_gateway_test(server_stop_test tests/ServerStopTest.cpp)
+    add_gateway_test(stats_snapshot_test tests/StatsSnapshotTest.cpp)
 
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(

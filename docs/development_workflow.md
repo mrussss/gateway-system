@@ -23,4 +23,7 @@ Run the sanitizer build for C++ concurrency, buffer, queue, or lifecycle changes
 
 ## Scope discipline
 
-The frozen version does not add Kafka, Kubernetes, a dashboard, multi-Reactor sharding, TLS, or a new database. Future work should begin only from a demonstrated correctness, latency, or operability need and include a reproducible acceptance test.
+The v1.0.0 release is frozen at Phase 0–5. It does not add Prometheus,
+Kubernetes, Kafka, a dashboard, multi-Reactor sharding, TLS, or a new database.
+Phase 6–9 are not release requirements. Future work should begin only from a
+separately approved scope with a reproducible acceptance test.

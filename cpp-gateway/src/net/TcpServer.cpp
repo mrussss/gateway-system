@@ -8,6 +8,7 @@
 #include <cstring>
 #include <ctime>
 #include <iomanip>
+#include <fstream>
 #include <limits>
 #include <netinet/in.h>
 #include <sstream>
@@ -24,8 +25,15 @@
 
 namespace
 {
-constexpr size_t MAX_OUT_BUFFER_SIZE = 8 * 1024 * 1024;
 constexpr uint32_t CLIENT_BASE_EVENTS = EPOLLET | EPOLLRDHUP;
+
+std::string generateBootId()
+{
+    std::ifstream input("/proc/sys/kernel/random/uuid");
+    std::string value;
+    if (input >> value) { return value; }
+    return std::to_string(static_cast<long long>(std::time(nullptr))) + "-" + std::to_string(getpid());
+}
 
 std::string formatUtcTime(std::chrono::system_clock::time_point time_point)
 {
@@ -93,14 +101,16 @@ TcpServer::TcpServer(int port, std::string control_plane_host, int control_plane
 TcpServer::TcpServer(int port, std::string control_plane_host, int control_plane_port,
                      std::string gateway_id, size_t request_queue_capacity,
                      size_t response_queue_capacity, int shutdown_timeout_ms,
-                     unsigned int worker_count)
+                     unsigned int worker_count, std::string gateway_token)
     : port_(port),
       shutdown_timeout_(std::max(shutdown_timeout_ms, 1)),
       configured_worker_count_(worker_count),
       request_queue_(std::max<size_t>(request_queue_capacity, 1)),
       response_queue_(std::max<size_t>(response_queue_capacity, 1)),
-      control_plane_(std::move(control_plane_host), control_plane_port, 1000),
-      gateway_id_(std::move(gateway_id))
+      control_plane_(std::move(control_plane_host), control_plane_port, 1000,
+                     std::move(gateway_token)),
+      gateway_id_(std::move(gateway_id)), gateway_boot_id_(generateBootId()),
+      process_start_time_(std::time(nullptr))
 {
 }
 
@@ -146,6 +156,7 @@ void TcpServer::start()
     instance_ = this;
     signal_stop_requested_ = 0;
     state_ = ServerState::RUNNING;
+    markReady();
     loop_thread_id_ = std::this_thread::get_id();
 
     if (std::signal(SIGINT, staticSignalHandler) == SIG_ERR ||
@@ -384,6 +395,7 @@ void TcpServer::beginDraining()
     }
 
     shutdown_deadline_ = std::chrono::steady_clock::now() + shutdown_timeout_;
+    markNotReady();
     closeListener();
     request_queue_.stop();
     LOG_INFO("graceful shutdown started: deadline_ms=%lld queued_requests=%zu",
@@ -408,6 +420,7 @@ void TcpServer::beginDraining()
 
 void TcpServer::finishShutdown()
 {
+    markNotReady();
     request_queue_.stop();
     response_queue_.stop();
 
@@ -457,6 +470,20 @@ void TcpServer::finishShutdown()
     }
     stopped_cv_.notify_all();
     LOG_INFO("%s", "gateway shutdown complete");
+}
+
+void TcpServer::markReady()
+{
+    std::ofstream ready(readiness_file_, std::ios::trunc);
+    if (!ready) { LOG_ERROR("failed to create readiness file: %s", readiness_file_.c_str()); }
+}
+
+void TcpServer::markNotReady()
+{
+    if (unlink(readiness_file_.c_str()) == -1 && errno != ENOENT)
+    {
+        LOG_ERROR("failed to remove readiness file: %s", std::strerror(errno));
+    }
 }
 
 bool TcpServer::drainComplete()
@@ -740,6 +767,7 @@ void TcpServer::applyResponse(Response response)
         if (connection == connections_.end() ||
             connection->second.conn_id != response.conn_id)
         {
+            business::StatsManager::getInstance().incrementStaleResponseDropped();
             LOG_DEBUG("discarding stale response fd=%d conn_id=%llu", response.fd,
                       static_cast<unsigned long long>(response.conn_id));
             return;
@@ -762,12 +790,18 @@ void TcpServer::applyResponse(Response response)
                 response.type = MessageType::AUTH_RESP;
                 response.payload =
                     R"({"allowed":false,"reason":"max connections exceeded"})";
+                business::StatsManager::getInstance().incrementAuthFailure();
             }
             else
             {
                 current.authenticated = true;
                 current.client_id = response.authenticated_client_id;
+                business::StatsManager::getInstance().incrementAuthSuccess();
             }
+        }
+        else if (response.type == MessageType::AUTH_RESP)
+        {
+            business::StatsManager::getInstance().incrementAuthFailure();
         }
 
         if (response.close_connection && response.skip_write)
@@ -778,9 +812,10 @@ void TcpServer::applyResponse(Response response)
         {
             std::string encoded = ProtocolCodec::encode(response);
             const size_t pending_bytes = current.output_buffer.size() - current.write_offset;
-            if (pending_bytes + encoded.size() > MAX_OUT_BUFFER_SIZE)
+            if (pending_bytes + encoded.size() > config.slow_client_output_limit)
             {
                 business::StatsManager::getInstance().incrementErrors();
+                business::StatsManager::getInstance().incrementSlowClientClosed();
                 LOG_ERROR("output buffer limit exceeded: fd=%d conn_id=%llu pending=%zu new=%zu",
                           current.fd, static_cast<unsigned long long>(current.conn_id),
                           pending_bytes, encoded.size());
@@ -963,6 +998,7 @@ void TcpServer::startConfigPuller()
     {
         std::lock_guard<std::mutex> lock(runtime_config_mutex_);
         runtime_config_ = fetched;
+        setGatewayLogLevel(runtime_config_.log_level);
         LOG_INFO("runtime config initialized: version=%lld",
                  static_cast<long long>(runtime_config_.version));
     }
@@ -982,9 +1018,16 @@ void TcpServer::metricsReporterLoop()
     while (state_.load() == ServerState::RUNNING)
     {
         auto &stats = business::StatsManager::getInstance();
+        const auto snapshot = stats.snapshot();
+        const RuntimeConfig config = getRuntimeConfigSnapshot();
         GatewayMetrics metrics{
-            gateway_id_, stats.getConnections(), stats.getTotalRequests(), stats.getReadBytes(),
-            stats.getWriteBytes(), stats.getTotalErrors(),
+            gateway_id_, gateway_boot_id_, process_start_time_, snapshot.active_connections,
+            snapshot.total_requests, snapshot.bytes_in, snapshot.bytes_out, snapshot.errors,
+            request_queue_.capacity(), request_queue_.size(), request_queue_.peakSize(),
+            snapshot.request_queue_rejected, response_queue_.capacity(), response_queue_.size(),
+            response_queue_.peakSize(), snapshot.response_queue_rejected,
+            snapshot.slow_client_closed, snapshot.stale_response_dropped,
+            snapshot.auth_success, snapshot.auth_failure, config.version, "RUNNING",
             std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())};
         control_plane_.reportMetrics(metrics);
         control_plane_.reportClients(metrics.gateway_id, buildClientSnapshot());
@@ -1006,6 +1049,7 @@ void TcpServer::configPullerLoop()
             const int64_t previous_version = runtime_config_.version;
             if (applyRuntimeConfigIfNewer(runtime_config_, fetched))
             {
+                setGatewayLogLevel(runtime_config_.log_level);
                 LOG_INFO("runtime config updated: version=%lld->%lld",
                          static_cast<long long>(previous_version),
                          static_cast<long long>(runtime_config_.version));

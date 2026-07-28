@@ -9,11 +9,11 @@ int main()
 {
     const std::string valid = R"({
         "version": 2,
-        "auth_timeout_ms": 500,
         "max_payload_size": 1024,
         "max_connections_per_client": 4,
         "max_requests_per_client_per_second": 200,
-        "fail_open": false
+        "slow_client_output_limit": 8192,
+        "log_level": "DEBUG"
     })";
 
     return runTests({
@@ -30,7 +30,7 @@ int main()
              RuntimeConfig config;
              config.version = 7;
              config.max_payload_size = 777;
-             CHECK(!parseRuntimeConfig(R"({"version":8,"auth_timeout_ms":0})", config));
+             CHECK(!parseRuntimeConfig(R"({"version":8,"max_payload_size":0})", config));
              CHECK_EQ(config.version, int64_t{7});
              CHECK_EQ(config.max_payload_size, 777);
          }},
@@ -40,11 +40,11 @@ int main()
              config.version = 3;
              const std::string oversized = R"({
                  "version": 4,
-                 "auth_timeout_ms": 1000,
                  "max_payload_size": 4194315,
                  "max_connections_per_client": 2,
                  "max_requests_per_client_per_second": 100,
-                 "fail_open": false
+                 "slow_client_output_limit": 8388608,
+                 "log_level": "INFO"
              })";
              CHECK(!parseRuntimeConfig(oversized, config));
              CHECK_EQ(config.version, int64_t{3});
@@ -68,12 +68,12 @@ int main()
              RuntimeConfig current;
              RuntimeConfig candidate;
              candidate.version = 2;
-             candidate.auth_timeout_ms = 222;
-             candidate.fail_open = true;
+             candidate.slow_client_output_limit = 4096;
+             candidate.log_level = "DEBUG";
              CHECK(applyRuntimeConfigIfNewer(current, candidate));
              CHECK_EQ(current.version, int64_t{2});
-             CHECK_EQ(current.auth_timeout_ms, 222);
-             CHECK(current.fail_open);
+             CHECK_EQ(current.slow_client_output_limit, size_t{4096});
+             CHECK_EQ(current.log_level, std::string{"DEBUG"});
          }},
         {"fetch failure retains caller config", []
          {

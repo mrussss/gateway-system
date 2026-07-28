@@ -5,6 +5,21 @@
 
 namespace business
 {
+    struct StatsSnapshot
+    {
+        uint64_t total_requests{};
+        uint64_t errors{};
+        uint64_t bytes_in{};
+        uint64_t bytes_out{};
+        uint64_t active_connections{};
+        uint64_t request_queue_rejected{};
+        uint64_t response_queue_rejected{};
+        uint64_t slow_client_closed{};
+        uint64_t stale_response_dropped{};
+        uint64_t auth_success{};
+        uint64_t auth_failure{};
+    };
+
     class StatsManager
     {
     public:
@@ -22,6 +37,11 @@ namespace business
         void decrementConnections();
         void incrementRequestQueueRejected();
         void incrementResponseQueueRejected();
+        void incrementSlowClientClosed();
+        void incrementStaleResponseDropped();
+        void incrementAuthSuccess();
+        void incrementAuthFailure();
+        StatsSnapshot snapshot() const;
 
         uint64_t getTotalRequests() const;
         uint64_t getTotalLogMessages() const;
@@ -44,5 +64,9 @@ namespace business
         std::atomic<uint64_t> total_bytes_sent{0};
         std::atomic<uint64_t> request_queue_rejected_{0};
         std::atomic<uint64_t> response_queue_rejected_{0};
+        std::atomic<uint64_t> slow_client_closed_{0};
+        std::atomic<uint64_t> stale_response_dropped_{0};
+        std::atomic<uint64_t> auth_success_{0};
+        std::atomic<uint64_t> auth_failure_{0};
     };
 }

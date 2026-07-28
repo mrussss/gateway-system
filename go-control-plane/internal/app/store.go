@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"os"
@@ -8,7 +8,9 @@ import (
 const (
 	defaultStoreBackend        = "memory"
 	defaultRedisAddr           = "localhost:6379"
-	defaultGatewayOfflineAfter = 15 * time.Second
+	defaultGatewayOfflineAfter = 30 * time.Second
+	defaultGatewayStatusTTL    = 5 * time.Minute
+	defaultClientSnapshotTTL   = 60 * time.Second
 	storeErrorMessage          = "store error"
 )
 
@@ -23,9 +25,13 @@ type Store interface {
 	setToken(clientID string, token string) error
 	deleteToken(clientID string) error
 	isAllowed(clientID string, token string) (bool, error)
+	isDigestAllowed(clientID string, digest string) (bool, error)
+	createToken(record tokenRecord) error
+	rotateToken(clientID string, expected int64, digest, updatedAt string) (tokenRecord, error)
+	disableToken(clientID string, updatedAt string) error
 	listTokens() ([]tokenEntry, error)
 	getConfig() (runtimeConfig, error)
-	updateConfig(req configUpdateRequest) (runtimeConfig, error)
+	updateConfig(expectedVersion int64, req configUpdateRequest) (runtimeConfig, error)
 }
 
 func newStoreFromEnv() Store {

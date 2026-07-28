@@ -2,6 +2,14 @@
 
 `gateway-system` is a compact C++/Go backend system built around a custom TCP data plane and an HTTP control plane. The repository focuses on Linux networking correctness, bounded concurrency, observable overload behavior, deterministic shutdown, and repeatable tests rather than adding more infrastructure products.
 
+## v1.0.0 release scope
+
+Version `v1.0.0` is the completed Phase 0–5 release: contract freeze, Go HTTP
+foundation, secure token lifecycle, Redis-backed gateway state, Redis config
+CAS, and C++ telemetry/dynamic configuration. This release is sealed at that
+scope. Phase 6–9 work is not part of v1.0.0; Prometheus and Kubernetes are not
+required components and are not implemented by this version.
+
 ## What is implemented
 
 - C++17 TCP gateway using non-blocking sockets, edge-triggered `epoll`, `accept4`, and `eventfd`
@@ -52,7 +60,7 @@ Local development:
 
 ```bash
 cd go-control-plane
-go run .
+go run ./cmd/control-plane
 ```
 
 ```bash
@@ -106,7 +114,7 @@ Both inter-thread queues are bounded and configured independently:
 - Request Queue full: return status `503`; an AUTH request is closed after the response.
 - Request Queue stopped: treat it as shutdown and reject rather than silently drop.
 - Response Queue full/stopped unexpectedly: increment a critical counter, wake the Reactor, and close the matching `fd + conn_id` connection.
-- output buffer above 8 MiB: close that slow connection without affecting other clients.
+- output buffer above the active `slow_client_output_limit`: close that slow connection without affecting other clients.
 
 The STATS response exposes backlog, capacity, process-lifetime peak, and rejection counters for both queues.
 
@@ -124,6 +132,7 @@ See [shutdown](docs/shutdown.md) for exact guarantees and non-guarantees.
 | `CONTROL_PLANE_HOST` | `127.0.0.1` | control-plane host |
 | `CONTROL_PLANE_PORT` | `8080` | control-plane port |
 | `GATEWAY_ID` | `gateway-001` | reporting identity |
+| `GATEWAY_SHARED_TOKEN` | empty | credential sent to gateway-internal control-plane APIs |
 | `WORKER_COUNT` | auto, max 4 | worker threads; `0` selects auto |
 | `REQUEST_QUEUE_CAPACITY` | `4096` | accepted work capacity |
 | `RESPONSE_QUEUE_CAPACITY` | `4096` | completed work capacity |
@@ -131,7 +140,7 @@ See [shutdown](docs/shutdown.md) for exact guarantees and non-guarantees.
 | `GATEWAY_LOG_LEVEL` | `INFO` | set `DEBUG` for per-request metadata |
 | `GATEWAY_LOG_PATH` | `logs/access.log` | LOG_PUSH storage path |
 
-Runtime rate and connection limits are pulled from the control plane as an immutable validated snapshot. A failed pull or invalid payload leaves the active snapshot unchanged; an equal or lower version cannot overwrite a newer one.
+Payload, output-buffer, rate, connection, and log-level settings are pulled from the control plane as one immutable validated snapshot. A failed pull or invalid payload leaves the entire active snapshot unchanged; an equal or lower version cannot overwrite a newer one.
 
 ## Performance
 
@@ -141,7 +150,7 @@ The current local Release reference run measured single-connection steady-state 
 
 ## Project boundaries
 
-The project intentionally does not add Kafka, Kubernetes, a dashboard, multi-Reactor sharding, TLS, or an asynchronous HTTP client. Current known limits include a single Reactor, synchronous control-plane HTTP inside workers, per-process rate limiting, and snapshot-based client reporting. These boundaries are deliberate and recorded in [design decisions](docs/design_decisions.md).
+The project intentionally does not add Prometheus, Kubernetes, Kafka, a dashboard, multi-Reactor sharding, TLS, or an asynchronous HTTP client. Current known limits include a single Reactor, synchronous control-plane HTTP inside workers, per-process rate limiting, and snapshot-based client reporting. These boundaries are deliberate and recorded in [design decisions](docs/design_decisions.md).
 
 ## Documentation
 

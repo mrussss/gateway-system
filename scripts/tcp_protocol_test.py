@@ -65,10 +65,9 @@ def connect(host: str, port: int) -> socket.socket:
     return sock
 
 
-def register_token(control_plane_url: str, client_id: str, token: str) -> None:
+def register_token(control_plane_url: str, client_id: str) -> str:
     payload = json.dumps({
         "client_id": client_id,
-        "token": token,
     }).encode("utf-8")
     request = urllib.request.Request(
         f"{control_plane_url}/tokens",
@@ -82,8 +81,9 @@ def register_token(control_plane_url: str, client_id: str, token: str) -> None:
     except urllib.error.URLError as exc:
         raise AssertionError(f"failed to register token for {client_id}: {exc}") from exc
 
-    if body.get("success") is not True:
+    if not isinstance(body.get("token"), str):
         raise AssertionError(f"token registration failed for {client_id}: {body}")
+    return str(body["token"])
 
 
 def authenticate(
@@ -92,9 +92,9 @@ def authenticate(
     request_id: int = 9000,
     client_id: str | None = None,
     token: str = "test-token",
-) -> None:
+) -> str:
     resolved_client_id = client_id or f"tcp-test-{request_id}"
-    register_token(control_plane_url, resolved_client_id, token)
+    token = register_token(control_plane_url, resolved_client_id)
     payload = json.dumps({
         "client_id": resolved_client_id,
         "token": token,
@@ -105,6 +105,7 @@ def authenticate(
     body = json.loads(resp.payload.decode("utf-8"))
     if body.get("allowed") is not True:
         raise AssertionError(f"AUTH rejected unexpectedly: {body}")
+    return token
 
 
 def expect_closed(sock: socket.socket, message: str) -> None:
@@ -123,12 +124,16 @@ def fetch_clients(control_plane_url: str) -> list[dict]:
 
 
 def update_config(control_plane_url: str, config: dict) -> None:
+    with urllib.request.urlopen(f"{control_plane_url}/config", timeout=2.0) as current:
+        etag = current.headers.get("ETag")
+    if not etag:
+        raise AssertionError("config response missing ETag")
     payload = json.dumps(config).encode("utf-8")
     request = urllib.request.Request(
         f"{control_plane_url}/config",
         data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
+        headers={"Content-Type": "application/json", "If-Match": etag},
+        method="PUT",
     )
     try:
         with urllib.request.urlopen(request, timeout=2.0) as resp:
@@ -136,17 +141,17 @@ def update_config(control_plane_url: str, config: dict) -> None:
     except urllib.error.URLError as exc:
         raise AssertionError(f"failed to update config: {exc}") from exc
 
-    if body.get("auth_timeout_ms") != config["auth_timeout_ms"]:
+    if body.get("max_payload_size") != config["max_payload_size"]:
         raise AssertionError(f"unexpected config update response: {body}")
 
 
 def default_config() -> dict:
     return {
-        "auth_timeout_ms": 1000,
-        "max_payload_size": 4194314,
+        "max_payload_size": 1048576,
         "max_connections_per_client": 2,
         "max_requests_per_client_per_second": 100,
-        "fail_open": False,
+        "slow_client_output_limit": 8388608,
+        "log_level": "INFO",
     }
 
 
@@ -421,10 +426,10 @@ def test_concurrent_auth_echo(host: str, port: int, control_plane_url: str) -> N
 
 
 def test_auth_pending_second_request_closes(host: str, port: int, control_plane_url: str) -> None:
-    register_token(control_plane_url, "tcp-test-pending-close", "test-token")
+    pending_token = register_token(control_plane_url, "tcp-test-pending-close")
     payload = json.dumps({
         "client_id": "tcp-test-pending-close",
-        "token": "test-token",
+        "token": pending_token,
     }).encode("utf-8")
     with connect(host, port) as sock:
         sock.sendall(packet(AUTH, 5401, payload) + packet(PING, 5402))
@@ -460,11 +465,11 @@ def test_clients_remove_disconnected_client(host: str, port: int, control_plane_
 def test_max_connections_per_client(host: str, port: int, control_plane_url: str) -> None:
     try:
         update_config(control_plane_url, {
-            "auth_timeout_ms": 1000,
-            "max_payload_size": 4194314,
+            "max_payload_size": 1048576,
             "max_connections_per_client": 1,
             "max_requests_per_client_per_second": 100,
-            "fail_open": False,
+            "slow_client_output_limit": 8388608,
+            "log_level": "INFO",
         })
         wait_for_config_pull()
 
@@ -472,10 +477,9 @@ def test_max_connections_per_client(host: str, port: int, control_plane_url: str
         token = "test-token"
         first = connect(host, port)
         try:
-            authenticate(first, control_plane_url, 5601, client_id=client_id, token=token)
+            token = authenticate(first, control_plane_url, 5601, client_id=client_id, token=token)
             second = connect(host, port)
             try:
-                register_token(control_plane_url, client_id, token)
                 payload = json.dumps({
                     "client_id": client_id,
                     "token": token,
@@ -500,11 +504,11 @@ def test_max_connections_per_client(host: str, port: int, control_plane_url: str
 def test_rate_limit_per_client(host: str, port: int, control_plane_url: str) -> None:
     try:
         update_config(control_plane_url, {
-            "auth_timeout_ms": 1000,
-            "max_payload_size": 4194314,
+            "max_payload_size": 1048576,
             "max_connections_per_client": 10,
             "max_requests_per_client_per_second": 3,
-            "fail_open": False,
+            "slow_client_output_limit": 8388608,
+            "log_level": "INFO",
         })
         wait_for_config_pull()
 
