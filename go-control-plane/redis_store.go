@@ -32,13 +32,12 @@ func (s *redisStore) saveMetrics(req metricsReportRequest) (gatewayStatusRespons
 	defer cancel()
 
 	status := statusFromMetrics(req)
-	if err := s.setJSON(ctx, gatewayStatusKey(req.GatewayID), status); err != nil {
-		return gatewayStatusResponse{}, err
-	}
-	if err := s.client.SAdd(ctx, "gateways", req.GatewayID).Err(); err != nil {
-		return gatewayStatusResponse{}, err
-	}
-	if err := s.setJSON(ctx, "gateway:status", status); err != nil {
+	reportedAt, _ := time.Parse(time.RFC3339, status.LastReportTime)
+	pipe := s.client.Pipeline()
+	pipe.HSet(ctx, gatewayStatusKey(req.GatewayID), statusToRedis(status))
+	pipe.Expire(ctx, gatewayStatusKey(req.GatewayID), defaultGatewayStatusTTL)
+	pipe.ZAdd(ctx, "gateway:index", redis.Z{Score: float64(reportedAt.Unix()), Member: req.GatewayID})
+	if _, err := pipe.Exec(ctx); err != nil {
 		return gatewayStatusResponse{}, err
 	}
 	return status, nil
@@ -47,20 +46,26 @@ func (s *redisStore) saveMetrics(req metricsReportRequest) (gatewayStatusRespons
 func (s *redisStore) getStatus() (gatewayStatusResponse, bool, error) {
 	ctx, cancel := redisContext()
 	defer cancel()
-	return s.getStatusByKey(ctx, "gateway:status")
+	ids, err := s.client.ZRevRange(ctx, "gateway:index", 0, 0).Result()
+	if err != nil || len(ids) == 0 {
+		return gatewayStatusResponse{}, false, err
+	}
+	return s.getStatusByKey(ctx, gatewayStatusKey(ids[0]))
 }
 
 func (s *redisStore) saveClients(gatewayID string, clients []clientInfo) error {
 	ctx, cancel := redisContext()
 	defer cancel()
 
-	if err := s.setJSON(ctx, gatewayClientsKey(gatewayID), clients); err != nil {
+	payload, err := json.Marshal(clients)
+	if err != nil {
 		return err
 	}
-	if err := s.client.SAdd(ctx, "gateways", gatewayID).Err(); err != nil {
-		return err
-	}
-	return s.setJSON(ctx, "clients:current", clients)
+	pipe := s.client.Pipeline()
+	pipe.Set(ctx, gatewayClientsKey(gatewayID), payload, defaultClientSnapshotTTL)
+	pipe.Set(ctx, "clients:current", payload, defaultClientSnapshotTTL)
+	_, err = pipe.Exec(ctx)
+	return err
 }
 
 func (s *redisStore) getClients() ([]clientInfo, error) {
@@ -73,7 +78,7 @@ func (s *redisStore) listGateways() ([]gatewayStatusResponse, error) {
 	ctx, cancel := redisContext()
 	defer cancel()
 
-	gatewayIDs, err := s.client.SMembers(ctx, "gateways").Result()
+	gatewayIDs, err := s.client.ZRevRange(ctx, "gateway:index", 0, -1).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -87,6 +92,8 @@ func (s *redisStore) listGateways() ([]gatewayStatusResponse, error) {
 		}
 		if ok {
 			statuses = append(statuses, status)
+		} else {
+			_ = s.client.ZRem(ctx, "gateway:index", gatewayID).Err()
 		}
 	}
 	sortGatewayStatuses(statuses)
@@ -267,19 +274,45 @@ func (s *redisStore) updateConfig(req configUpdateRequest) (runtimeConfig, error
 }
 
 func (s *redisStore) getStatusByKey(ctx context.Context, key string) (gatewayStatusResponse, bool, error) {
-	raw, err := s.client.Get(ctx, key).Result()
-	if errors.Is(err, redis.Nil) {
+	values, err := s.client.HGetAll(ctx, key).Result()
+	if err == nil && len(values) == 0 {
 		return gatewayStatusResponse{}, false, nil
 	}
 	if err != nil {
 		return gatewayStatusResponse{}, false, err
 	}
+	return statusFromRedis(values), true, nil
+}
 
-	var status gatewayStatusResponse
-	if err := json.Unmarshal([]byte(raw), &status); err != nil {
-		return gatewayStatusResponse{}, false, err
+func statusToRedis(status gatewayStatusResponse) map[string]any {
+	return map[string]any{
+		"gateway_id": status.GatewayID, "gateway_boot_id": status.GatewayBootID,
+		"process_start_time": status.ProcessStartTime, "active_connections": status.ActiveConnections,
+		"total_requests": status.TotalMessages, "bytes_in": status.BytesIn, "bytes_out": status.BytesOut,
+		"errors": status.ErrorCount, "request_queue_capacity": status.RequestQueueCapacity,
+		"request_queue_backlog": status.RequestQueueBacklog, "request_queue_peak": status.RequestQueuePeak,
+		"request_queue_rejected": status.RequestQueueRejected, "response_queue_capacity": status.ResponseQueueCapacity,
+		"response_queue_backlog": status.ResponseQueueBacklog, "response_queue_peak": status.ResponseQueuePeak,
+		"response_queue_rejected": status.ResponseQueueRejected, "slow_client_closed": status.SlowClientClosed,
+		"stale_response_dropped": status.StaleResponseDropped, "auth_success": status.AuthSuccess,
+		"auth_failure": status.AuthFailure, "runtime_config_version": status.RuntimeConfigVersion,
+		"server_state": status.ServerState, "reported_at": status.LastReportTime,
 	}
-	return status, true, nil
+}
+
+func redisInt(values map[string]string, key string) int64 {
+	value, _ := strconv.ParseInt(values[key], 10, 64)
+	return value
+}
+
+func statusFromRedis(v map[string]string) gatewayStatusResponse {
+	return gatewayStatusResponse{
+		GatewayID: v["gateway_id"], GatewayBootID: v["gateway_boot_id"], ProcessStartTime: redisInt(v, "process_start_time"),
+		ActiveConnections: redisInt(v, "active_connections"), TotalMessages: redisInt(v, "total_requests"), BytesIn: redisInt(v, "bytes_in"), BytesOut: redisInt(v, "bytes_out"), ErrorCount: redisInt(v, "errors"),
+		RequestQueueCapacity: redisInt(v, "request_queue_capacity"), RequestQueueBacklog: redisInt(v, "request_queue_backlog"), RequestQueuePeak: redisInt(v, "request_queue_peak"), RequestQueueRejected: redisInt(v, "request_queue_rejected"),
+		ResponseQueueCapacity: redisInt(v, "response_queue_capacity"), ResponseQueueBacklog: redisInt(v, "response_queue_backlog"), ResponseQueuePeak: redisInt(v, "response_queue_peak"), ResponseQueueRejected: redisInt(v, "response_queue_rejected"),
+		SlowClientClosed: redisInt(v, "slow_client_closed"), StaleResponseDropped: redisInt(v, "stale_response_dropped"), AuthSuccess: redisInt(v, "auth_success"), AuthFailure: redisInt(v, "auth_failure"), RuntimeConfigVersion: redisInt(v, "runtime_config_version"), ServerState: v["server_state"], LastReportTime: v["reported_at"],
+	}
 }
 
 func (s *redisStore) getClientsByKey(ctx context.Context, key string) ([]clientInfo, error) {

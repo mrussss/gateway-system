@@ -8,7 +8,9 @@ import (
 const (
 	defaultStoreBackend        = "memory"
 	defaultRedisAddr           = "localhost:6379"
-	defaultGatewayOfflineAfter = 15 * time.Second
+	defaultGatewayOfflineAfter = 30 * time.Second
+	defaultGatewayStatusTTL    = 5 * time.Minute
+	defaultClientSnapshotTTL   = 60 * time.Second
 	storeErrorMessage          = "store error"
 )
 

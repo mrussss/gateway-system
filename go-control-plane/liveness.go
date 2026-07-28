@@ -12,13 +12,29 @@ func statusFromMetrics(req metricsReportRequest) gatewayStatusResponse {
 	}
 
 	return gatewayStatusResponse{
-		GatewayID:         req.GatewayID,
-		ActiveConnections: req.ActiveConnections,
-		TotalMessages:     req.TotalMessages,
-		BytesIn:           req.BytesIn,
-		BytesOut:          req.BytesOut,
-		ErrorCount:        req.ErrorCount,
-		LastReportTime:    reportTime.Format(time.RFC3339),
+		GatewayID:             req.GatewayID,
+		GatewayBootID:         req.GatewayBootID,
+		ProcessStartTime:      req.ProcessStartTime,
+		ActiveConnections:     req.ActiveConnections,
+		TotalMessages:         req.TotalMessages,
+		BytesIn:               req.BytesIn,
+		BytesOut:              req.BytesOut,
+		ErrorCount:            req.ErrorCount,
+		RequestQueueCapacity:  req.RequestQueueCapacity,
+		RequestQueueBacklog:   req.RequestQueueBacklog,
+		RequestQueuePeak:      req.RequestQueuePeak,
+		RequestQueueRejected:  req.RequestQueueRejected,
+		ResponseQueueCapacity: req.ResponseQueueCapacity,
+		ResponseQueueBacklog:  req.ResponseQueueBacklog,
+		ResponseQueuePeak:     req.ResponseQueuePeak,
+		ResponseQueueRejected: req.ResponseQueueRejected,
+		SlowClientClosed:      req.SlowClientClosed,
+		StaleResponseDropped:  req.StaleResponseDropped,
+		AuthSuccess:           req.AuthSuccess,
+		AuthFailure:           req.AuthFailure,
+		RuntimeConfigVersion:  req.RuntimeConfigVersion,
+		ServerState:           req.ServerState,
+		LastReportTime:        reportTime.Format(time.RFC3339),
 	}
 }
 
