@@ -28,6 +28,8 @@ Infinite drain lets a slow client prevent deployment or process termination fore
 
 The call is not ideal for very high scale, but it never blocks the Reactor and keeps the current scope understandable. An async HTTP client is deferred until measurements show Worker occupancy is the limiting factor.
 
-## No Kafka, Kubernetes, dashboard, or extra database
+## No Kafka, dashboard, or extra database
 
-The existing system already demonstrates C++, Go, Redis, TCP, HTTP, Docker, configuration, metrics, concurrency, and failure handling. More infrastructure would increase breadth while weakening time spent on correctness evidence and ownership.
+Kubernetes and Prometheus are fixed v2 validation and observability scope. Kafka,
+a dashboard, and an extra database would increase breadth while weakening time
+spent on correctness evidence and ownership.
