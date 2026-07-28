@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -10,7 +10,8 @@ import (
 	"time"
 )
 
-func main() {
+// Run starts the control plane and blocks until it exits or receives a shutdown signal.
+func Run() {
 	appStore := newStoreFromEnv()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

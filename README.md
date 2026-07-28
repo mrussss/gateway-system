@@ -52,7 +52,7 @@ Local development:
 
 ```bash
 cd go-control-plane
-go run .
+go run ./cmd/control-plane
 ```
 
 ```bash

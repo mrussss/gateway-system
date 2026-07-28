@@ -1,4 +1,4 @@
-package main
+package app
 
 type authCheckRequest struct {
 	ClientID string `json:"client_id"`

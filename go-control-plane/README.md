@@ -6,7 +6,7 @@ Minimal HTTP control plane for the C++ gateway.
 
 ```bash
 cd go-control-plane
-go run .
+go run ./cmd/control-plane
 ```
 
 The service listens on `:8080`.
