@@ -1,28 +1,35 @@
 package main
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
+
+var errConfigConflict = errors.New("config version conflict")
 
 func defaultRuntimeConfig() runtimeConfig {
 	return runtimeConfig{
 		Version:                       1,
-		AuthTimeoutMS:                 1000,
-		MaxPayloadSize:                4194314,
+		MaxPayloadSize:                1048576,
 		MaxConnectionsPerClient:       2,
 		MaxRequestsPerClientPerSecond: 100,
-		FailOpen:                      false,
+		SlowClientOutputLimit:         8388608,
+		LogLevel:                      "INFO",
 	}
 }
 
 func validateConfigUpdate(req configUpdateRequest) error {
 	switch {
-	case req.AuthTimeoutMS <= 0:
-		return errors.New("auth_timeout_ms must be positive")
-	case req.MaxPayloadSize <= 0:
-		return errors.New("max_payload_size must be positive")
+	case req.MaxPayloadSize <= 0 || req.MaxPayloadSize > 4194314:
+		return errors.New("max_payload_size is outside the supported range")
 	case req.MaxConnectionsPerClient <= 0:
 		return errors.New("max_connections_per_client must be positive")
 	case req.MaxRequestsPerClientPerSecond <= 0:
 		return errors.New("max_requests_per_client_per_second must be positive")
+	case req.SlowClientOutputLimit < req.MaxPayloadSize || req.SlowClientOutputLimit > 67108864:
+		return errors.New("slow_client_output_limit must cover one payload and stay below the hard limit")
+	case strings.ToUpper(req.LogLevel) != "DEBUG" && strings.ToUpper(req.LogLevel) != "INFO" && strings.ToUpper(req.LogLevel) != "WARN" && strings.ToUpper(req.LogLevel) != "ERROR":
+		return errors.New("log_level must be DEBUG, INFO, WARN, or ERROR")
 	default:
 		return nil
 	}

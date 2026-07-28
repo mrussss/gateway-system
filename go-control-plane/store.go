@@ -31,7 +31,7 @@ type Store interface {
 	disableToken(clientID string, updatedAt string) error
 	listTokens() ([]tokenEntry, error)
 	getConfig() (runtimeConfig, error)
-	updateConfig(req configUpdateRequest) (runtimeConfig, error)
+	updateConfig(expectedVersion int64, req configUpdateRequest) (runtimeConfig, error)
 }
 
 func newStoreFromEnv() Store {

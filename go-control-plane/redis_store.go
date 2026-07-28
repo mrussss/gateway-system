@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -230,47 +231,30 @@ func (s *redisStore) listTokens() ([]tokenEntry, error) {
 func (s *redisStore) getConfig() (runtimeConfig, error) {
 	ctx, cancel := redisContext()
 	defer cancel()
-
-	raw, err := s.client.Get(ctx, "config:current").Result()
-	if errors.Is(err, redis.Nil) {
-		cfg := defaultRuntimeConfig()
-		if err := s.setJSON(ctx, "config:current", cfg); err != nil {
-			return runtimeConfig{}, err
-		}
-		return cfg, nil
+	defaults := defaultRuntimeConfig()
+	initScript := redis.NewScript(`if redis.call('EXISTS',KEYS[1]) == 0 then redis.call('HSET',KEYS[1],'version',1,'max_payload_size',ARGV[1],'max_connections_per_client',ARGV[2],'max_requests_per_client_per_second',ARGV[3],'slow_client_output_limit',ARGV[4],'log_level',ARGV[5]); return 1 end return 0`)
+	if _, err := initScript.Run(ctx, s.client, []string{"config:active"}, defaults.MaxPayloadSize, defaults.MaxConnectionsPerClient, defaults.MaxRequestsPerClientPerSecond, defaults.SlowClientOutputLimit, defaults.LogLevel).Result(); err != nil {
+		return runtimeConfig{}, err
 	}
+	values, err := s.client.HGetAll(ctx, "config:active").Result()
 	if err != nil {
 		return runtimeConfig{}, err
 	}
-
-	var cfg runtimeConfig
-	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
-		return runtimeConfig{}, err
-	}
-	return cfg, nil
+	return runtimeConfig{Version: redisInt(values, "version"), MaxPayloadSize: int(redisInt(values, "max_payload_size")), MaxConnectionsPerClient: int(redisInt(values, "max_connections_per_client")), MaxRequestsPerClientPerSecond: int(redisInt(values, "max_requests_per_client_per_second")), SlowClientOutputLimit: int(redisInt(values, "slow_client_output_limit")), LogLevel: values["log_level"]}, nil
 }
 
-func (s *redisStore) updateConfig(req configUpdateRequest) (runtimeConfig, error) {
-	current, err := s.getConfig()
+func (s *redisStore) updateConfig(expectedVersion int64, req configUpdateRequest) (runtimeConfig, error) {
+	ctx, cancel := redisContext()
+	defer cancel()
+	script := redis.NewScript(`local current=redis.call('HGET',KEYS[1],'version'); if not current or tonumber(current)~=tonumber(ARGV[1]) then return 0 end; local next=tonumber(current)+1; redis.call('HSET',KEYS[1],'version',next,'max_payload_size',ARGV[2],'max_connections_per_client',ARGV[3],'max_requests_per_client_per_second',ARGV[4],'slow_client_output_limit',ARGV[5],'log_level',ARGV[6]); return next`)
+	next, err := script.Run(ctx, s.client, []string{"config:active"}, expectedVersion, req.MaxPayloadSize, req.MaxConnectionsPerClient, req.MaxRequestsPerClientPerSecond, req.SlowClientOutputLimit, strings.ToUpper(req.LogLevel)).Int64()
 	if err != nil {
 		return runtimeConfig{}, err
 	}
-
-	cfg := runtimeConfig{
-		Version:                       current.Version + 1,
-		AuthTimeoutMS:                 req.AuthTimeoutMS,
-		MaxPayloadSize:                req.MaxPayloadSize,
-		MaxConnectionsPerClient:       req.MaxConnectionsPerClient,
-		MaxRequestsPerClientPerSecond: req.MaxRequestsPerClientPerSecond,
-		FailOpen:                      req.FailOpen,
+	if next == 0 {
+		return runtimeConfig{}, errConfigConflict
 	}
-
-	ctx, cancel := redisContext()
-	defer cancel()
-	if err := s.setJSON(ctx, "config:current", cfg); err != nil {
-		return runtimeConfig{}, err
-	}
-	return cfg, nil
+	return runtimeConfig{Version: next, MaxPayloadSize: req.MaxPayloadSize, MaxConnectionsPerClient: req.MaxConnectionsPerClient, MaxRequestsPerClientPerSecond: req.MaxRequestsPerClientPerSecond, SlowClientOutputLimit: req.SlowClientOutputLimit, LogLevel: strings.ToUpper(req.LogLevel)}, nil
 }
 
 func (s *redisStore) getStatusByKey(ctx context.Context, key string) (gatewayStatusResponse, bool, error) {

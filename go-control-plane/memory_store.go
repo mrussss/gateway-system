@@ -2,6 +2,7 @@ package main
 
 import (
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -185,17 +186,20 @@ func (s *memoryStore) getConfig() (runtimeConfig, error) {
 	return s.config, nil
 }
 
-func (s *memoryStore) updateConfig(req configUpdateRequest) (runtimeConfig, error) {
+func (s *memoryStore) updateConfig(expectedVersion int64, req configUpdateRequest) (runtimeConfig, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.config.Version != expectedVersion {
+		return runtimeConfig{}, errConfigConflict
+	}
 
 	s.config = runtimeConfig{
 		Version:                       s.config.Version + 1,
-		AuthTimeoutMS:                 req.AuthTimeoutMS,
 		MaxPayloadSize:                req.MaxPayloadSize,
 		MaxConnectionsPerClient:       req.MaxConnectionsPerClient,
 		MaxRequestsPerClientPerSecond: req.MaxRequestsPerClientPerSecond,
-		FailOpen:                      req.FailOpen,
+		SlowClientOutputLimit:         req.SlowClientOutputLimit,
+		LogLevel:                      strings.ToUpper(req.LogLevel),
 	}
 	return s.config, nil
 }

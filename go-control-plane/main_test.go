@@ -351,45 +351,6 @@ func TestLegacyStatusAndClientsStillReturnLatest(t *testing.T) {
 	}})
 }
 
-func TestConfigReload(t *testing.T) {
-	store = newMemoryStore()
-	router := routesWithStore(store)
-
-	updateReq := httptest.NewRequest(http.MethodPost, "/config", bytes.NewBufferString(`{
-		"auth_timeout_ms":1500,
-		"max_payload_size":1048576,
-		"max_connections_per_client":1,
-		"max_requests_per_client_per_second":50,
-		"fail_open":true
-	}`))
-	updateResp := httptest.NewRecorder()
-	router.ServeHTTP(updateResp, updateReq)
-	assertConfigResponse(t, updateResp, http.StatusOK, runtimeConfig{
-		Version:                       2,
-		AuthTimeoutMS:                 1500,
-		MaxPayloadSize:                1048576,
-		MaxConnectionsPerClient:       1,
-		MaxRequestsPerClientPerSecond: 50,
-		FailOpen:                      true,
-	})
-
-	req := httptest.NewRequest(http.MethodPost, "/config/reload", nil)
-	resp := httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-
-	if resp.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", resp.Code)
-	}
-
-	var body configReloadResponse
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if !body.Success || body.Message != "config reload is a no-op" || body.Version != 2 {
-		t.Fatalf("unexpected config reload response: %+v", body)
-	}
-}
-
 func TestConfigGetReturnsDefault(t *testing.T) {
 	store = newMemoryStore()
 	req := httptest.NewRequest(http.MethodGet, "/config", nil)
@@ -399,35 +360,39 @@ func TestConfigGetReturnsDefault(t *testing.T) {
 
 	assertConfigResponse(t, resp, http.StatusOK, runtimeConfig{
 		Version:                       1,
-		AuthTimeoutMS:                 1000,
-		MaxPayloadSize:                4194314,
+		MaxPayloadSize:                1048576,
 		MaxConnectionsPerClient:       2,
 		MaxRequestsPerClientPerSecond: 100,
-		FailOpen:                      false,
+		SlowClientOutputLimit:         8388608,
+		LogLevel:                      "INFO",
 	})
+	if resp.Header().Get("ETag") != `"1"` {
+		t.Fatalf("unexpected ETag %q", resp.Header().Get("ETag"))
+	}
 }
 
 func TestConfigUpdate(t *testing.T) {
 	store = newMemoryStore()
 	router := routesWithStore(store)
 
-	req := httptest.NewRequest(http.MethodPost, "/config", bytes.NewBufferString(`{
-		"auth_timeout_ms":1500,
+	req := httptest.NewRequest(http.MethodPut, "/config", bytes.NewBufferString(`{
 		"max_payload_size":1048576,
 		"max_connections_per_client":1,
 		"max_requests_per_client_per_second":50,
-		"fail_open":true
+		"slow_client_output_limit":8388608,
+		"log_level":"DEBUG"
 	}`))
+	req.Header.Set("If-Match", `"1"`)
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 
 	assertConfigResponse(t, resp, http.StatusOK, runtimeConfig{
 		Version:                       2,
-		AuthTimeoutMS:                 1500,
 		MaxPayloadSize:                1048576,
 		MaxConnectionsPerClient:       1,
 		MaxRequestsPerClientPerSecond: 50,
-		FailOpen:                      true,
+		SlowClientOutputLimit:         8388608,
+		LogLevel:                      "DEBUG",
 	})
 
 	getReq := httptest.NewRequest(http.MethodGet, "/config", nil)
@@ -436,37 +401,20 @@ func TestConfigUpdate(t *testing.T) {
 
 	assertConfigResponse(t, getResp, http.StatusOK, runtimeConfig{
 		Version:                       2,
-		AuthTimeoutMS:                 1500,
 		MaxPayloadSize:                1048576,
 		MaxConnectionsPerClient:       1,
 		MaxRequestsPerClientPerSecond: 50,
-		FailOpen:                      true,
+		SlowClientOutputLimit:         8388608,
+		LogLevel:                      "DEBUG",
 	})
 }
 
 func TestConfigUpdateRejectsInvalidBody(t *testing.T) {
 	store = newMemoryStore()
 
-	for _, body := range []string{
-		`{"auth_timeout_ms":`,
-		`{
-			"auth_timeout_ms":1000,
-			"max_payload_size":4194314,
-			"max_connections_per_client":2,
-			"max_requests_per_client_per_second":100,
-			"fail_open":false,
-			"unknown":true
-		}`,
-		`{
-			"version":99,
-			"auth_timeout_ms":1000,
-			"max_payload_size":4194314,
-			"max_connections_per_client":2,
-			"max_requests_per_client_per_second":100,
-			"fail_open":false
-		}`,
-	} {
-		req := httptest.NewRequest(http.MethodPost, "/config", bytes.NewBufferString(body))
+	for _, body := range []string{`{"max_payload_size":`, `{"max_payload_size":1048576,"max_connections_per_client":2,"max_requests_per_client_per_second":100,"slow_client_output_limit":8388608,"log_level":"INFO","unknown":true}`, `{"version":99,"max_payload_size":1048576,"max_connections_per_client":2,"max_requests_per_client_per_second":100,"slow_client_output_limit":8388608,"log_level":"INFO"}`} {
+		req := httptest.NewRequest(http.MethodPut, "/config", bytes.NewBufferString(body))
+		req.Header.Set("If-Match", `"1"`)
 		resp := httptest.NewRecorder()
 
 		routesWithStore(store).ServeHTTP(resp, req)
@@ -477,61 +425,18 @@ func TestConfigUpdateRejectsInvalidBody(t *testing.T) {
 
 func TestConfigUpdateRejectsInvalidValues(t *testing.T) {
 	store = newMemoryStore()
-
-	testCases := []struct {
-		name      string
-		body      string
-		wantError string
-	}{
-		{
-			name: "auth_timeout_ms",
-			body: `{
-				"auth_timeout_ms":0,
-				"max_payload_size":4194314,
-				"max_connections_per_client":2,
-				"max_requests_per_client_per_second":100,
-				"fail_open":false
-			}`,
-			wantError: "auth_timeout_ms must be positive",
-		},
-		{
-			name: "max_payload_size",
-			body: `{
-				"auth_timeout_ms":1000,
-				"max_payload_size":0,
-				"max_connections_per_client":2,
-				"max_requests_per_client_per_second":100,
-				"fail_open":false
-			}`,
-			wantError: "max_payload_size must be positive",
-		},
-		{
-			name: "max_connections_per_client",
-			body: `{
-				"auth_timeout_ms":1000,
-				"max_payload_size":4194314,
-				"max_connections_per_client":0,
-				"max_requests_per_client_per_second":100,
-				"fail_open":false
-			}`,
-			wantError: "max_connections_per_client must be positive",
-		},
-		{
-			name: "max_requests_per_client_per_second",
-			body: `{
-				"auth_timeout_ms":1000,
-				"max_payload_size":4194314,
-				"max_connections_per_client":2,
-				"max_requests_per_client_per_second":0,
-				"fail_open":false
-			}`,
-			wantError: "max_requests_per_client_per_second must be positive",
-		},
+	testCases := []struct{ name, body, wantError string }{
+		{"max payload", `{"max_payload_size":0,"max_connections_per_client":2,"max_requests_per_client_per_second":100,"slow_client_output_limit":8388608,"log_level":"INFO"}`, "max_payload_size is outside the supported range"},
+		{"connections", `{"max_payload_size":1048576,"max_connections_per_client":0,"max_requests_per_client_per_second":100,"slow_client_output_limit":8388608,"log_level":"INFO"}`, "max_connections_per_client must be positive"},
+		{"rate", `{"max_payload_size":1048576,"max_connections_per_client":2,"max_requests_per_client_per_second":0,"slow_client_output_limit":8388608,"log_level":"INFO"}`, "max_requests_per_client_per_second must be positive"},
+		{"output", `{"max_payload_size":1048576,"max_connections_per_client":2,"max_requests_per_client_per_second":100,"slow_client_output_limit":1,"log_level":"INFO"}`, "slow_client_output_limit must cover one payload and stay below the hard limit"},
+		{"log", `{"max_payload_size":1048576,"max_connections_per_client":2,"max_requests_per_client_per_second":100,"slow_client_output_limit":8388608,"log_level":"TRACE"}`, "log_level must be DEBUG, INFO, WARN, or ERROR"},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/config", bytes.NewBufferString(tc.body))
+			req := httptest.NewRequest(http.MethodPut, "/config", bytes.NewBufferString(tc.body))
+			req.Header.Set("If-Match", `"1"`)
 			resp := httptest.NewRecorder()
 
 			routesWithStore(store).ServeHTTP(resp, req)
@@ -632,11 +537,11 @@ func TestStoreDefaultConfigMatchesExpected(t *testing.T) {
 	got := defaultRuntimeConfig()
 	want := runtimeConfig{
 		Version:                       1,
-		AuthTimeoutMS:                 1000,
-		MaxPayloadSize:                4194314,
+		MaxPayloadSize:                1048576,
 		MaxConnectionsPerClient:       2,
 		MaxRequestsPerClientPerSecond: 100,
-		FailOpen:                      false,
+		SlowClientOutputLimit:         8388608,
+		LogLevel:                      "INFO",
 	}
 	if got != want {
 		t.Fatalf("expected default config %+v, got %+v", want, got)
@@ -746,16 +651,9 @@ func TestHandlersReturnStoreError(t *testing.T) {
 		},
 		{
 			name:       "config update",
-			method:     http.MethodPost,
+			method:     http.MethodPut,
 			path:       "/config",
-			body:       `{"auth_timeout_ms":1000,"max_payload_size":4194314,"max_connections_per_client":2,"max_requests_per_client_per_second":100,"fail_open":false}`,
-			wantStatus: http.StatusInternalServerError,
-			wantBody:   storeErrorMessage,
-		},
-		{
-			name:       "config reload",
-			method:     http.MethodPost,
-			path:       "/config/reload",
+			body:       `{"max_payload_size":1048576,"max_connections_per_client":2,"max_requests_per_client_per_second":100,"slow_client_output_limit":8388608,"log_level":"INFO"}`,
 			wantStatus: http.StatusInternalServerError,
 			wantBody:   storeErrorMessage,
 		},
@@ -765,6 +663,9 @@ func TestHandlersReturnStoreError(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store = &errorStore{}
 			req := httptest.NewRequest(tc.method, tc.path, bytes.NewBufferString(tc.body))
+			if tc.method == http.MethodPut && tc.path == "/config" {
+				req.Header.Set("If-Match", `"1"`)
+			}
 			resp := httptest.NewRecorder()
 
 			routesWithStore(store).ServeHTTP(resp, req)
@@ -844,7 +745,7 @@ func (s *errorStore) getConfig() (runtimeConfig, error) {
 	return runtimeConfig{}, errors.New(storeErrorMessage)
 }
 
-func (s *errorStore) updateConfig(req configUpdateRequest) (runtimeConfig, error) {
+func (s *errorStore) updateConfig(expectedVersion int64, req configUpdateRequest) (runtimeConfig, error) {
 	return runtimeConfig{}, errors.New(storeErrorMessage)
 }
 

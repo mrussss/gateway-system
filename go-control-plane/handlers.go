@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -35,8 +36,7 @@ func routesWithStore(store Store) http.Handler {
 	mux.Handle("DELETE /tokens/{client_id}", a.requireAdmin(http.HandlerFunc(a.handleTokensDelete)))
 	mux.Handle("POST /tokens/{client_id}/rotate", a.requireAdmin(http.HandlerFunc(a.handleTokensRotate)))
 	mux.Handle("GET /config", a.requireAdminOrGateway(http.HandlerFunc(a.handleConfigGet)))
-	mux.Handle("POST /config", a.requireAdmin(http.HandlerFunc(a.handleConfigUpdate)))
-	mux.Handle("POST /config/reload", a.requireAdmin(http.HandlerFunc(a.handleConfigReload)))
+	mux.Handle("PUT /config", a.requireAdmin(http.HandlerFunc(a.handleConfigUpdate)))
 	return middleware(mux)
 }
 
@@ -321,10 +321,20 @@ func (a *application) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w)
 		return
 	}
+	w.Header().Set("ETag", `"`+strconv.FormatInt(cfg.Version, 10)+`"`)
 	writeJSON(w, http.StatusOK, cfg)
 }
 
 func (a *application) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("If-Match") == "" {
+		writeJSON(w, http.StatusPreconditionRequired, errorResponse{Error: "If-Match is required"})
+		return
+	}
+	expected, err := parseGeneration(r.Header.Get("If-Match"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid If-Match"})
+		return
+	}
 	var req configUpdateRequest
 	if err := decodeJSON(w, r, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
@@ -336,25 +346,17 @@ func (a *application) handleConfigUpdate(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	cfg, err := a.store.updateConfig(req)
+	cfg, err := a.store.updateConfig(expected, req)
+	if errors.Is(err, errConfigConflict) {
+		writeJSON(w, http.StatusConflict, errorResponse{Error: "config version conflict"})
+		return
+	}
 	if err != nil {
 		writeStoreError(w)
 		return
 	}
+	w.Header().Set("ETag", `"`+strconv.FormatInt(cfg.Version, 10)+`"`)
 	writeJSON(w, http.StatusOK, cfg)
-}
-
-func (a *application) handleConfigReload(w http.ResponseWriter, r *http.Request) {
-	cfg, err := a.store.getConfig()
-	if err != nil {
-		writeStoreError(w)
-		return
-	}
-	writeJSON(w, http.StatusOK, configReloadResponse{
-		Success: true,
-		Message: "config reload is a no-op",
-		Version: cfg.Version,
-	})
 }
 
 func writeStoreError(w http.ResponseWriter) {

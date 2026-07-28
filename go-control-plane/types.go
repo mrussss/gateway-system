@@ -14,27 +14,21 @@ type healthResponse struct {
 	Status string `json:"status"`
 }
 
-type configReloadResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Version int64  `json:"version"`
-}
-
 type runtimeConfig struct {
-	Version                       int64 `json:"version"`
-	AuthTimeoutMS                 int   `json:"auth_timeout_ms"`
-	MaxPayloadSize                int   `json:"max_payload_size"`
-	MaxConnectionsPerClient       int   `json:"max_connections_per_client"`
-	MaxRequestsPerClientPerSecond int   `json:"max_requests_per_client_per_second"`
-	FailOpen                      bool  `json:"fail_open"`
+	Version                       int64  `json:"version"`
+	MaxPayloadSize                int    `json:"max_payload_size"`
+	MaxConnectionsPerClient       int    `json:"max_connections_per_client"`
+	MaxRequestsPerClientPerSecond int    `json:"max_requests_per_client_per_second"`
+	SlowClientOutputLimit         int    `json:"slow_client_output_limit"`
+	LogLevel                      string `json:"log_level"`
 }
 
 type configUpdateRequest struct {
-	AuthTimeoutMS                 int  `json:"auth_timeout_ms"`
-	MaxPayloadSize                int  `json:"max_payload_size"`
-	MaxConnectionsPerClient       int  `json:"max_connections_per_client"`
-	MaxRequestsPerClientPerSecond int  `json:"max_requests_per_client_per_second"`
-	FailOpen                      bool `json:"fail_open"`
+	MaxPayloadSize                int    `json:"max_payload_size"`
+	MaxConnectionsPerClient       int    `json:"max_connections_per_client"`
+	MaxRequestsPerClientPerSecond int    `json:"max_requests_per_client_per_second"`
+	SlowClientOutputLimit         int    `json:"slow_client_output_limit"`
+	LogLevel                      string `json:"log_level"`
 }
 
 type metricsReportRequest struct {
