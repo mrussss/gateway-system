@@ -16,7 +16,7 @@ var store Store
 
 func TestHealth(t *testing.T) {
 	store = newMemoryStore()
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := newTestRequest(http.MethodGet, "/health", nil)
 	resp := httptest.NewRecorder()
 
 	routesWithStore(store).ServeHTTP(resp, req)
@@ -40,7 +40,7 @@ func TestAuthCheckAllowsValidToken(t *testing.T) {
 		t.Fatalf("set token: %v", err)
 	}
 	body := bytes.NewBufferString(`{"client_id":"client_001","token":"registered-token"}`)
-	req := httptest.NewRequest(http.MethodPost, "/auth/check", body)
+	req := newTestRequest(http.MethodPost, "/auth/check", body)
 	resp := httptest.NewRecorder()
 
 	routesWithStore(store).ServeHTTP(resp, req)
@@ -54,7 +54,7 @@ func TestAuthCheckRejectsInvalidToken(t *testing.T) {
 		t.Fatalf("set token: %v", err)
 	}
 	body := bytes.NewBufferString(`{"client_id":"client_001","token":"bad-token"}`)
-	req := httptest.NewRequest(http.MethodPost, "/auth/check", body)
+	req := newTestRequest(http.MethodPost, "/auth/check", body)
 	resp := httptest.NewRecorder()
 
 	routesWithStore(store).ServeHTTP(resp, req)
@@ -65,29 +65,29 @@ func TestAuthCheckRejectsInvalidToken(t *testing.T) {
 func TestAuthCheckRejectsInvalidJSON(t *testing.T) {
 	store = newMemoryStore()
 	body := bytes.NewBufferString(`{"client_id":`)
-	req := httptest.NewRequest(http.MethodPost, "/auth/check", body)
+	req := newTestRequest(http.MethodPost, "/auth/check", body)
 	resp := httptest.NewRecorder()
 
 	routesWithStore(store).ServeHTTP(resp, req)
 
-	assertAuthResponse(t, resp, http.StatusBadRequest, false, "invalid request body")
+	assertErrorResponse(t, resp, http.StatusBadRequest, "invalid request body")
 }
 
 func TestAuthCheckRejectsMissingFields(t *testing.T) {
 	store = newMemoryStore()
 	body := bytes.NewBufferString(`{"client_id":"client_001"}`)
-	req := httptest.NewRequest(http.MethodPost, "/auth/check", body)
+	req := newTestRequest(http.MethodPost, "/auth/check", body)
 	resp := httptest.NewRecorder()
 
 	routesWithStore(store).ServeHTTP(resp, req)
 
-	assertAuthResponse(t, resp, http.StatusBadRequest, false, "client_id and token are required")
+	assertErrorResponse(t, resp, http.StatusBadRequest, "client_id and token are required")
 }
 
 func TestAuthCheckRejectsUnregisteredTcpTestToken(t *testing.T) {
 	store = newMemoryStore()
 	body := bytes.NewBufferString(`{"client_id":"tcp-test-9001","token":"test-token"}`)
-	req := httptest.NewRequest(http.MethodPost, "/auth/check", body)
+	req := newTestRequest(http.MethodPost, "/auth/check", body)
 	resp := httptest.NewRecorder()
 
 	routesWithStore(store).ServeHTTP(resp, req)
@@ -106,14 +106,14 @@ func TestMetricsReportAndGatewayStatus(t *testing.T) {
 		"error_count":3,
 		"timestamp":1710000000
 	}`
-	req := httptest.NewRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(report))
+	req := newTestRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(report))
 	resp := httptest.NewRecorder()
 
 	routesWithStore(store).ServeHTTP(resp, req)
 
 	assertStoredGatewayStatus(t, resp, http.StatusOK, "gateway-001", 12, 3456, "2024-03-09T16:00:00Z")
 
-	statusReq := httptest.NewRequest(http.MethodGet, "/gateway/status", nil)
+	statusReq := newTestRequest(http.MethodGet, "/gateway/status", nil)
 	statusResp := httptest.NewRecorder()
 
 	routesWithStore(store).ServeHTTP(statusResp, statusReq)
@@ -123,7 +123,7 @@ func TestMetricsReportAndGatewayStatus(t *testing.T) {
 
 func TestGatewayStatusNotReported(t *testing.T) {
 	store = newMemoryStore()
-	req := httptest.NewRequest(http.MethodGet, "/gateway/status", nil)
+	req := newTestRequest(http.MethodGet, "/gateway/status", nil)
 	resp := httptest.NewRecorder()
 
 	routesWithStore(store).ServeHTTP(resp, req)
@@ -182,14 +182,14 @@ func TestClientsReportAndList(t *testing.T) {
 			{"client_id":"client_001","remote_addr":"127.0.0.1:50001","connected_at":"2026-06-08T12:00:00Z"}
 		]
 	}`
-	req := httptest.NewRequest(http.MethodPost, "/clients/report", bytes.NewBufferString(report))
+	req := newTestRequest(http.MethodPost, "/clients/report", bytes.NewBufferString(report))
 	resp := httptest.NewRecorder()
 
 	routesWithStore(store).ServeHTTP(resp, req)
 
 	assertSuccessResponse(t, resp, http.StatusOK)
 
-	listReq := httptest.NewRequest(http.MethodGet, "/clients", nil)
+	listReq := newTestRequest(http.MethodGet, "/clients", nil)
 	listResp := httptest.NewRecorder()
 
 	routesWithStore(store).ServeHTTP(listResp, listReq)
@@ -203,7 +203,7 @@ func TestClientsReportAndList(t *testing.T) {
 
 func TestClientsListUsesEmptyArrayInsteadOfNull(t *testing.T) {
 	store = newMemoryStore()
-	req := httptest.NewRequest(http.MethodGet, "/clients", nil)
+	req := newTestRequest(http.MethodGet, "/clients", nil)
 	resp := httptest.NewRecorder()
 
 	routesWithStore(store).ServeHTTP(resp, req)
@@ -220,7 +220,7 @@ func TestListGatewaysReturnsSortedStatuses(t *testing.T) {
 	store = newMemoryStore()
 	router := routesWithStore(store)
 
-	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(`{
+	router.ServeHTTP(httptest.NewRecorder(), newTestRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(`{
 		"gateway_id":"gateway-002",
 		"active_connections":2,
 		"total_messages":20,
@@ -229,7 +229,7 @@ func TestListGatewaysReturnsSortedStatuses(t *testing.T) {
 		"error_count":0,
 		"timestamp":1710000001
 	}`)))
-	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(`{
+	router.ServeHTTP(httptest.NewRecorder(), newTestRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(`{
 		"gateway_id":"gateway-001",
 		"active_connections":1,
 		"total_messages":10,
@@ -239,7 +239,7 @@ func TestListGatewaysReturnsSortedStatuses(t *testing.T) {
 		"timestamp":1710000000
 	}`)))
 
-	req := httptest.NewRequest(http.MethodGet, "/gateways", nil)
+	req := newTestRequest(http.MethodGet, "/gateways", nil)
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 
@@ -266,7 +266,7 @@ func TestGetGatewayStatusByID(t *testing.T) {
 	store = newMemoryStore()
 	router := routesWithStore(store)
 
-	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(`{
+	router.ServeHTTP(httptest.NewRecorder(), newTestRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(`{
 		"gateway_id":"gateway-001",
 		"active_connections":12,
 		"total_messages":3456,
@@ -276,12 +276,12 @@ func TestGetGatewayStatusByID(t *testing.T) {
 		"timestamp":1710000000
 	}`)))
 
-	req := httptest.NewRequest(http.MethodGet, "/gateways/gateway-001/status", nil)
+	req := newTestRequest(http.MethodGet, "/gateways/gateway-001/status", nil)
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 	assertGatewayStatus(t, resp, http.StatusOK, "gateway-001", 12, 3456, "2024-03-09T16:00:00Z")
 
-	missingReq := httptest.NewRequest(http.MethodGet, "/gateways/missing/status", nil)
+	missingReq := newTestRequest(http.MethodGet, "/gateways/missing/status", nil)
 	missingResp := httptest.NewRecorder()
 	router.ServeHTTP(missingResp, missingReq)
 	assertErrorResponse(t, missingResp, http.StatusNotFound, "gateway status not reported")
@@ -291,14 +291,14 @@ func TestGetGatewayClientsByID(t *testing.T) {
 	store = newMemoryStore()
 	router := routesWithStore(store)
 
-	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/clients/report", bytes.NewBufferString(`{
+	router.ServeHTTP(httptest.NewRecorder(), newTestRequest(http.MethodPost, "/clients/report", bytes.NewBufferString(`{
 		"gateway_id":"gateway-001",
 		"clients":[
 			{"client_id":"client_001","remote_addr":"127.0.0.1:50001","connected_at":"2026-06-08T12:00:00Z"}
 		]
 	}`)))
 
-	req := httptest.NewRequest(http.MethodGet, "/gateways/gateway-001/clients", nil)
+	req := newTestRequest(http.MethodGet, "/gateways/gateway-001/clients", nil)
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 	assertClientsResponse(t, resp, http.StatusOK, []clientInfo{{
@@ -307,7 +307,7 @@ func TestGetGatewayClientsByID(t *testing.T) {
 		ConnectedAt: "2026-06-08T12:00:00Z",
 	}})
 
-	missingReq := httptest.NewRequest(http.MethodGet, "/gateways/missing/clients", nil)
+	missingReq := newTestRequest(http.MethodGet, "/gateways/missing/clients", nil)
 	missingResp := httptest.NewRecorder()
 	router.ServeHTTP(missingResp, missingReq)
 	assertErrorResponse(t, missingResp, http.StatusNotFound, "gateway clients not reported")
@@ -317,7 +317,7 @@ func TestLegacyStatusAndClientsStillReturnLatest(t *testing.T) {
 	store = newMemoryStore()
 	router := routesWithStore(store)
 
-	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(`{
+	router.ServeHTTP(httptest.NewRecorder(), newTestRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(`{
 		"gateway_id":"gateway-001",
 		"active_connections":1,
 		"total_messages":10,
@@ -326,7 +326,7 @@ func TestLegacyStatusAndClientsStillReturnLatest(t *testing.T) {
 		"error_count":0,
 		"timestamp":1710000000
 	}`)))
-	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(`{
+	router.ServeHTTP(httptest.NewRecorder(), newTestRequest(http.MethodPost, "/metrics/report", bytes.NewBufferString(`{
 		"gateway_id":"gateway-002",
 		"active_connections":2,
 		"total_messages":20,
@@ -335,21 +335,21 @@ func TestLegacyStatusAndClientsStillReturnLatest(t *testing.T) {
 		"error_count":1,
 		"timestamp":1710000001
 	}`)))
-	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/clients/report", bytes.NewBufferString(`{
+	router.ServeHTTP(httptest.NewRecorder(), newTestRequest(http.MethodPost, "/clients/report", bytes.NewBufferString(`{
 		"gateway_id":"gateway-001",
 		"clients":[{"client_id":"client_001","remote_addr":"127.0.0.1:50001","connected_at":"2026-06-08T12:00:00Z"}]
 	}`)))
-	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/clients/report", bytes.NewBufferString(`{
+	router.ServeHTTP(httptest.NewRecorder(), newTestRequest(http.MethodPost, "/clients/report", bytes.NewBufferString(`{
 		"gateway_id":"gateway-002",
 		"clients":[{"client_id":"client_002","remote_addr":"127.0.0.1:50002","connected_at":"2026-06-08T12:00:01Z"}]
 	}`)))
 
-	statusReq := httptest.NewRequest(http.MethodGet, "/gateway/status", nil)
+	statusReq := newTestRequest(http.MethodGet, "/gateway/status", nil)
 	statusResp := httptest.NewRecorder()
 	router.ServeHTTP(statusResp, statusReq)
 	assertGatewayStatus(t, statusResp, http.StatusOK, "gateway-002", 2, 20, "2024-03-09T16:00:01Z")
 
-	clientsReq := httptest.NewRequest(http.MethodGet, "/clients", nil)
+	clientsReq := newTestRequest(http.MethodGet, "/clients", nil)
 	clientsResp := httptest.NewRecorder()
 	router.ServeHTTP(clientsResp, clientsReq)
 	assertClientsResponse(t, clientsResp, http.StatusOK, []clientInfo{{
@@ -361,7 +361,7 @@ func TestLegacyStatusAndClientsStillReturnLatest(t *testing.T) {
 
 func TestConfigGetReturnsDefault(t *testing.T) {
 	store = newMemoryStore()
-	req := httptest.NewRequest(http.MethodGet, "/config", nil)
+	req := newTestRequest(http.MethodGet, "/config", nil)
 	resp := httptest.NewRecorder()
 
 	routesWithStore(store).ServeHTTP(resp, req)
@@ -383,7 +383,7 @@ func TestConfigUpdate(t *testing.T) {
 	store = newMemoryStore()
 	router := routesWithStore(store)
 
-	req := httptest.NewRequest(http.MethodPut, "/config", bytes.NewBufferString(`{
+	req := newTestRequest(http.MethodPut, "/config", bytes.NewBufferString(`{
 		"max_payload_size":1048576,
 		"max_connections_per_client":1,
 		"max_requests_per_client_per_second":50,
@@ -403,7 +403,7 @@ func TestConfigUpdate(t *testing.T) {
 		LogLevel:                      "DEBUG",
 	})
 
-	getReq := httptest.NewRequest(http.MethodGet, "/config", nil)
+	getReq := newTestRequest(http.MethodGet, "/config", nil)
 	getResp := httptest.NewRecorder()
 	router.ServeHTTP(getResp, getReq)
 
@@ -421,7 +421,7 @@ func TestConfigUpdateRejectsInvalidBody(t *testing.T) {
 	store = newMemoryStore()
 
 	for _, body := range []string{`{"max_payload_size":`, `{"max_payload_size":1048576,"max_connections_per_client":2,"max_requests_per_client_per_second":100,"slow_client_output_limit":8388608,"log_level":"INFO","unknown":true}`, `{"version":99,"max_payload_size":1048576,"max_connections_per_client":2,"max_requests_per_client_per_second":100,"slow_client_output_limit":8388608,"log_level":"INFO"}`} {
-		req := httptest.NewRequest(http.MethodPut, "/config", bytes.NewBufferString(body))
+		req := newTestRequest(http.MethodPut, "/config", bytes.NewBufferString(body))
 		req.Header.Set("If-Match", `"1"`)
 		resp := httptest.NewRecorder()
 
@@ -443,7 +443,7 @@ func TestConfigUpdateRejectsInvalidValues(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPut, "/config", bytes.NewBufferString(tc.body))
+			req := newTestRequest(http.MethodPut, "/config", bytes.NewBufferString(tc.body))
 			req.Header.Set("If-Match", `"1"`)
 			resp := httptest.NewRecorder()
 
@@ -458,7 +458,7 @@ func TestTokensCRUDAndAuthFlow(t *testing.T) {
 	store = newMemoryStore()
 	router := routesWithStore(store)
 
-	createReq := httptest.NewRequest(http.MethodPost, "/tokens", bytes.NewBufferString(`{"client_id":"client_001"}`))
+	createReq := newTestRequest(http.MethodPost, "/tokens", bytes.NewBufferString(`{"client_id":"client_001"}`))
 	createResp := httptest.NewRecorder()
 	router.ServeHTTP(createResp, createReq)
 	if createResp.Code != http.StatusCreated {
@@ -472,12 +472,12 @@ func TestTokensCRUDAndAuthFlow(t *testing.T) {
 		t.Fatalf("unexpected token response: %+v", created)
 	}
 
-	authReq := httptest.NewRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{"client_id":"client_001","token":"`+created.Token+`"}`))
+	authReq := newTestRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{"client_id":"client_001","token":"`+created.Token+`"}`))
 	authResp := httptest.NewRecorder()
 	router.ServeHTTP(authResp, authReq)
 	assertAuthResponse(t, authResp, http.StatusOK, true, "ok")
 
-	listReq := httptest.NewRequest(http.MethodGet, "/tokens", nil)
+	listReq := newTestRequest(http.MethodGet, "/tokens", nil)
 	listResp := httptest.NewRecorder()
 	router.ServeHTTP(listResp, listReq)
 
@@ -498,12 +498,12 @@ func TestTokensCRUDAndAuthFlow(t *testing.T) {
 		t.Fatalf("unexpected token entries: %+v", entries)
 	}
 
-	deleteReq := httptest.NewRequest(http.MethodDelete, "/tokens/client_001", nil)
+	deleteReq := newTestRequest(http.MethodDelete, "/tokens/client_001", nil)
 	deleteResp := httptest.NewRecorder()
 	router.ServeHTTP(deleteResp, deleteReq)
 	assertSuccessResponse(t, deleteResp, http.StatusOK)
 
-	deniedReq := httptest.NewRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{"client_id":"client_001","token":"`+created.Token+`"}`))
+	deniedReq := newTestRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{"client_id":"client_001","token":"`+created.Token+`"}`))
 	deniedResp := httptest.NewRecorder()
 	router.ServeHTTP(deniedResp, deniedReq)
 	assertAuthResponse(t, deniedResp, http.StatusOK, false, "invalid token")
@@ -511,7 +511,7 @@ func TestTokensCRUDAndAuthFlow(t *testing.T) {
 
 func TestTokensUpsertRejectsMissingFields(t *testing.T) {
 	store = newMemoryStore()
-	req := httptest.NewRequest(http.MethodPost, "/tokens", bytes.NewBufferString(`{}`))
+	req := newTestRequest(http.MethodPost, "/tokens", bytes.NewBufferString(`{}`))
 	resp := httptest.NewRecorder()
 
 	routesWithStore(store).ServeHTTP(resp, req)
@@ -564,7 +564,6 @@ func TestHandlersReturnStoreError(t *testing.T) {
 		body       string
 		wantStatus int
 		wantBody   string
-		authBody   authCheckResponse
 	}{
 		{
 			name:       "auth check",
@@ -572,10 +571,7 @@ func TestHandlersReturnStoreError(t *testing.T) {
 			path:       "/auth/check",
 			body:       `{"client_id":"client_001","token":"registered-token"}`,
 			wantStatus: http.StatusInternalServerError,
-			authBody: authCheckResponse{
-				Allowed: false,
-				Reason:  storeErrorMessage,
-			},
+			wantBody:   storeErrorMessage,
 		},
 		{
 			name:       "metrics report",
@@ -670,7 +666,7 @@ func TestHandlersReturnStoreError(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			store = &errorStore{}
-			req := httptest.NewRequest(tc.method, tc.path, bytes.NewBufferString(tc.body))
+			req := newTestRequest(tc.method, tc.path, bytes.NewBufferString(tc.body))
 			if tc.method == http.MethodPut && tc.path == "/config" {
 				req.Header.Set("If-Match", `"1"`)
 			}
@@ -678,10 +674,6 @@ func TestHandlersReturnStoreError(t *testing.T) {
 
 			routesWithStore(store).ServeHTTP(resp, req)
 
-			if tc.authBody.Reason != "" {
-				assertAuthResponse(t, resp, tc.wantStatus, tc.authBody.Allowed, tc.authBody.Reason)
-				return
-			}
 			assertErrorResponse(t, resp, tc.wantStatus, tc.wantBody)
 		})
 	}
@@ -781,12 +773,12 @@ func assertErrorResponse(t *testing.T, resp *httptest.ResponseRecorder, wantStat
 		t.Fatalf("expected status %d, got %d", wantStatus, resp.Code)
 	}
 
-	var body errorResponse
+	var body apiErrorResponse
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if body.Error != wantError {
-		t.Fatalf("expected error %q, got %q", wantError, body.Error)
+	if body.RequestID == "" || body.Code == "" || body.Message != wantError {
+		t.Fatalf("expected error %q with request metadata, got %+v", wantError, body)
 	}
 }
 

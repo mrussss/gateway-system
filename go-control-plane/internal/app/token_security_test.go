@@ -43,7 +43,7 @@ func TestTokenReturnedOnceAndDisableBlocksAuth(t *testing.T) {
 	t.Setenv("TOKEN_PEPPER", "test-pepper")
 	storage := newMemoryStore()
 	router := routesWithStore(storage)
-	create := httptest.NewRequest(http.MethodPost, "/tokens", bytes.NewBufferString(`{"client_id":"client-1"}`))
+	create := newTestRequest(http.MethodPost, "/tokens", bytes.NewBufferString(`{"client_id":"client-1"}`))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, create)
 	if response.Code != http.StatusCreated {
@@ -55,8 +55,8 @@ func TestTokenReturnedOnceAndDisableBlocksAuth(t *testing.T) {
 	}
 
 	disable := httptest.NewRecorder()
-	router.ServeHTTP(disable, httptest.NewRequest(http.MethodDelete, "/tokens/client-1", nil))
-	request := httptest.NewRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{"client_id":"client-1","token":"`+secret.Token+`"}`))
+	router.ServeHTTP(disable, newTestRequest(http.MethodDelete, "/tokens/client-1", nil))
+	request := newTestRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{"client_id":"client-1","token":"`+secret.Token+`"}`))
 	auth := httptest.NewRecorder()
 	router.ServeHTTP(auth, request)
 	assertAuthResponse(t, auth, http.StatusOK, false, "invalid token")
@@ -68,13 +68,13 @@ func TestAdminAndGatewayAuthentication(t *testing.T) {
 	router := routesWithStore(newMemoryStore())
 
 	admin := httptest.NewRecorder()
-	router.ServeHTTP(admin, httptest.NewRequest(http.MethodGet, "/tokens", nil))
+	router.ServeHTTP(admin, newTestRequest(http.MethodGet, "/tokens", nil))
 	if admin.Code != http.StatusUnauthorized {
 		t.Fatalf("expected admin 401, got %d", admin.Code)
 	}
 
 	gateway := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{"client_id":"c","token":"t"}`))
+	request := newTestRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{"client_id":"c","token":"t"}`))
 	router.ServeHTTP(gateway, request)
 	if gateway.Code != http.StatusUnauthorized {
 		t.Fatalf("expected gateway 401, got %d", gateway.Code)

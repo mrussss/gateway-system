@@ -124,10 +124,6 @@ type clientsReportRequest struct {
 	Clients   []clientInfo `json:"clients"`
 }
 
-type errorResponse struct {
-	Error string `json:"error"`
-}
-
 type successResponse struct {
 	Success bool `json:"success"`
 }

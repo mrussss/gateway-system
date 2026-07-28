@@ -57,27 +57,17 @@ func (a *application) handleReady(w http.ResponseWriter, r *http.Request) {
 func (a *application) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	var req authCheckRequest
 	if err := decodeJSON(w, r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, authCheckResponse{
-			Allowed: false,
-			Reason:  "invalid request body",
-		})
 		return
 	}
 
 	if req.ClientID == "" || req.Token == "" {
-		writeJSON(w, http.StatusBadRequest, authCheckResponse{
-			Allowed: false,
-			Reason:  "client_id and token are required",
-		})
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "client_id and token are required")
 		return
 	}
 
 	allowed, err := a.store.isDigestAllowed(req.ClientID, a.tokens.digest(req.Token))
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, authCheckResponse{
-			Allowed: false,
-			Reason:  storeErrorMessage,
-		})
+		writeStoreError(w, r)
 		return
 	}
 	if !allowed {
@@ -97,18 +87,17 @@ func (a *application) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 func (a *application) handleMetricsReport(w http.ResponseWriter, r *http.Request) {
 	var req metricsReportRequest
 	if err := decodeJSON(w, r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
 		return
 	}
 
 	if req.GatewayID == "" {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "gateway_id is required"})
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "gateway_id is required")
 		return
 	}
 
 	status, err := a.store.saveMetrics(req)
 	if err != nil {
-		writeStoreError(w)
+		writeStoreError(w, r)
 		return
 	}
 	writeJSON(w, http.StatusOK, status)
@@ -117,11 +106,11 @@ func (a *application) handleMetricsReport(w http.ResponseWriter, r *http.Request
 func (a *application) handleGatewayStatus(w http.ResponseWriter, r *http.Request) {
 	status, ok, err := a.store.getStatus()
 	if err != nil {
-		writeStoreError(w)
+		writeStoreError(w, r)
 		return
 	}
 	if !ok {
-		writeJSON(w, http.StatusNotFound, errorResponse{Error: "gateway status not reported"})
+		writeAPIError(w, r, http.StatusNotFound, "NOT_FOUND", "gateway status not reported")
 		return
 	}
 
@@ -131,7 +120,7 @@ func (a *application) handleGatewayStatus(w http.ResponseWriter, r *http.Request
 func (a *application) handleGatewaysList(w http.ResponseWriter, r *http.Request) {
 	statuses, err := a.store.listGateways()
 	if err != nil {
-		writeStoreError(w)
+		writeStoreError(w, r)
 		return
 	}
 	now := time.Now().UTC()
@@ -146,11 +135,11 @@ func (a *application) handleGatewayStatusByID(w http.ResponseWriter, r *http.Req
 	gatewayID := r.PathValue("gateway_id")
 	status, ok, err := a.store.getGatewayStatus(gatewayID)
 	if err != nil {
-		writeStoreError(w)
+		writeStoreError(w, r)
 		return
 	}
 	if !ok {
-		writeJSON(w, http.StatusNotFound, errorResponse{Error: "gateway status not reported"})
+		writeAPIError(w, r, http.StatusNotFound, "NOT_FOUND", "gateway status not reported")
 		return
 	}
 	writeJSON(w, http.StatusOK, gatewayStatusToView(status, time.Now().UTC()))
@@ -159,17 +148,16 @@ func (a *application) handleGatewayStatusByID(w http.ResponseWriter, r *http.Req
 func (a *application) handleClientsReport(w http.ResponseWriter, r *http.Request) {
 	var req clientsReportRequest
 	if err := decodeJSON(w, r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
 		return
 	}
 
 	if req.GatewayID == "" {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "gateway_id is required"})
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "gateway_id is required")
 		return
 	}
 
 	if err := a.store.saveClients(req.GatewayID, req.Clients); err != nil {
-		writeStoreError(w)
+		writeStoreError(w, r)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
@@ -178,7 +166,7 @@ func (a *application) handleClientsReport(w http.ResponseWriter, r *http.Request
 func (a *application) handleClients(w http.ResponseWriter, r *http.Request) {
 	clients, err := a.store.getClients()
 	if err != nil {
-		writeStoreError(w)
+		writeStoreError(w, r)
 		return
 	}
 	if clients == nil {
@@ -191,11 +179,11 @@ func (a *application) handleGatewayClientsByID(w http.ResponseWriter, r *http.Re
 	gatewayID := r.PathValue("gateway_id")
 	clients, ok, err := a.store.getGatewayClients(gatewayID)
 	if err != nil {
-		writeStoreError(w)
+		writeStoreError(w, r)
 		return
 	}
 	if !ok {
-		writeJSON(w, http.StatusNotFound, errorResponse{Error: "gateway clients not reported"})
+		writeAPIError(w, r, http.StatusNotFound, "NOT_FOUND", "gateway clients not reported")
 		return
 	}
 	if clients == nil {
@@ -207,27 +195,26 @@ func (a *application) handleGatewayClientsByID(w http.ResponseWriter, r *http.Re
 func (a *application) handleTokensUpsert(w http.ResponseWriter, r *http.Request) {
 	var req tokenUpsertRequest
 	if err := decodeJSON(w, r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
 		return
 	}
 
 	if req.ClientID == "" {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "client_id is required"})
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "client_id is required")
 		return
 	}
 	token, err := a.tokens.generate()
 	if err != nil {
-		writeStoreError(w)
+		writeStoreError(w, r)
 		return
 	}
 	now := nowRFC3339()
 	record := tokenRecord{tokenEntry: tokenEntry{ClientID: req.ClientID, Generation: 1, CreatedAt: now, UpdatedAt: now}, Digest: a.tokens.digest(token)}
 	if err := a.store.createToken(record); err != nil {
 		if errors.Is(err, errTokenExists) {
-			writeJSON(w, http.StatusConflict, errorResponse{Error: "token already exists"})
+			writeAPIError(w, r, http.StatusConflict, "CONFLICT", "token already exists")
 			return
 		}
-		writeStoreError(w)
+		writeStoreError(w, r)
 		return
 	}
 	writeJSON(w, http.StatusCreated, tokenSecretResponse{ClientID: req.ClientID, Token: token, Generation: 1})
@@ -236,7 +223,7 @@ func (a *application) handleTokensUpsert(w http.ResponseWriter, r *http.Request)
 func (a *application) handleTokensList(w http.ResponseWriter, r *http.Request) {
 	entries, err := a.store.listTokens()
 	if err != nil {
-		writeStoreError(w)
+		writeStoreError(w, r)
 		return
 	}
 	writeJSON(w, http.StatusOK, entries)
@@ -245,12 +232,12 @@ func (a *application) handleTokensList(w http.ResponseWriter, r *http.Request) {
 func (a *application) handleTokensDelete(w http.ResponseWriter, r *http.Request) {
 	clientID := r.PathValue("client_id")
 	if clientID == "" {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "client_id is required"})
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "client_id is required")
 		return
 	}
 
 	if err := a.store.disableToken(clientID, nowRFC3339()); err != nil {
-		writeStoreError(w)
+		writeStoreError(w, r)
 		return
 	}
 	writeJSON(w, http.StatusOK, successResponse{Success: true})
@@ -259,25 +246,25 @@ func (a *application) handleTokensDelete(w http.ResponseWriter, r *http.Request)
 func (a *application) handleTokensRotate(w http.ResponseWriter, r *http.Request) {
 	expected, err := parseGeneration(r.Header.Get("If-Match"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid If-Match"})
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "invalid If-Match")
 		return
 	}
 	token, err := a.tokens.generate()
 	if err != nil {
-		writeStoreError(w)
+		writeStoreError(w, r)
 		return
 	}
 	record, err := a.store.rotateToken(r.PathValue("client_id"), expected, a.tokens.digest(token), nowRFC3339())
 	if errors.Is(err, errTokenConflict) {
-		writeJSON(w, http.StatusConflict, errorResponse{Error: "token generation conflict"})
+		writeAPIError(w, r, http.StatusConflict, "CONFLICT", "token generation conflict")
 		return
 	}
 	if errors.Is(err, errTokenNotFound) {
-		writeJSON(w, http.StatusNotFound, errorResponse{Error: "token not found"})
+		writeAPIError(w, r, http.StatusNotFound, "NOT_FOUND", "token not found")
 		return
 	}
 	if err != nil {
-		writeStoreError(w)
+		writeStoreError(w, r)
 		return
 	}
 	writeJSON(w, http.StatusOK, tokenSecretResponse{ClientID: record.ClientID, Token: token, Generation: record.Generation})
@@ -318,7 +305,7 @@ func (a *application) requireAdminOrGateway(next http.Handler) http.Handler {
 func (a *application) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 	cfg, err := a.store.getConfig()
 	if err != nil {
-		writeStoreError(w)
+		writeStoreError(w, r)
 		return
 	}
 	w.Header().Set("ETag", `"`+strconv.FormatInt(cfg.Version, 10)+`"`)
@@ -327,40 +314,39 @@ func (a *application) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 
 func (a *application) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("If-Match") == "" {
-		writeJSON(w, http.StatusPreconditionRequired, errorResponse{Error: "If-Match is required"})
+		writeAPIError(w, r, http.StatusPreconditionRequired, "PRECONDITION_REQUIRED", "If-Match is required")
 		return
 	}
 	expected, err := parseGeneration(r.Header.Get("If-Match"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid If-Match"})
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "invalid If-Match")
 		return
 	}
 	var req configUpdateRequest
 	if err := decodeJSON(w, r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
 		return
 	}
 
 	if err := validateConfigUpdate(req); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", err.Error())
 		return
 	}
 
 	cfg, err := a.store.updateConfig(expected, req)
 	if errors.Is(err, errConfigConflict) {
-		writeJSON(w, http.StatusConflict, errorResponse{Error: "config version conflict"})
+		writeAPIError(w, r, http.StatusConflict, "CONFLICT", "config version conflict")
 		return
 	}
 	if err != nil {
-		writeStoreError(w)
+		writeStoreError(w, r)
 		return
 	}
 	w.Header().Set("ETag", `"`+strconv.FormatInt(cfg.Version, 10)+`"`)
 	writeJSON(w, http.StatusOK, cfg)
 }
 
-func writeStoreError(w http.ResponseWriter) {
-	writeJSON(w, http.StatusInternalServerError, errorResponse{Error: storeErrorMessage})
+func writeStoreError(w http.ResponseWriter, r *http.Request) {
+	writeAPIError(w, r, http.StatusInternalServerError, "INTERNAL", storeErrorMessage)
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, payload any) {

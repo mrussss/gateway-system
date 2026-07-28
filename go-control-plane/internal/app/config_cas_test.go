@@ -40,11 +40,11 @@ func TestConfigHTTPPreconditionAndConflict(t *testing.T) {
 	router := routesWithStore(newMemoryStore())
 	body := `{"max_payload_size":1048576,"max_connections_per_client":4,"max_requests_per_client_per_second":200,"slow_client_output_limit":8388608,"log_level":"INFO"}`
 	missing := httptest.NewRecorder()
-	router.ServeHTTP(missing, httptest.NewRequest(http.MethodPut, "/config", bytes.NewBufferString(body)))
+	router.ServeHTTP(missing, newTestRequest(http.MethodPut, "/config", bytes.NewBufferString(body)))
 	if missing.Code != http.StatusPreconditionRequired {
 		t.Fatalf("expected 428, got %d", missing.Code)
 	}
-	request := httptest.NewRequest(http.MethodPut, "/config", bytes.NewBufferString(body))
+	request := newTestRequest(http.MethodPut, "/config", bytes.NewBufferString(body))
 	request.Header.Set("If-Match", `"9"`)
 	conflict := httptest.NewRecorder()
 	router.ServeHTTP(conflict, request)

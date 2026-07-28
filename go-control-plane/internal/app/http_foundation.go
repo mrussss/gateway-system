@@ -50,14 +50,12 @@ func middleware(next http.Handler) http.Handler {
 		if r.Body != nil {
 			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 		}
-		if r.Method == http.MethodPost || r.Method == http.MethodPut {
+		if (r.Method == http.MethodPost || r.Method == http.MethodPut) && r.ContentLength != 0 {
 			contentType := r.Header.Get("Content-Type")
-			if contentType != "" {
-				mediaType, _, err := mime.ParseMediaType(contentType)
-				if err != nil || mediaType != "application/json" {
-					writeAPIError(w, r, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", "Content-Type must be application/json")
-					return
-				}
+			mediaType, _, err := mime.ParseMediaType(contentType)
+			if err != nil || mediaType != "application/json" {
+				writeAPIError(w, r, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", "Content-Type must be application/json")
+				return
 			}
 		}
 
@@ -103,9 +101,11 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) error {
 			writeAPIError(w, r, http.StatusRequestEntityTooLarge, "BODY_TOO_LARGE", "request body too large")
 			return err
 		}
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "invalid request body")
 		return err
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "request body must contain exactly one JSON value")
 		return errors.New("request body must contain exactly one JSON value")
 	}
 	return nil

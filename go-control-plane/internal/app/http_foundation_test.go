@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -29,6 +30,23 @@ func TestMiddlewareRejectsNonJSON(t *testing.T) {
 	routesWithStore(store).ServeHTTP(response, request)
 	if response.Code != http.StatusUnsupportedMediaType {
 		t.Fatalf("expected 415, got %d", response.Code)
+	}
+}
+
+func TestMiddlewareRejectsMissingContentType(t *testing.T) {
+	store = newMemoryStore()
+	request := httptest.NewRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{}`))
+	response := httptest.NewRecorder()
+	routesWithStore(store).ServeHTTP(response, request)
+	if response.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("expected 415, got %d", response.Code)
+	}
+	var body apiErrorResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.RequestID == "" || body.Code != "UNSUPPORTED_MEDIA_TYPE" {
+		t.Fatalf("unexpected error response: %+v", body)
 	}
 }
 
