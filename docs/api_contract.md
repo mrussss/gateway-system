@@ -6,7 +6,7 @@ All JSON APIs reject unknown fields and trailing values. Errors use:
 {"request_id":"req-...","code":"INVALID_ARGUMENT","message":"invalid request body"}
 ```
 
-Public endpoints are `GET /health/live`, `GET /health/ready`, and `GET /metrics`.
+Public endpoints are `GET /health/live` and `GET /health/ready`.
 Liveness only proves that the process and HTTP server are alive; readiness also
 requires Redis and required configuration.
 

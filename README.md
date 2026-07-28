@@ -2,6 +2,14 @@
 
 `gateway-system` is a compact C++/Go backend system built around a custom TCP data plane and an HTTP control plane. The repository focuses on Linux networking correctness, bounded concurrency, observable overload behavior, deterministic shutdown, and repeatable tests rather than adding more infrastructure products.
 
+## v1.0.0 release scope
+
+Version `v1.0.0` is the completed Phase 0–5 release: contract freeze, Go HTTP
+foundation, secure token lifecycle, Redis-backed gateway state, Redis config
+CAS, and C++ telemetry/dynamic configuration. This release is sealed at that
+scope. Phase 6–9 work is not part of v1.0.0; Prometheus and Kubernetes are not
+required components and are not implemented by this version.
+
 ## What is implemented
 
 - C++17 TCP gateway using non-blocking sockets, edge-triggered `epoll`, `accept4`, and `eventfd`
@@ -142,7 +150,7 @@ The current local Release reference run measured single-connection steady-state 
 
 ## Project boundaries
 
-The project intentionally does not add Kafka, Kubernetes, a dashboard, multi-Reactor sharding, TLS, or an asynchronous HTTP client. Current known limits include a single Reactor, synchronous control-plane HTTP inside workers, per-process rate limiting, and snapshot-based client reporting. These boundaries are deliberate and recorded in [design decisions](docs/design_decisions.md).
+The project intentionally does not add Prometheus, Kubernetes, Kafka, a dashboard, multi-Reactor sharding, TLS, or an asynchronous HTTP client. Current known limits include a single Reactor, synchronous control-plane HTTP inside workers, per-process rate limiting, and snapshot-based client reporting. These boundaries are deliberate and recorded in [design decisions](docs/design_decisions.md).
 
 ## Documentation
 
