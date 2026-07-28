@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
 	"sort"
 	"time"
 
@@ -20,14 +19,12 @@ func newRedisStore(addr string) *redisStore {
 		Addr: addr,
 	})
 
-	ctx, cancel := redisContext()
-	defer cancel()
-	if err := client.Ping(ctx).Err(); err != nil {
-		log.Fatalf("redis unavailable: %v", err)
-	}
-
 	return &redisStore{client: client}
 }
+
+func (s *redisStore) Ping(ctx context.Context) error { return s.client.Ping(ctx).Err() }
+
+func (s *redisStore) Close() error { return s.client.Close() }
 
 func (s *redisStore) saveMetrics(req metricsReportRequest) (gatewayStatusResponse, error) {
 	ctx, cancel := redisContext()

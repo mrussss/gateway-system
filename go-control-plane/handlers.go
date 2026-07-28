@@ -7,35 +7,48 @@ import (
 	"time"
 )
 
-func routes() http.Handler {
+type application struct{ store Store }
+
+func routesWithStore(store Store) http.Handler {
+	a := &application{store: store}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", handleHealth)
-	mux.HandleFunc("POST /auth/check", handleAuthCheck)
-	mux.HandleFunc("POST /metrics/report", handleMetricsReport)
-	mux.HandleFunc("GET /gateway/status", handleGatewayStatus)
-	mux.HandleFunc("GET /gateways", handleGatewaysList)
-	mux.HandleFunc("GET /gateways/{gateway_id}/status", handleGatewayStatusByID)
-	mux.HandleFunc("POST /clients/report", handleClientsReport)
-	mux.HandleFunc("GET /clients", handleClients)
-	mux.HandleFunc("GET /gateways/{gateway_id}/clients", handleGatewayClientsByID)
-	mux.HandleFunc("POST /tokens", handleTokensUpsert)
-	mux.HandleFunc("GET /tokens", handleTokensList)
-	mux.HandleFunc("DELETE /tokens/{client_id}", handleTokensDelete)
-	mux.HandleFunc("GET /config", handleConfigGet)
-	mux.HandleFunc("POST /config", handleConfigUpdate)
-	mux.HandleFunc("POST /config/reload", handleConfigReload)
-	return mux
+	mux.HandleFunc("GET /health", a.handleHealth)
+	mux.HandleFunc("GET /health/live", a.handleHealth)
+	mux.HandleFunc("GET /health/ready", a.handleReady)
+	mux.HandleFunc("POST /auth/check", a.handleAuthCheck)
+	mux.HandleFunc("POST /metrics/report", a.handleMetricsReport)
+	mux.HandleFunc("GET /gateway/status", a.handleGatewayStatus)
+	mux.HandleFunc("GET /gateways", a.handleGatewaysList)
+	mux.HandleFunc("GET /gateways/{gateway_id}/status", a.handleGatewayStatusByID)
+	mux.HandleFunc("POST /clients/report", a.handleClientsReport)
+	mux.HandleFunc("GET /clients", a.handleClients)
+	mux.HandleFunc("GET /gateways/{gateway_id}/clients", a.handleGatewayClientsByID)
+	mux.HandleFunc("POST /tokens", a.handleTokensUpsert)
+	mux.HandleFunc("GET /tokens", a.handleTokensList)
+	mux.HandleFunc("DELETE /tokens/{client_id}", a.handleTokensDelete)
+	mux.HandleFunc("GET /config", a.handleConfigGet)
+	mux.HandleFunc("POST /config", a.handleConfigUpdate)
+	mux.HandleFunc("POST /config/reload", a.handleConfigReload)
+	return middleware(mux)
 }
 
-func handleHealth(w http.ResponseWriter, r *http.Request) {
+func (a *application) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, healthResponse{Status: "ok"})
 }
 
-func handleAuthCheck(w http.ResponseWriter, r *http.Request) {
+func (a *application) handleReady(w http.ResponseWriter, r *http.Request) {
+	if checker, ok := a.store.(storeHealthChecker); ok {
+		if err := checker.Ping(r.Context()); err != nil {
+			writeAPIError(w, r, http.StatusServiceUnavailable, "NOT_READY", "store unavailable")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, healthResponse{Status: "ready"})
+}
+
+func (a *application) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	var req authCheckRequest
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, authCheckResponse{
 			Allowed: false,
 			Reason:  "invalid request body",
@@ -51,7 +64,7 @@ func handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	allowed, err := store.isAllowed(req.ClientID, req.Token)
+	allowed, err := a.store.isAllowed(req.ClientID, req.Token)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, authCheckResponse{
 			Allowed: false,
@@ -73,11 +86,9 @@ func handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func handleMetricsReport(w http.ResponseWriter, r *http.Request) {
+func (a *application) handleMetricsReport(w http.ResponseWriter, r *http.Request) {
 	var req metricsReportRequest
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
 		return
 	}
@@ -87,7 +98,7 @@ func handleMetricsReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status, err := store.saveMetrics(req)
+	status, err := a.store.saveMetrics(req)
 	if err != nil {
 		writeStoreError(w)
 		return
@@ -95,8 +106,8 @@ func handleMetricsReport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, status)
 }
 
-func handleGatewayStatus(w http.ResponseWriter, r *http.Request) {
-	status, ok, err := store.getStatus()
+func (a *application) handleGatewayStatus(w http.ResponseWriter, r *http.Request) {
+	status, ok, err := a.store.getStatus()
 	if err != nil {
 		writeStoreError(w)
 		return
@@ -109,8 +120,8 @@ func handleGatewayStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gatewayStatusToView(status, time.Now().UTC()))
 }
 
-func handleGatewaysList(w http.ResponseWriter, r *http.Request) {
-	statuses, err := store.listGateways()
+func (a *application) handleGatewaysList(w http.ResponseWriter, r *http.Request) {
+	statuses, err := a.store.listGateways()
 	if err != nil {
 		writeStoreError(w)
 		return
@@ -123,9 +134,9 @@ func handleGatewaysList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, views)
 }
 
-func handleGatewayStatusByID(w http.ResponseWriter, r *http.Request) {
+func (a *application) handleGatewayStatusByID(w http.ResponseWriter, r *http.Request) {
 	gatewayID := r.PathValue("gateway_id")
-	status, ok, err := store.getGatewayStatus(gatewayID)
+	status, ok, err := a.store.getGatewayStatus(gatewayID)
 	if err != nil {
 		writeStoreError(w)
 		return
@@ -137,11 +148,9 @@ func handleGatewayStatusByID(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gatewayStatusToView(status, time.Now().UTC()))
 }
 
-func handleClientsReport(w http.ResponseWriter, r *http.Request) {
+func (a *application) handleClientsReport(w http.ResponseWriter, r *http.Request) {
 	var req clientsReportRequest
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
 		return
 	}
@@ -151,15 +160,15 @@ func handleClientsReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := store.saveClients(req.GatewayID, req.Clients); err != nil {
+	if err := a.store.saveClients(req.GatewayID, req.Clients); err != nil {
 		writeStoreError(w)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
-func handleClients(w http.ResponseWriter, r *http.Request) {
-	clients, err := store.getClients()
+func (a *application) handleClients(w http.ResponseWriter, r *http.Request) {
+	clients, err := a.store.getClients()
 	if err != nil {
 		writeStoreError(w)
 		return
@@ -170,9 +179,9 @@ func handleClients(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, clients)
 }
 
-func handleGatewayClientsByID(w http.ResponseWriter, r *http.Request) {
+func (a *application) handleGatewayClientsByID(w http.ResponseWriter, r *http.Request) {
 	gatewayID := r.PathValue("gateway_id")
-	clients, ok, err := store.getGatewayClients(gatewayID)
+	clients, ok, err := a.store.getGatewayClients(gatewayID)
 	if err != nil {
 		writeStoreError(w)
 		return
@@ -187,11 +196,9 @@ func handleGatewayClientsByID(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, clients)
 }
 
-func handleTokensUpsert(w http.ResponseWriter, r *http.Request) {
+func (a *application) handleTokensUpsert(w http.ResponseWriter, r *http.Request) {
 	var req tokenUpsertRequest
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
 		return
 	}
@@ -201,15 +208,15 @@ func handleTokensUpsert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := store.setToken(req.ClientID, req.Token); err != nil {
+	if err := a.store.setToken(req.ClientID, req.Token); err != nil {
 		writeStoreError(w)
 		return
 	}
 	writeJSON(w, http.StatusOK, successResponse{Success: true})
 }
 
-func handleTokensList(w http.ResponseWriter, r *http.Request) {
-	entries, err := store.listTokens()
+func (a *application) handleTokensList(w http.ResponseWriter, r *http.Request) {
+	entries, err := a.store.listTokens()
 	if err != nil {
 		writeStoreError(w)
 		return
@@ -217,22 +224,22 @@ func handleTokensList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, entries)
 }
 
-func handleTokensDelete(w http.ResponseWriter, r *http.Request) {
+func (a *application) handleTokensDelete(w http.ResponseWriter, r *http.Request) {
 	clientID := r.PathValue("client_id")
 	if clientID == "" {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "client_id is required"})
 		return
 	}
 
-	if err := store.deleteToken(clientID); err != nil {
+	if err := a.store.deleteToken(clientID); err != nil {
 		writeStoreError(w)
 		return
 	}
 	writeJSON(w, http.StatusOK, successResponse{Success: true})
 }
 
-func handleConfigGet(w http.ResponseWriter, r *http.Request) {
-	cfg, err := store.getConfig()
+func (a *application) handleConfigGet(w http.ResponseWriter, r *http.Request) {
+	cfg, err := a.store.getConfig()
 	if err != nil {
 		writeStoreError(w)
 		return
@@ -240,11 +247,9 @@ func handleConfigGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, cfg)
 }
 
-func handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
+func (a *application) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
 	var req configUpdateRequest
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
+	if err := decodeJSON(w, r, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
 		return
 	}
@@ -254,7 +259,7 @@ func handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg, err := store.updateConfig(req)
+	cfg, err := a.store.updateConfig(req)
 	if err != nil {
 		writeStoreError(w)
 		return
@@ -262,8 +267,8 @@ func handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, cfg)
 }
 
-func handleConfigReload(w http.ResponseWriter, r *http.Request) {
-	cfg, err := store.getConfig()
+func (a *application) handleConfigReload(w http.ResponseWriter, r *http.Request) {
+	cfg, err := a.store.getConfig()
 	if err != nil {
 		writeStoreError(w)
 		return
