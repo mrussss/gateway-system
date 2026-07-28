@@ -134,12 +134,20 @@ func TestGatewayStatusNotReported(t *testing.T) {
 func TestGatewayStatusViewOnline(t *testing.T) {
 	now := time.Date(2026, 6, 13, 12, 0, 10, 0, time.UTC)
 	view := gatewayStatusToView(gatewayStatusResponse{
-		GatewayID:      "gateway-001",
-		LastReportTime: "2026-06-13T12:00:00Z",
+		GatewayID:            "gateway-001",
+		GatewayBootID:        "boot-001",
+		RequestQueueCapacity: 4096,
+		AuthSuccess:          7,
+		RuntimeConfigVersion: 3,
+		ServerState:          "RUNNING",
+		LastReportTime:       "2026-06-13T12:00:00Z",
 	}, now)
 
 	if !view.Online || view.Status != "online" || view.SecondsSinceLastReport != 10 {
 		t.Fatalf("unexpected gateway status view: %+v", view)
+	}
+	if view.GatewayBootID != "boot-001" || view.RequestQueueCapacity != 4096 || view.AuthSuccess != 7 || view.RuntimeConfigVersion != 3 || view.ServerState != "RUNNING" {
+		t.Fatalf("missing telemetry fields: %+v", view)
 	}
 }
 

@@ -80,6 +80,7 @@ int main()
     std::string control_plane_host = readStringEnv("CONTROL_PLANE_HOST", "127.0.0.1");
     int control_plane_port = readPositiveIntEnv("CONTROL_PLANE_PORT", 8080, 65535);
     std::string gateway_id = readStringEnv("GATEWAY_ID", "gateway-001");
+    std::string gateway_token = readStringEnv("GATEWAY_SHARED_TOKEN", "");
     size_t request_queue_capacity = readSizeEnv("REQUEST_QUEUE_CAPACITY", 4096);
     size_t response_queue_capacity = readSizeEnv("RESPONSE_QUEUE_CAPACITY", 4096);
     int shutdown_timeout_ms = readPositiveIntEnv("SHUTDOWN_TIMEOUT_MS", 5000);
@@ -89,7 +90,7 @@ int main()
     {
         TcpServer server(gateway_port, control_plane_host, control_plane_port, gateway_id,
                          request_queue_capacity, response_queue_capacity,
-                         shutdown_timeout_ms, worker_count);
+                         shutdown_timeout_ms, worker_count, gateway_token);
         server.start();
         return 0;
     }

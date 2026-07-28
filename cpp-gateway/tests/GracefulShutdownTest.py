@@ -75,11 +75,11 @@ class ControlPlaneHandler(BaseHTTPRequestHandler):
             self._reply(
                 {
                     "version": 1,
-                    "auth_timeout_ms": 1000,
                     "max_payload_size": 4 * 1024 * 1024 + FIXED_BODY_SIZE,
                     "max_connections_per_client": 10,
                     "max_requests_per_client_per_second": 100_000,
-                    "fail_open": False,
+                    "slow_client_output_limit": 8 * 1024 * 1024,
+                    "log_level": "INFO",
                 }
             )
             return
@@ -132,6 +132,8 @@ class GatewayProcess:
         response_capacity: int = 10000,
     ) -> None:
         self.port = unused_port()
+        self.readiness_file = Path("/tmp/gateway-ready")
+        self.readiness_file.unlink(missing_ok=True)
         environment = os.environ.copy()
         environment.update(
             {
@@ -153,6 +155,8 @@ class GatewayProcess:
             text=True,
         )
         self._wait_until_listening()
+        if not self.readiness_file.is_file():
+            self._raise_failure("gateway did not create readiness file")
 
     def _wait_until_listening(self) -> None:
         deadline = time.monotonic() + 5
@@ -181,7 +185,10 @@ class GatewayProcess:
 
     def wait(self, timeout: float) -> tuple[str, str]:
         try:
-            return self.process.communicate(timeout=timeout)
+            output = self.process.communicate(timeout=timeout)
+            if self.readiness_file.exists():
+                raise AssertionError("gateway did not remove readiness file")
+            return output
         except subprocess.TimeoutExpired:
             self.process.kill()
             self._raise_failure(f"gateway did not exit within {timeout}s")

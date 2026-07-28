@@ -106,7 +106,7 @@ Both inter-thread queues are bounded and configured independently:
 - Request Queue full: return status `503`; an AUTH request is closed after the response.
 - Request Queue stopped: treat it as shutdown and reject rather than silently drop.
 - Response Queue full/stopped unexpectedly: increment a critical counter, wake the Reactor, and close the matching `fd + conn_id` connection.
-- output buffer above 8 MiB: close that slow connection without affecting other clients.
+- output buffer above the active `slow_client_output_limit`: close that slow connection without affecting other clients.
 
 The STATS response exposes backlog, capacity, process-lifetime peak, and rejection counters for both queues.
 
@@ -124,6 +124,7 @@ See [shutdown](docs/shutdown.md) for exact guarantees and non-guarantees.
 | `CONTROL_PLANE_HOST` | `127.0.0.1` | control-plane host |
 | `CONTROL_PLANE_PORT` | `8080` | control-plane port |
 | `GATEWAY_ID` | `gateway-001` | reporting identity |
+| `GATEWAY_SHARED_TOKEN` | empty | credential sent to gateway-internal control-plane APIs |
 | `WORKER_COUNT` | auto, max 4 | worker threads; `0` selects auto |
 | `REQUEST_QUEUE_CAPACITY` | `4096` | accepted work capacity |
 | `RESPONSE_QUEUE_CAPACITY` | `4096` | completed work capacity |
@@ -131,7 +132,7 @@ See [shutdown](docs/shutdown.md) for exact guarantees and non-guarantees.
 | `GATEWAY_LOG_LEVEL` | `INFO` | set `DEBUG` for per-request metadata |
 | `GATEWAY_LOG_PATH` | `logs/access.log` | LOG_PUSH storage path |
 
-Runtime rate and connection limits are pulled from the control plane as an immutable validated snapshot. A failed pull or invalid payload leaves the active snapshot unchanged; an equal or lower version cannot overwrite a newer one.
+Payload, output-buffer, rate, connection, and log-level settings are pulled from the control plane as one immutable validated snapshot. A failed pull or invalid payload leaves the entire active snapshot unchanged; an equal or lower version cannot overwrite a newer one.
 
 ## Performance
 

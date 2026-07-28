@@ -17,8 +17,34 @@
 #include "common/Logger.hpp"
 #include "nlohmann/json.hpp"
 
-ControlPlaneClient::ControlPlaneClient(std::string host, int port, int timeout_ms)
-    : host_(std::move(host)), port_(port), timeout_ms_(timeout_ms)
+namespace
+{
+bool parseHttpResponse(const std::string &response, int &status_code, std::string &body)
+{
+    const size_t status_end = response.find("\r\n");
+    const size_t header_end = response.find("\r\n\r\n");
+    if (status_end == std::string::npos || header_end == std::string::npos || status_end > header_end)
+    {
+        return false;
+    }
+
+    std::istringstream status_line(response.substr(0, status_end));
+    std::string http_version;
+    if (!(status_line >> http_version >> status_code) || http_version.rfind("HTTP/", 0) != 0 ||
+        status_code < 100 || status_code > 599)
+    {
+        return false;
+    }
+
+    body = response.substr(header_end + 4);
+    return true;
+}
+} // namespace
+
+ControlPlaneClient::ControlPlaneClient(std::string host, int port, int timeout_ms,
+                                       std::string gateway_token)
+    : host_(std::move(host)), port_(port), timeout_ms_(timeout_ms),
+      gateway_token_(std::move(gateway_token))
 {
 }
 
@@ -75,11 +101,27 @@ bool ControlPlaneClient::reportMetrics(const GatewayMetrics &metrics) const
 {
     nlohmann::json payload = {
         {"gateway_id", metrics.gateway_id},
+        {"gateway_boot_id", metrics.gateway_boot_id},
+        {"process_start_time", metrics.process_start_time},
         {"active_connections", metrics.active_connections},
-        {"total_messages", metrics.total_messages},
+        {"total_requests", metrics.total_requests},
         {"bytes_in", metrics.bytes_in},
         {"bytes_out", metrics.bytes_out},
         {"error_count", metrics.error_count},
+        {"request_queue_capacity", metrics.request_queue_capacity},
+        {"request_queue_backlog", metrics.request_queue_backlog},
+        {"request_queue_peak", metrics.request_queue_peak},
+        {"request_queue_rejected", metrics.request_queue_rejected},
+        {"response_queue_capacity", metrics.response_queue_capacity},
+        {"response_queue_backlog", metrics.response_queue_backlog},
+        {"response_queue_peak", metrics.response_queue_peak},
+        {"response_queue_rejected", metrics.response_queue_rejected},
+        {"slow_client_closed", metrics.slow_client_closed},
+        {"stale_response_dropped", metrics.stale_response_dropped},
+        {"auth_success", metrics.auth_success},
+        {"auth_failure", metrics.auth_failure},
+        {"runtime_config_version", metrics.runtime_config_version},
+        {"server_state", metrics.server_state},
         {"timestamp", metrics.timestamp},
     };
 
@@ -90,10 +132,10 @@ bool ControlPlaneClient::reportMetrics(const GatewayMetrics &metrics) const
         return false;
     }
 
-    LOG_INFO("metrics reported: gateway_id=%s active_connections=%llu total_messages=%llu",
+    LOG_INFO("metrics reported: gateway_id=%s active_connections=%llu total_requests=%llu",
              metrics.gateway_id.c_str(),
              static_cast<unsigned long long>(metrics.active_connections),
-             static_cast<unsigned long long>(metrics.total_messages));
+             static_cast<unsigned long long>(metrics.total_requests));
     return true;
 }
 
@@ -139,26 +181,36 @@ bool ControlPlaneClient::getJson(const std::string &path, std::string &response_
     std::ostringstream req;
     req << "GET " << path << " HTTP/1.1\r\n"
         << "Host: " << host_ << ":" << port_ << "\r\n"
+        << "X-Gateway-Token: " << gateway_token_ << "\r\n"
         << "Connection: close\r\n\r\n";
 
     if (!sendAll(fd, req.str()))
     {
-        LOG_ERROR("control plane request send failed: path=%s", path.c_str());
+        LOG_ERROR("control plane request failed: category=send path=%s", path.c_str());
         close(fd);
         return false;
     }
 
-    std::string response = readResponse(fd);
+    std::string response;
+    const bool received = readResponse(fd, response);
     close(fd);
-
-    size_t header_end = response.find("\r\n\r\n");
-    if (header_end == std::string::npos || response.find("HTTP/1.1 200") != 0)
+    if (!received)
     {
-        LOG_ERROR("control plane returned invalid HTTP response: path=%s", path.c_str());
         return false;
     }
 
-    response_body = response.substr(header_end + 4);
+    int status_code = 0;
+    if (!parseHttpResponse(response, status_code, response_body))
+    {
+        LOG_ERROR("control plane request failed: category=malformed_response path=%s", path.c_str());
+        return false;
+    }
+    if (status_code < 200 || status_code >= 300)
+    {
+        LOG_ERROR("control plane request failed: category=http_status path=%s status=%d",
+                  path.c_str(), status_code);
+        return false;
+    }
     return true;
 }
 
@@ -175,28 +227,38 @@ bool ControlPlaneClient::postJson(const std::string &path, const std::string &bo
     req << "POST " << path << " HTTP/1.1\r\n"
         << "Host: " << host_ << ":" << port_ << "\r\n"
         << "Content-Type: application/json\r\n"
+        << "X-Gateway-Token: " << gateway_token_ << "\r\n"
         << "Content-Length: " << body.size() << "\r\n"
         << "Connection: close\r\n\r\n"
         << body;
 
     if (!sendAll(fd, req.str()))
     {
-        LOG_ERROR("control plane request send failed: path=%s", path.c_str());
+        LOG_ERROR("control plane request failed: category=send path=%s", path.c_str());
         close(fd);
         return false;
     }
 
-    std::string response = readResponse(fd);
+    std::string response;
+    const bool received = readResponse(fd, response);
     close(fd);
-
-    size_t header_end = response.find("\r\n\r\n");
-    if (header_end == std::string::npos || response.find("HTTP/1.1 200") != 0)
+    if (!received)
     {
-        LOG_ERROR("control plane returned invalid HTTP response: path=%s", path.c_str());
         return false;
     }
 
-    response_body = response.substr(header_end + 4);
+    int status_code = 0;
+    if (!parseHttpResponse(response, status_code, response_body))
+    {
+        LOG_ERROR("control plane request failed: category=malformed_response path=%s", path.c_str());
+        return false;
+    }
+    if (status_code < 200 || status_code >= 300)
+    {
+        LOG_ERROR("control plane request failed: category=http_status path=%s status=%d",
+                  path.c_str(), status_code);
+        return false;
+    }
     return true;
 }
 
@@ -211,7 +273,7 @@ int ControlPlaneClient::connectWithTimeout() const
     int gai_ret = getaddrinfo(host_.c_str(), port.c_str(), &hints, &result);
     if (gai_ret != 0)
     {
-        LOG_ERROR("control plane resolve failed: host=%s port=%d error=%s",
+        LOG_ERROR("control plane request failed: category=resolve host=%s port=%d error=%s",
                   host_.c_str(), port_, gai_strerror(gai_ret));
         return -1;
     }
@@ -250,14 +312,20 @@ int ControlPlaneClient::connectWithTimeout() const
             ret = select(fd + 1, nullptr, &write_fds, nullptr, &timeout);
             if (ret <= 0)
             {
+                LOG_ERROR("control plane request failed: category=%s host=%s port=%d",
+                          ret == 0 ? "connect_timeout" : "connect", host_.c_str(), port_);
                 close(fd);
                 continue;
             }
 
             int so_error = 0;
             socklen_t len = sizeof(so_error);
-            if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &len) == -1 || so_error != 0)
+            const int getsockopt_ret = getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
+            if (getsockopt_ret == -1 || so_error != 0)
             {
+                const int connect_error = getsockopt_ret == -1 ? errno : so_error;
+                LOG_ERROR("control plane request failed: category=connect host=%s port=%d error=%s",
+                          host_.c_str(), port_, std::strerror(connect_error));
                 close(fd);
                 continue;
             }
@@ -306,9 +374,8 @@ bool ControlPlaneClient::sendAll(int fd, const std::string &data) const
     return true;
 }
 
-std::string ControlPlaneClient::readResponse(int fd) const
+bool ControlPlaneClient::readResponse(int fd, std::string &response) const
 {
-    std::string response;
     char buf[4096];
     while (true)
     {
@@ -316,6 +383,11 @@ std::string ControlPlaneClient::readResponse(int fd) const
         if (n > 0)
         {
             response.append(buf, static_cast<size_t>(n));
+            if (response.size() > max_response_bytes_)
+            {
+                LOG_ERROR("control plane request failed: category=response_too_large bytes=%zu", response.size());
+                return false;
+            }
             continue;
         }
         if (n == 0)
@@ -328,9 +400,11 @@ std::string ControlPlaneClient::readResponse(int fd) const
         }
         if (errno == EAGAIN || errno == EWOULDBLOCK)
         {
-            break;
+            LOG_ERROR("%s", "control plane request failed: category=receive_timeout");
+            return false;
         }
-        break;
+        LOG_ERROR("control plane request failed: category=receive error=%s", std::strerror(errno));
+        return false;
     }
-    return response;
+    return true;
 }

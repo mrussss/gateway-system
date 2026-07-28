@@ -35,7 +35,7 @@ public:
     TcpServer(int port, std::string control_plane_host, int control_plane_port,
               std::string gateway_id, size_t request_queue_capacity = 4096,
               size_t response_queue_capacity = 4096, int shutdown_timeout_ms = 5000,
-              unsigned int worker_count = 0);
+              unsigned int worker_count = 0, std::string gateway_token = "");
     ~TcpServer();
 
     TcpServer(const TcpServer &) = delete;
@@ -63,6 +63,8 @@ private:
     bool drainComplete();
     int epollTimeoutMs() const;
     void closeListener();
+    void markReady();
+    void markNotReady();
 
     void handleAccept();
     void handleRead(int fd);
@@ -124,6 +126,9 @@ private:
     std::thread config_puller_;
     ControlPlaneClient control_plane_;
     std::string gateway_id_{"gateway-001"};
+    std::string gateway_boot_id_;
+    int64_t process_start_time_{};
+    std::string readiness_file_{"/tmp/gateway-ready"};
     RuntimeConfig runtime_config_{};
     std::mutex runtime_config_mutex_;
     std::unordered_map<std::string, RateLimitWindow> rate_limit_windows_;

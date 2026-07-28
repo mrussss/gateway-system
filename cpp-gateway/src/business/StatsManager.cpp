@@ -99,4 +99,18 @@ namespace business
         return response_queue_rejected_.load();
     }
 
+    void StatsManager::incrementSlowClientClosed() { slow_client_closed_++; }
+    void StatsManager::incrementStaleResponseDropped() { stale_response_dropped_++; }
+    void StatsManager::incrementAuthSuccess() { auth_success_++; }
+    void StatsManager::incrementAuthFailure() { auth_failure_++; }
+
+    StatsSnapshot StatsManager::snapshot() const
+    {
+        return {total_requests_.load(), total_errors_.load(), total_bytes_read.load(),
+                total_bytes_sent.load(), active_connections.load(),
+                request_queue_rejected_.load(), response_queue_rejected_.load(),
+                slow_client_closed_.load(), stale_response_dropped_.load(),
+                auth_success_.load(), auth_failure_.load()};
+    }
+
 }

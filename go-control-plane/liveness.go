@@ -11,12 +11,18 @@ func statusFromMetrics(req metricsReportRequest) gatewayStatusResponse {
 		reportTime = time.Unix(req.Timestamp, 0).UTC()
 	}
 
+	totalRequests := req.TotalRequests
+	if totalRequests == 0 {
+		// Accept the pre-v2 field while deployed gateways roll forward.
+		totalRequests = req.TotalMessages
+	}
+
 	return gatewayStatusResponse{
 		GatewayID:             req.GatewayID,
 		GatewayBootID:         req.GatewayBootID,
 		ProcessStartTime:      req.ProcessStartTime,
 		ActiveConnections:     req.ActiveConnections,
-		TotalMessages:         req.TotalMessages,
+		TotalMessages:         totalRequests,
 		BytesIn:               req.BytesIn,
 		BytesOut:              req.BytesOut,
 		ErrorCount:            req.ErrorCount,
@@ -59,11 +65,27 @@ func gatewayStatusToView(status gatewayStatusResponse, now time.Time) gatewaySta
 
 	return gatewayStatusView{
 		GatewayID:              status.GatewayID,
+		GatewayBootID:          status.GatewayBootID,
+		ProcessStartTime:       status.ProcessStartTime,
 		ActiveConnections:      status.ActiveConnections,
 		TotalMessages:          status.TotalMessages,
 		BytesIn:                status.BytesIn,
 		BytesOut:               status.BytesOut,
 		ErrorCount:             status.ErrorCount,
+		RequestQueueCapacity:   status.RequestQueueCapacity,
+		RequestQueueBacklog:    status.RequestQueueBacklog,
+		RequestQueuePeak:       status.RequestQueuePeak,
+		RequestQueueRejected:   status.RequestQueueRejected,
+		ResponseQueueCapacity:  status.ResponseQueueCapacity,
+		ResponseQueueBacklog:   status.ResponseQueueBacklog,
+		ResponseQueuePeak:      status.ResponseQueuePeak,
+		ResponseQueueRejected:  status.ResponseQueueRejected,
+		SlowClientClosed:       status.SlowClientClosed,
+		StaleResponseDropped:   status.StaleResponseDropped,
+		AuthSuccess:            status.AuthSuccess,
+		AuthFailure:            status.AuthFailure,
+		RuntimeConfigVersion:   status.RuntimeConfigVersion,
+		ServerState:            status.ServerState,
 		LastReportTime:         status.LastReportTime,
 		Online:                 online,
 		Status:                 state,
