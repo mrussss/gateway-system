@@ -124,6 +124,17 @@ def expect_closed(sock: socket.socket, message: str) -> None:
         raise AssertionError(f"{message}, got data={data!r}")
 
 
+def expect_auth_rejection_then_close(
+    sock: socket.socket, request_id: int, message: str
+) -> None:
+    response = recv_response(sock)
+    assert_response(response, AUTH_RESP, request_id)
+    body = json.loads(response.payload.decode("utf-8"))
+    if body.get("allowed") is not False:
+        raise AssertionError(f"expected rejected AUTH response, got {body}")
+    expect_closed(sock, message)
+
+
 def fetch_clients(control_plane_url: str) -> list[dict]:
     request = urllib.request.Request(
         f"{control_plane_url}/clients", headers=admin_headers()
@@ -315,7 +326,7 @@ def test_auth_required(host: str, port: int, control_plane_url: str) -> None:
             "token": "bad-token",
         }).encode("utf-8")
         sock.sendall(packet(AUTH, 4002, payload))
-        expect_closed(sock, "expected close after invalid AUTH")
+        expect_auth_rejection_then_close(sock, 4002, "expected close after invalid AUTH")
 
     print("[tcp] PASS auth_required")
 
@@ -323,7 +334,9 @@ def test_auth_required(host: str, port: int, control_plane_url: str) -> None:
 def test_auth_invalid_json(host: str, port: int, control_plane_url: str) -> None:
     with connect(host, port) as sock:
         sock.sendall(packet(AUTH, 4101, b"not-json"))
-        expect_closed(sock, "expected close after invalid AUTH JSON")
+        expect_auth_rejection_then_close(
+            sock, 4101, "expected close after invalid AUTH JSON"
+        )
 
     print("[tcp] PASS auth_invalid_json")
 
@@ -336,7 +349,9 @@ def test_auth_missing_fields(host: str, port: int, control_plane_url: str) -> No
     for payload, name in cases:
         with connect(host, port) as sock:
             sock.sendall(packet(AUTH, 4102, payload))
-            expect_closed(sock, f"expected close after AUTH {name}")
+            expect_auth_rejection_then_close(
+                sock, 4102, f"expected close after AUTH {name}"
+            )
 
     print("[tcp] PASS auth_missing_fields")
 
@@ -349,7 +364,9 @@ def test_auth_invalid_field_types(host: str, port: int, control_plane_url: str) 
     for payload, name in cases:
         with connect(host, port) as sock:
             sock.sendall(packet(AUTH, 4103, payload))
-            expect_closed(sock, f"expected close after AUTH {name}")
+            expect_auth_rejection_then_close(
+                sock, 4103, f"expected close after AUTH {name}"
+            )
 
     print("[tcp] PASS auth_invalid_field_types")
 
