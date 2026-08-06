@@ -1,4 +1,5 @@
 #pragma once
+#include <optional>
 #include <string>
 #include "control/ControlPlaneClient.hpp"
 #include "protocol/Request.hpp"
@@ -13,7 +14,9 @@ namespace business
     };
 
     AuthHandlingResult handleAuth(const Request &request,
-                                  const ControlPlaneClient &control_plane);
+                                  const ControlPlaneClient &control_plane,
+                                  std::optional<ControlPlaneClient::Deadline> not_after =
+                                      std::nullopt);
     Response handlePing(const Request &request);
     Response handleEcho(const Request &request);
     Response handleLogPush(const Request &request);

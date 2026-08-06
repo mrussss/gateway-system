@@ -76,6 +76,7 @@ private:
     void finishShutdown();
     bool drainComplete();
     int epollTimeoutMs() const;
+    ControlPlaneClient::Deadline shutdownDeadline() const;
     void closeListener();
     void markReady();
     void markNotReady();
@@ -125,6 +126,7 @@ private:
     std::atomic<size_t> auth_in_flight_{0};
     std::thread::id loop_thread_id_{};
     std::chrono::steady_clock::time_point shutdown_deadline_{};
+    mutable std::mutex shutdown_deadline_mutex_;
     const std::chrono::milliseconds shutdown_timeout_;
     const unsigned int configured_worker_count_;
     const unsigned int configured_auth_worker_count_;

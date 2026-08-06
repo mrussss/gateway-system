@@ -238,13 +238,14 @@ ControlPlaneClient::ControlPlaneClient(std::string host, int port, int timeout_m
 }
 
 AuthResult ControlPlaneClient::checkAuth(const std::string &client_id,
-                                         const std::string &token) const
+                                         const std::string &token,
+                                         std::optional<Deadline> not_after) const
 {
     const nlohmann::json payload = {
         {"client_id", client_id},
         {"token", token},
     };
-    HttpResult response = requestJson("POST", "/auth/check", payload.dump());
+    HttpResult response = requestJson("POST", "/auth/check", payload.dump(), not_after);
 
     AuthResult result;
     result.http_error = response.error;
@@ -400,10 +401,11 @@ bool ControlPlaneClient::reportClients(
 }
 
 HttpResult ControlPlaneClient::requestJson(std::string_view method, std::string_view path,
-                                           std::string_view body) const
+                                           std::string_view body,
+                                           std::optional<Deadline> not_after) const
 {
     const auto started_at = Clock::now();
-    HttpResult result = requestJsonOnce(method, path, body);
+    HttpResult result = requestJsonOnce(method, path, body, not_after);
     const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
         Clock::now() - started_at);
     recordRequestMetrics(path, result, static_cast<uint64_t>(duration.count()));
@@ -412,7 +414,8 @@ HttpResult ControlPlaneClient::requestJson(std::string_view method, std::string_
 
 HttpResult ControlPlaneClient::requestJsonOnce(std::string_view method,
                                                std::string_view path,
-                                               std::string_view body) const
+                                               std::string_view body,
+                                               std::optional<Deadline> not_after) const
 {
     validateHeaderValue("HTTP method", method);
     validateHeaderValue("HTTP path", path);
@@ -420,6 +423,11 @@ HttpResult ControlPlaneClient::requestJsonOnce(std::string_view method,
         (method != "GET" && method != "POST"))
     {
         return {HttpError::MalformedResponse, 0, {}};
+    }
+
+    if (not_after && *not_after <= Clock::now())
+    {
+        return {HttpError::DeadlineExceeded, 0, {}};
     }
 
     addrinfo hints{};
@@ -438,9 +446,14 @@ HttpResult ControlPlaneClient::requestJsonOnce(std::string_view method,
     }
     std::unique_ptr<addrinfo, AddrInfoDeleter> addresses(raw_addresses);
 
-    // Synchronous getaddrinfo is the documented boundary. All socket operations and
-    // all resolved addresses share this one deadline after resolution completes.
-    const Deadline deadline = Clock::now() + std::chrono::milliseconds(timeout_ms_);
+    // Synchronous getaddrinfo is the documented boundary. After resolution, all
+    // addresses and socket operations share the tighter of the request budget and
+    // an optional lifecycle deadline supplied by the caller.
+    Deadline deadline = Clock::now() + std::chrono::milliseconds(timeout_ms_);
+    if (not_after)
+    {
+        deadline = std::min(deadline, *not_after);
+    }
     UniqueFd socket_fd;
     HttpError connect_error = HttpError::ConnectFailed;
     for (addrinfo *address = addresses.get(); address != nullptr; address = address->ai_next)

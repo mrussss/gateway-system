@@ -157,12 +157,16 @@ class GatewayProcess:
         self.port = unused_port()
         self.readiness_file = Path("/tmp/gateway-ready")
         self.readiness_file.unlink(missing_ok=True)
+        control_plane_timeout_ms = min(1000, (shutdown_ms - 100) // 2)
+        if control_plane_timeout_ms < 100:
+            raise ValueError("shutdown_ms cannot satisfy the startup timeout contract")
         environment = os.environ.copy()
         environment.update(
             {
                 "GATEWAY_PORT": str(self.port),
                 "CONTROL_PLANE_HOST": "127.0.0.1",
                 "CONTROL_PLANE_PORT": str(control_port),
+                "CONTROL_PLANE_TIMEOUT_MS": str(control_plane_timeout_ms),
                 "REQUEST_QUEUE_CAPACITY": str(request_capacity),
                 "RESPONSE_QUEUE_CAPACITY": str(response_capacity),
                 "SHUTDOWN_TIMEOUT_MS": str(shutdown_ms),
@@ -276,7 +280,7 @@ def test_queued_requests_are_drained(
 
 
 def test_slow_client_is_bounded_by_deadline(executable: Path, control_port: int) -> None:
-    gateway = GatewayProcess(executable, control_port, shutdown_ms=200)
+    gateway = GatewayProcess(executable, control_port, shutdown_ms=350)
     slow = gateway.connect_authenticated("slow-client")
     slow.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1024)
     # Stay below the local fail-safe config while the asynchronous config puller
@@ -466,7 +470,7 @@ def test_deep_queue_deadline(executable: Path, control_plane: FakeControlPlane) 
     gateway = GatewayProcess(
         executable,
         control_plane.port,
-        shutdown_ms=100,
+        shutdown_ms=350,
         auth_capacity=64,
         auth_workers=1,
     )

@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -127,13 +128,16 @@ struct ClientReport
 class ControlPlaneClient
 {
 public:
+    using Deadline = std::chrono::steady_clock::time_point;
+
     static constexpr size_t MAX_HTTP_HEADER_BYTES = 16 * 1024;
     static constexpr size_t MAX_HTTP_BODY_BYTES = 1024 * 1024;
 
     ControlPlaneClient(std::string host, int port, int timeout_ms,
                        std::string gateway_token = "");
 
-    AuthResult checkAuth(const std::string &client_id, const std::string &token) const;
+    AuthResult checkAuth(const std::string &client_id, const std::string &token,
+                         std::optional<Deadline> not_after = std::nullopt) const;
     bool fetchConfig(RuntimeConfig &config) const;
     bool reportMetrics(const GatewayMetrics &metrics) const;
     bool reportClients(const std::string &gateway_id,
@@ -142,12 +146,13 @@ public:
 
 private:
     using Clock = std::chrono::steady_clock;
-    using Deadline = Clock::time_point;
 
     HttpResult requestJson(std::string_view method, std::string_view path,
-                           std::string_view body) const;
+                           std::string_view body,
+                           std::optional<Deadline> not_after = std::nullopt) const;
     HttpResult requestJsonOnce(std::string_view method, std::string_view path,
-                               std::string_view body) const;
+                               std::string_view body,
+                               std::optional<Deadline> not_after) const;
     HttpResult readHttpResponseWithDeadline(int fd, Deadline deadline) const;
     HttpError sendAllWithDeadline(int fd, std::string_view data, Deadline deadline) const;
 

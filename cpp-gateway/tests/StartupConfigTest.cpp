@@ -63,5 +63,20 @@ int main()
              CHECK(malformed);
              CHECK(out_of_range);
          }},
+        {"shutdown budget covers in-flight control-plane work", []
+         {
+             bool too_short = false;
+             {
+                 ScopedEnv control_plane_timeout("CONTROL_PLANE_TIMEOUT_MS", "1000");
+                 ScopedEnv shutdown_timeout("SHUTDOWN_TIMEOUT_MS", "2099");
+                 try { (void)parseStartupConfig(); }
+                 catch (const std::invalid_argument &) { too_short = true; }
+             }
+             CHECK(too_short);
+
+             ScopedEnv control_plane_timeout("CONTROL_PLANE_TIMEOUT_MS", "1000");
+             ScopedEnv shutdown_timeout("SHUTDOWN_TIMEOUT_MS", "2100");
+             CHECK_EQ(parseStartupConfig().shutdown_timeout_ms, 2100);
+         }},
     });
 }

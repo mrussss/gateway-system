@@ -13,7 +13,8 @@ namespace business
 {
 
     AuthHandlingResult handleAuth(const Request &request,
-                                  const ControlPlaneClient &control_plane)
+                                  const ControlPlaneClient &control_plane,
+                                  std::optional<ControlPlaneClient::Deadline> not_after)
     {
         Response resp;
         resp.fd = request.fd;
@@ -40,7 +41,7 @@ namespace business
 
             std::string client_id = payload["client_id"];
             std::string token = payload["token"];
-            const AuthResult result = control_plane.checkAuth(client_id, token);
+            const AuthResult result = control_plane.checkAuth(client_id, token, not_after);
             if (result.outcome != AuthOutcome::Allowed)
             {
                 StatsManager::getInstance().incrementErrors();

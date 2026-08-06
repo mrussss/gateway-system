@@ -262,6 +262,25 @@ int main()
              CHECK(result.http_error == HttpError::DeadlineExceeded);
              CHECK(elapsed.count() < 220);
          }},
+        {"caller lifecycle deadline caps a new AUTH request", []
+         {
+             FakeHttpServer server([](int fd)
+             {
+                 std::this_thread::sleep_for(std::chrono::milliseconds(250));
+                 const std::string late_response =
+                     "HTTP/1.1 200 OK\r\nContent-Length: 16\r\n\r\n{\"allowed\":true}";
+                 (void)send(fd, late_response.data(), late_response.size(), MSG_NOSIGNAL);
+             });
+             ControlPlaneClient client("127.0.0.1", server.port(), 1000,
+                                       "gateway-secret");
+             const auto started = std::chrono::steady_clock::now();
+             const AuthResult result = client.checkAuth(
+                 "client-1", "secret", started + std::chrono::milliseconds(80));
+             const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                 std::chrono::steady_clock::now() - started);
+             CHECK(result.http_error == HttpError::DeadlineExceeded);
+             CHECK(elapsed.count() < 200);
+         }},
         {"EINTR retries preserve the original deadline", []
          {
              struct sigaction action{};

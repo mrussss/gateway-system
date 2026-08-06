@@ -9,6 +9,8 @@
 
 namespace
 {
+constexpr uint64_t SHUTDOWN_SAFETY_MARGIN_MS = 100;
+
 std::string readString(const char *name, std::string default_value, bool allow_empty)
 {
     const char *raw = std::getenv(name);
@@ -73,5 +75,14 @@ StartupConfig parseStartupConfig()
         readUnsigned("AUTH_WORKER_COUNT", config.auth_worker_count, 1, 16));
     config.auth_queue_capacity = static_cast<size_t>(
         readUnsigned("AUTH_QUEUE_CAPACITY", config.auth_queue_capacity, 1, 65536));
+    const uint64_t minimum_shutdown_ms =
+        2ULL * static_cast<uint64_t>(config.control_plane_timeout_ms) +
+        SHUTDOWN_SAFETY_MARGIN_MS;
+    if (static_cast<uint64_t>(config.shutdown_timeout_ms) < minimum_shutdown_ms)
+    {
+        throw std::invalid_argument(
+            "SHUTDOWN_TIMEOUT_MS must be at least 2 * CONTROL_PLANE_TIMEOUT_MS + " +
+            std::to_string(SHUTDOWN_SAFETY_MARGIN_MS));
+    }
     return config;
 }

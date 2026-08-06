@@ -24,13 +24,14 @@ STOPPED
 6. Each Worker pushes its final Response and notifies eventfd. The last producer across both groups stops the Response Queue and notifies again.
 7. The Reactor drains responses, enables EPOLLOUT, and sends each pending output buffer.
 8. Connections with empty output close. When Workers are gone, the Response Queue is stopped/empty, and all connections are closed, shutdown completes.
-9. If the deadline expires first, queued but not-yet-started normal requests, AUTH tasks, and responses are aborted; remaining connections close, and current Worker calls finish before threads/descriptors are joined or released.
+9. If the deadline expires first, queued but not-yet-started normal requests, AUTH tasks, and responses are aborted; remaining connections close. AUTH HTTP calls started during DRAINING use the shutdown deadline as an upper bound before threads/descriptors are joined or released.
 
 ## Guarantees
 
 - Requests successfully admitted before DRAINING are dispatched while the drain remains inside its deadline.
 - Responses are attempted until written to the kernel or the deadline expires.
-- A slow or non-reading client cannot hold the process beyond the configured deadline plus bounded thread/control-plane cleanup time.
+- A slow or non-reading client cannot hold the process beyond the configured deadline.
+- Startup requires `SHUTDOWN_TIMEOUT_MS >= 2 * CONTROL_PLANE_TIMEOUT_MS + 100`, covering calls already in flight when DRAINING begins. The metrics reporter rechecks state between its two possible HTTP calls.
 - Repeated `stop()` calls and repeated SIGTERM do not double-close queues or descriptors.
 
 ## Non-guarantees
@@ -39,6 +40,7 @@ STOPPED
 - A successful `send()` means bytes entered the kernel socket buffer, not that the remote application consumed them.
 - Deadline expiry may truncate pending responses.
 - Deadline expiry may discard admitted work that a Worker has not started yet; this is what keeps shutdown bounded under a deep queue.
+- Synchronous `getaddrinfo` cannot be interrupted by the socket deadline and can still extend process exit; it remains the explicit lifecycle-bound exception.
 
 ## Tests
 

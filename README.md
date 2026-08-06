@@ -125,7 +125,7 @@ The STATS response exposes backlog, capacity, process-lifetime peak, rejection, 
 
 ## Graceful shutdown
 
-SIGINT, SIGTERM, or `TcpServer::stop()` wakes `epoll_wait()` through `eventfd` and enters `DRAINING`. The gateway closes the listener, stops accepting/decoding new work, drains accepted requests and generated responses, flushes output buffers, and exits. A slow client cannot block shutdown beyond `SHUTDOWN_TIMEOUT_MS`.
+SIGINT, SIGTERM, or `TcpServer::stop()` wakes `epoll_wait()` through `eventfd` and enters `DRAINING`. The gateway closes the listener, stops accepting/decoding new work, drains accepted requests and generated responses, flushes output buffers, and exits. A slow client cannot block shutdown beyond `SHUTDOWN_TIMEOUT_MS`. New AUTH calls started while draining are capped by the shutdown deadline; synchronous DNS remains the documented unbounded exception.
 
 See [shutdown](docs/shutdown.md) for exact guarantees and non-guarantees.
 
@@ -144,7 +144,7 @@ See [shutdown](docs/shutdown.md) for exact guarantees and non-guarantees.
 | `REQUEST_QUEUE_CAPACITY` | `4096` | accepted work capacity |
 | `AUTH_QUEUE_CAPACITY` | `32` | waiting AUTH task capacity |
 | `RESPONSE_QUEUE_CAPACITY` | `4096` | completed work capacity |
-| `SHUTDOWN_TIMEOUT_MS` | `5000` | graceful shutdown deadline |
+| `SHUTDOWN_TIMEOUT_MS` | `5000` | graceful shutdown deadline; must be at least `2 × CONTROL_PLANE_TIMEOUT_MS + 100` |
 | `GATEWAY_LOG_LEVEL` | `INFO` | set `DEBUG` for per-request metadata |
 | `GATEWAY_LOG_PATH` | `logs/access.log` | LOG_PUSH storage path |
 

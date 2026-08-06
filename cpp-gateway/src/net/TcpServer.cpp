@@ -287,8 +287,13 @@ void TcpServer::authWorkerLoop(unsigned int worker_id)
         try
         {
             business::StatsManager::getInstance().incrementRequests();
+            std::optional<ControlPlaneClient::Deadline> not_after;
+            if (state_.load() != ServerState::RUNNING)
+            {
+                not_after = shutdownDeadline();
+            }
             business::AuthHandlingResult handled =
-                business::handleAuth(task.request, control_plane_);
+                business::handleAuth(task.request, control_plane_, not_after);
             const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - started_at);
             business::StatsManager::getInstance().recordAuthResult(
@@ -480,7 +485,7 @@ void TcpServer::loop()
                 LOG_INFO("%s", "graceful shutdown drain completed");
                 state_ = ServerState::STOPPED;
             }
-            else if (std::chrono::steady_clock::now() >= shutdown_deadline_)
+            else if (std::chrono::steady_clock::now() >= shutdownDeadline())
             {
                 const size_t discarded_requests = request_queue_.abort();
                 const size_t discarded_auth_tasks = auth_queue_.abort();
@@ -496,6 +501,7 @@ void TcpServer::loop()
 
 void TcpServer::beginDraining()
 {
+    std::unique_lock<std::mutex> deadline_lock(shutdown_deadline_mutex_);
     ServerState expected = ServerState::RUNNING;
     if (!state_.compare_exchange_strong(expected, ServerState::DRAINING))
     {
@@ -503,6 +509,7 @@ void TcpServer::beginDraining()
     }
 
     shutdown_deadline_ = std::chrono::steady_clock::now() + shutdown_timeout_;
+    deadline_lock.unlock();
     markNotReady();
     closeListener();
     request_queue_.stop();
@@ -650,13 +657,19 @@ int TcpServer::epollTimeoutMs() const
         return -1;
     }
     const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
-        shutdown_deadline_ - std::chrono::steady_clock::now());
+        shutdownDeadline() - std::chrono::steady_clock::now());
     if (remaining.count() <= 0)
     {
         return 0;
     }
     return static_cast<int>(std::min<int64_t>(remaining.count(),
                                               std::numeric_limits<int>::max()));
+}
+
+ControlPlaneClient::Deadline TcpServer::shutdownDeadline() const
+{
+    std::lock_guard<std::mutex> lock(shutdown_deadline_mutex_);
+    return shutdown_deadline_;
 }
 
 void TcpServer::closeListener()
@@ -1216,6 +1229,10 @@ void TcpServer::metricsReporterLoop()
         metrics.timestamp =
             std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
         control_plane_.reportMetrics(metrics);
+        if (state_.load() != ServerState::RUNNING)
+        {
+            break;
+        }
         control_plane_.reportClients(metrics.gateway_id, buildClientSnapshot());
         std::unique_lock<std::mutex> lock(background_wait_mutex_);
         background_wait_cv_.wait_for(lock, std::chrono::seconds(5), [this]
