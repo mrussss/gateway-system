@@ -778,14 +778,14 @@ void TcpServer::applyResponse(Response response)
         {
             current.auth_pending = false;
         }
-        if (response.mark_authenticated)
+        if (response.client_id_to_authenticate)
         {
             const size_t authenticated = countAuthenticatedConnectionsForClientLocked(
-                response.authenticated_client_id, current.fd);
+                *response.client_id_to_authenticate, current.fd);
             if (authenticated >= static_cast<size_t>(config.max_connections_per_client))
             {
                 business::StatsManager::getInstance().incrementErrors();
-                response.mark_authenticated = false;
+                response.client_id_to_authenticate.reset();
                 response.close_connection = true;
                 response.type = MessageType::AUTH_RESP;
                 response.payload =
@@ -795,7 +795,7 @@ void TcpServer::applyResponse(Response response)
             else
             {
                 current.authenticated = true;
-                current.client_id = response.authenticated_client_id;
+                current.client_id = *response.client_id_to_authenticate;
                 business::StatsManager::getInstance().incrementAuthSuccess();
             }
         }

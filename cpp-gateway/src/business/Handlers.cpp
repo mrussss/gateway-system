@@ -48,8 +48,7 @@ namespace business
 
             resp.status_code = 0;
             resp.payload = R"({"allowed":true,"reason":"ok"})";
-            resp.mark_authenticated = true;
-            resp.authenticated_client_id = client_id;
+            resp.client_id_to_authenticate = client_id;
             return resp;
         }
         catch (const std::exception &)
