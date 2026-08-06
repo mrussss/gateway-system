@@ -14,11 +14,15 @@ There is no automatic fail-open AUTH path even though `fail_open` remains in the
 
 ## Redis unavailable
 
-With `STORE_BACKEND=redis`, dependent Go handlers return store errors and AUTH returns `allowed=false`. The Go process does not automatically swap to MemoryStore. Redis error behavior is exercised through the Go `errorStore` tests; recovery depends on the Redis client succeeding on later calls.
+With `STORE_BACKEND=redis`, dependent Go handlers return store errors and AUTH returns HTTP 503 `AUTH_UNAVAILABLE`. Infrastructure failures do not increment the credential-failure counter. The Go process does not automatically swap to MemoryStore; recovery happens when later Redis calls succeed.
+
+## AUTH Queue full
+
+The push returns `FULL`, increments `auth_queue_rejected`, and the Reactor locally produces `AUTH_RESP` with `AUTH_OVERLOADED` and closes after writing. It does not touch the normal Request or shared Response Queue.
 
 ## Request Queue full
 
-The push returns `FULL`, increments `total_errors` and `request_queue_rejected`, and produces an ERROR response with status 503. If the rejected item is AUTH, the response type is AUTH_RESP and the connection closes after the error is written. Already admitted work is unaffected.
+The push returns `FULL`, increments `total_errors` and `request_queue_rejected`, and produces an ERROR response with status 503. AUTH never enters this queue. Already admitted ordinary work is unaffected.
 
 ## Response Queue full or stopped unexpectedly
 
@@ -27,6 +31,10 @@ The Worker increments `response_queue_rejected`, records the matching fd and con
 ## Slow client
 
 Per-connection pending output is capped at 8 MiB. Exceeding the cap closes that connection. During shutdown, a slow reader may retain pending output only until `SHUTDOWN_TIMEOUT_MS`; the remaining connection is then force-closed.
+
+## Control-plane HTTP errors
+
+Resolve, connect, deadline, send, receive, HTTP framing, non-2xx status, JSON, and size failures remain distinct internally and in logs. Every one maps AUTH to `Unavailable`; only a successful 2xx JSON response with `allowed=false` maps to `Denied`.
 
 ## Peer and socket errors
 
@@ -44,4 +52,4 @@ Every accepted connection receives a unique conn_id. A response or forced-close 
 
 ## Shutdown deadline
 
-The Gateway stops accepting and reading new work, but drains requests already admitted to the Request Queue. It then drains the Response Queue and output buffers. At the deadline it force-closes remaining connections. The guarantee is bounded best effort, not “every client always receives every response.”
+The Gateway stops accepting and reading new work, but drains tasks already admitted to both input queues. The last producer across normal and AUTH Workers stops the Response Queue. At the deadline all three queues are aborted and remaining connections close. In-flight HTTP calls finish within their configured socket deadline (DNS remains the documented exception). The guarantee is bounded best effort, not “every client always receives every response.”

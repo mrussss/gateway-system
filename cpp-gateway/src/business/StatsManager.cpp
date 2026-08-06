@@ -89,6 +89,18 @@ namespace business
         response_queue_rejected_++;
     }
 
+    void StatsManager::incrementResponseQueueRejectedNormal()
+    {
+        response_queue_rejected_normal_++;
+        incrementResponseQueueRejected();
+    }
+
+    void StatsManager::incrementResponseQueueRejectedAuth()
+    {
+        response_queue_rejected_auth_++;
+        incrementResponseQueueRejected();
+    }
+
     uint64_t StatsManager::getRequestQueueRejected() const
     {
         return request_queue_rejected_.load();
@@ -103,14 +115,55 @@ namespace business
     void StatsManager::incrementStaleResponseDropped() { stale_response_dropped_++; }
     void StatsManager::incrementAuthSuccess() { auth_success_++; }
     void StatsManager::incrementAuthFailure() { auth_failure_++; }
+    void StatsManager::incrementAuthQueueRejected() { auth_queue_rejected_++; }
+    void StatsManager::incrementAuthTaskCancelledBeforeStart()
+    {
+        auth_tasks_cancelled_before_start_++;
+    }
+
+    void StatsManager::recordAuthResult(AuthOutcome outcome, uint64_t duration_us)
+    {
+        switch (outcome)
+        {
+        case AuthOutcome::Allowed:
+            auth_allowed_++;
+            break;
+        case AuthOutcome::Denied:
+            auth_denied_++;
+            break;
+        case AuthOutcome::Unavailable:
+            auth_unavailable_++;
+            break;
+        }
+        auth_duration_count_++;
+        auth_duration_total_us_.fetch_add(duration_us);
+    }
 
     StatsSnapshot StatsManager::snapshot() const
     {
-        return {total_requests_.load(), total_errors_.load(), total_bytes_read.load(),
-                total_bytes_sent.load(), active_connections.load(),
-                request_queue_rejected_.load(), response_queue_rejected_.load(),
-                slow_client_closed_.load(), stale_response_dropped_.load(),
-                auth_success_.load(), auth_failure_.load()};
+        StatsSnapshot result;
+        result.total_requests = total_requests_.load();
+        result.errors = total_errors_.load();
+        result.bytes_in = total_bytes_read.load();
+        result.bytes_out = total_bytes_sent.load();
+        result.active_connections = active_connections.load();
+        result.request_queue_rejected = request_queue_rejected_.load();
+        result.response_queue_rejected = response_queue_rejected_.load();
+        result.response_queue_rejected_normal = response_queue_rejected_normal_.load();
+        result.response_queue_rejected_auth = response_queue_rejected_auth_.load();
+        result.slow_client_closed = slow_client_closed_.load();
+        result.stale_response_dropped = stale_response_dropped_.load();
+        result.auth_success = auth_success_.load();
+        result.auth_failure = auth_failure_.load();
+        result.auth_queue_rejected = auth_queue_rejected_.load();
+        result.auth_tasks_cancelled_before_start =
+            auth_tasks_cancelled_before_start_.load();
+        result.auth_allowed = auth_allowed_.load();
+        result.auth_denied = auth_denied_.load();
+        result.auth_unavailable = auth_unavailable_.load();
+        result.auth_duration_count = auth_duration_count_.load();
+        result.auth_duration_total_us = auth_duration_total_us_.load();
+        return result;
     }
 
 }

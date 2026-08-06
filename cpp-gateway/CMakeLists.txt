@@ -14,6 +14,7 @@ set(GATEWAY_CORE_SOURCES
     src/net/ReactorNotifier.cpp
     src/net/TcpServer.cpp
     src/control/ControlPlaneClient.cpp
+    src/control/StartupConfig.cpp
     src/control/RuntimeConfig.cpp
     src/protocol/ProtocolCodec.cpp
     src/business/Dispatcher.cpp
@@ -65,6 +66,9 @@ if(BUILD_TESTING)
     add_gateway_test(reactor_notifier_test tests/ReactorNotifierTest.cpp)
     add_gateway_test(server_stop_test tests/ServerStopTest.cpp)
     add_gateway_test(stats_snapshot_test tests/StatsSnapshotTest.cpp)
+    add_gateway_test(control_plane_client_test tests/ControlPlaneClientTest.cpp)
+    add_gateway_test(startup_config_test tests/StartupConfigTest.cpp)
+    add_gateway_test(auth_task_test tests/AuthTaskTest.cpp)
 
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(

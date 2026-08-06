@@ -15,7 +15,10 @@ required components and are not implemented by this version.
 - C++17 TCP gateway using non-blocking sockets, edge-triggered `epoll`, `accept4`, and `eventfd`
 - length-prefixed binary protocol with half-packet, sticky-packet, and length validation
 - connection-level AUTH and `conn_id` protection against stale responses after fd reuse
-- bounded Request/Response queues with explicit `OK`, `FULL`, and `STOPPED` results
+- strict synchronous internal HTTP client using non-blocking sockets, `poll`, one absolute deadline, and `Content-Length` framing
+- bounded normal Request, AUTH, and Response queues with explicit `OK`, `FULL`, and `STOPPED` results
+- independent AUTH Worker pool that isolates slow Go/Redis authentication from ordinary TCP work
+- Redis-backed AUTH failure counters with TTL, atomic increments, and stable denial codes
 - overload rejection counters and queue capacity/peak/backlog telemetry
 - single Reactor ownership of connections; workers never mutate socket state
 - offset-based output buffers without per-send copies or front erases
@@ -33,9 +36,10 @@ TCP client
    ▼
 C++ Reactor (epoll ET)
    ├─ Connection/input/output state
-   ├─ bounded Request Queue ──► Worker pool ──► bounded Response Queue
-   │                                                  │
-   └──────────────────── eventfd wakeup ◄─────────────┘
+   ├─ normal Queue ──► normal Workers ─┐
+   ├─ AUTH Queue ────► AUTH Workers ───┼─► bounded Response Queue
+   │                                   │             │
+   └──────────────────── eventfd wakeup ◄────────────┘
                               │
                               ▼ HTTP/JSON
                        Go control plane
@@ -109,14 +113,15 @@ See [testing](docs/testing.md) for the test matrix and [failure cases](docs/fail
 
 ## Overload policy
 
-Both inter-thread queues are bounded and configured independently:
+All three inter-thread queues are bounded and configured independently:
 
-- Request Queue full: return status `503`; an AUTH request is closed after the response.
+- AUTH Queue full: return `AUTH_RESP` with `AUTH_OVERLOADED` and close after writing; ordinary work never enters this queue.
+- Request Queue full: return status `503` for ordinary work.
 - Request Queue stopped: treat it as shutdown and reject rather than silently drop.
 - Response Queue full/stopped unexpectedly: increment a critical counter, wake the Reactor, and close the matching `fd + conn_id` connection.
 - output buffer above the active `slow_client_output_limit`: close that slow connection without affecting other clients.
 
-The STATS response exposes backlog, capacity, process-lifetime peak, and rejection counters for both queues.
+The STATS response exposes backlog, capacity, process-lifetime peak, rejection, in-flight, outcome, and latency counters.
 
 ## Graceful shutdown
 
@@ -131,10 +136,13 @@ See [shutdown](docs/shutdown.md) for exact guarantees and non-guarantees.
 | `GATEWAY_PORT` | `9000` | TCP listen port |
 | `CONTROL_PLANE_HOST` | `127.0.0.1` | control-plane host |
 | `CONTROL_PLANE_PORT` | `8080` | control-plane port |
+| `CONTROL_PLANE_TIMEOUT_MS` | `1000` | shared connect/send/receive deadline after DNS resolution (`100`–`30000`) |
 | `GATEWAY_ID` | `gateway-001` | reporting identity |
 | `GATEWAY_SHARED_TOKEN` | empty | credential sent to gateway-internal control-plane APIs |
 | `WORKER_COUNT` | auto, max 4 | worker threads; `0` selects auto |
+| `AUTH_WORKER_COUNT` | `2` | maximum concurrent control-plane AUTH calls (`1`–`16`) |
 | `REQUEST_QUEUE_CAPACITY` | `4096` | accepted work capacity |
+| `AUTH_QUEUE_CAPACITY` | `32` | waiting AUTH task capacity |
 | `RESPONSE_QUEUE_CAPACITY` | `4096` | completed work capacity |
 | `SHUTDOWN_TIMEOUT_MS` | `5000` | graceful shutdown deadline |
 | `GATEWAY_LOG_LEVEL` | `INFO` | set `DEBUG` for per-request metadata |
@@ -150,7 +158,7 @@ The current local Release reference run measured single-connection steady-state 
 
 ## Project boundaries
 
-The project intentionally does not add Prometheus, Kubernetes, Kafka, a dashboard, multi-Reactor sharding, TLS, or an asynchronous HTTP client. Current known limits include a single Reactor, synchronous control-plane HTTP inside workers, per-process rate limiting, and snapshot-based client reporting. These boundaries are deliberate and recorded in [design decisions](docs/design_decisions.md).
+The project intentionally does not add Kubernetes, Kafka, a dashboard, multi-Reactor sharding, TLS, or an asynchronous HTTP client. The synchronous client is deliberately narrow: HTTP/1.0/1.1 JSON, exactly one `Content-Length`, `Connection: close`, no transfer/content encoding, and a fresh TCP connection per call. Synchronous DNS remains outside the socket deadline. These boundaries are deliberate and recorded in [design decisions](docs/design_decisions.md).
 
 ## Documentation
 

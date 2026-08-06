@@ -59,7 +59,7 @@ func TestTokenReturnedOnceAndDisableBlocksAuth(t *testing.T) {
 	request := newTestRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{"client_id":"client-1","token":"`+secret.Token+`"}`))
 	auth := httptest.NewRecorder()
 	router.ServeHTTP(auth, request)
-	assertAuthResponse(t, auth, http.StatusOK, false, "invalid token")
+	assertAuthResponse(t, auth, http.StatusOK, false, "token disabled")
 }
 
 func TestAdminAndGatewayAuthentication(t *testing.T) {

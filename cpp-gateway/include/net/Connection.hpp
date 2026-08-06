@@ -1,8 +1,11 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
+
+#include "business/AuthTask.hpp"
 
 struct Connection
 {
@@ -17,6 +20,7 @@ struct Connection
     bool authenticated = false;
     bool auth_pending = false;
     bool closing = false;
+    std::shared_ptr<AuthCancellation> auth_cancellation;
 
     Connection(int fd_, uint64_t conn_id_, std::string remote_addr_, std::string connected_at_)
         : fd(fd_),

@@ -1,23 +1,11 @@
 # Current State
 
-This document records the completed v1.0.0 scope on 2026-07-28.
+This document records the Phase 5 completion state on 2026-08-06.
 
-The baseline provides a C++17 single-Reactor TCP gateway, bounded worker queues,
-an eventfd notifier, a Go control plane, Redis-backed storage, Docker Compose,
-and CTest/ASan/UBSan/Go race coverage.
+The C++ gateway now uses a strict deadline-bounded internal HTTP client and a bounded independent AUTH Executor. AUTH never executes in the Reactor or normal Worker pool. The normal Request Queue, AUTH Queue, and shared Response Queue are all bounded and participate in one explicit shutdown lifecycle.
 
-## Completed v1.0.0 scope
+The Go control plane emits fixed-length JSON responses and separates credential denial from infrastructure unavailability. Memory and Redis backends implement TTL AUTH failure counters; Redis increments and first-failure expiry are atomic. Stable result codes and low-cardinality AUTH metrics are exposed.
 
-- C++ long-connection data plane and Go standard-library control plane.
-- Redis for token, gateway-state, and configuration storage.
-- Phase 0–5 contracts, HTTP engineering, token security, Redis state/config CAS,
-  and C++ telemetry/dynamic configuration.
+Implemented verification includes strict C++ compilation, framing/deadline/high-fd fake-server tests, AUTH saturation with ordinary ECHO isolation, queued-task cancellation, dual-queue shutdown and forced abort, Go race tests, and Redis integration tests when `REDIS_TEST_ADDR` is available.
 
-## Explicitly out of scope
-
-- Phase 6–9, Prometheus, Kubernetes, Kafka, a relational database, Gin,
-  multi-Reactor sharding, TLS, service mesh, reverse proxying, and transparent
-  TCP connection migration.
-
-The contracts in this directory are the implementation source of truth for
-v1.0.0. Further feature development requires a separately approved scope.
+Known boundaries remain deliberate: synchronous DNS is outside the socket deadline; each HTTP call opens a fresh connection; AUTH overload fails closed; no TLS, async HTTP, keep-alive pool, local auth cache, HTTP/2, or general-purpose HTTP compatibility is provided.

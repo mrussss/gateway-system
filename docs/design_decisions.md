@@ -24,9 +24,9 @@ An unbounded queue converts sustained overload into eventual OOM. Fixed capacity
 
 Infinite drain lets a slow client prevent deployment or process termination forever. Immediate close loses accepted work unnecessarily. The state machine drains best-effort within a fixed deadline and documents the exact acceptance boundary.
 
-## Synchronous AUTH HTTP remains in Workers
+## Strict synchronous HTTP plus an AUTH bulkhead
 
-The call is not ideal for very high scale, but it never blocks the Reactor and keeps the current scope understandable. An async HTTP client is deferred until measurements show Worker occupancy is the limiting factor.
+The client is deliberately synchronous and narrow, but its socket is always non-blocking and connect/send/receive share one absolute deadline. AUTH uses a separate bounded queue and fixed Worker group, so Go/Redis delay cannot consume normal Workers or normal Request Queue capacity. Async HTTP, connection pooling, cache, and a second Response Queue remain deferred until measurements justify them.
 
 ## v1.0.0 stops at Phase 5
 

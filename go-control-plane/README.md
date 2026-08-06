@@ -21,6 +21,8 @@ For Docker Compose runs, the control plane uses Redis via:
 
 Local tests can continue using the in-process `MemoryStore`.
 
+AUTH failure limiting defaults to five confirmed credential failures in 60 seconds. Override it with `AUTH_FAILURE_LIMIT` and `AUTH_FAILURE_WINDOW_SECONDS`. Redis/store failures return `AUTH_UNAVAILABLE` and do not consume this budget.
+
 ## Test
 
 ```bash
@@ -34,6 +36,12 @@ Health check:
 
 ```bash
 curl http://localhost:8080/health
+```
+
+Prometheus AUTH counters:
+
+```bash
+curl http://localhost:8080/metrics
 ```
 
 Valid auth request:
@@ -150,6 +158,8 @@ curl -X PUT http://localhost:8080/config \
 ## Notes
 
 - `/auth/check` validates `client_id + token` through the configured store backend.
+- AUTH responses use stable `OK`, `INVALID_CREDENTIALS`, `TOKEN_DISABLED`, `RATE_LIMITED`, and `AUTH_UNAVAILABLE` codes.
+- Every JSON response has an explicit `Content-Length` and no encoder-added newline.
 - `GET /tokens` returns metadata and never exposes a token secret or digest.
 - Docker Compose defaults to Redis for tokens, runtime config, gateway status, and clients.
 - Multi-gateway APIs are available through `/gateways`, `/gateways/{gateway_id}/status`, and `/gateways/{gateway_id}/clients`.

@@ -80,7 +80,7 @@ response_queue_rejected
 - response type: `AUTH_RESP` on success
 - response type: `AUTH_RESP` with `allowed=false` when the per-process connection limit is exceeded after auth validation
 - connection close on malformed or rejected auth
-- `AUTH_RESP` with status 503 followed by close when the Request Queue is full
+- `AUTH_RESP` with `AUTH_OVERLOADED` followed by close when the independent AUTH Queue is full
 
 ## AUTH Rules
 

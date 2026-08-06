@@ -13,9 +13,9 @@ Client sockets
 │  accept4 / epoll ET / recv / decode / send / close  │
 │       │                                   ▲          │
 │       ▼                                   │ eventfd  │
-│ bounded Request Queue          bounded Response Queue│
-│       │                                   ▲          │
-│       └────────► Worker pool ─────────────┘          │
+│ normal Request Queue ─► normal Workers ──┐           │
+│ bounded AUTH Queue ───► AUTH Workers ────┼► Response │
+│                                           ▲ Queue    │
 └─────────────────────────┬────────────────────────────┘
                           │ HTTP/JSON
                           ▼
@@ -38,8 +38,8 @@ EPOLLIN
   → append input buffer
   → decode every complete frame
   → validate auth/rate/config state
-  → bounded request_queue.push
-  → Worker dispatch
+  → AUTH: bounded auth_queue.push; other: request_queue.push
+  → dedicated AUTH Worker or normal Worker dispatch
   → bounded response_queue.push
   → eventfd write
   → epoll wakes and drains eventfd/Response Queue
@@ -56,7 +56,7 @@ The eventfd counter may coalesce many Worker notifications. Coalescing is safe b
 
 `abort()` is reserved for shutdown deadline expiry: it stops the queue and discards not-yet-started elements so a deep slow-work backlog cannot make the deadline meaningless.
 
-Request overload returns an explicit 503 response. Response overload is treated as a severe delivery failure: the Reactor is notified through an independent deduplicated `fd → conn_id` set and closes the affected connection. No queue failure is silently ignored.
+AUTH overload is handled locally by the Reactor as `AUTH_RESP/AUTH_OVERLOADED` and closes after writing. It never consumes normal Request Queue capacity. Ordinary Request overload returns an explicit 503 response. Response overload is treated as a severe delivery failure: the Reactor is notified through an independent deduplicated `fd → conn_id` set and closes the affected connection. No queue failure is silently ignored.
 
 ## Runtime config
 
@@ -72,4 +72,6 @@ The server lifecycle is `RUNNING → DRAINING → STOPPED`. SIGINT/SIGTERM and p
 
 The Go service owns token checks, runtime config, latest gateway metrics, and latest authenticated-client snapshots. Docker Compose selects Redis; local runs default to `MemoryStore`. Gateway online/offline status is derived when queried from the age of the latest metrics report.
 
-AUTH HTTP remains synchronous but runs only in Worker threads, never in the Reactor. Metrics/config failures log errors and do not terminate the data plane.
+AUTH HTTP remains synchronous but runs only in the dedicated bounded AUTH Executor, never in the Reactor or normal Workers. The internal client keeps sockets non-blocking, uses `poll`, and shares one absolute deadline across all resolved addresses plus connect/send/receive. It requires one valid `Content-Length`, enforces separate 16 KiB header and 1 MiB body limits, and rejects transfer encoding, compression, upgrade, premature EOF, duplicate length, and non-2xx responses. Synchronous `getaddrinfo` is the documented deadline boundary.
+
+Disconnecting an AUTH connection marks its shared cancellation token. A queued task checks that token before contacting Go. Correctness still relies on `fd + conn_id`, because a disconnect can race after the cancellation check.

@@ -140,17 +140,56 @@ func (s *redisStore) isAllowed(clientID string, token string) (bool, error) {
 }
 
 func (s *redisStore) isDigestAllowed(clientID, digest string) (bool, error) {
+	decision, err := s.verifyDigest(clientID, digest)
+	return decision == tokenAuthAllowed, err
+}
+
+func (s *redisStore) verifyDigest(clientID, digest string) (tokenAuthDecision, error) {
 	ctx, cancel := redisContext()
 	defer cancel()
 	values, err := s.client.HMGet(ctx, "token:"+clientID, "digest", "disabled").Result()
 	if err != nil {
-		return false, err
+		return tokenAuthInvalid, err
 	}
 	if len(values) != 2 || values[0] == nil {
-		return false, nil
+		return tokenAuthInvalid, nil
 	}
 	disabled := values[1] != nil && values[1].(string) == "1"
-	return !disabled && digestEqual(values[0].(string), digest), nil
+	if disabled {
+		return tokenAuthDisabled, nil
+	}
+	if !digestEqual(values[0].(string), digest) {
+		return tokenAuthInvalid, nil
+	}
+	return tokenAuthAllowed, nil
+}
+
+func authFailureKey(clientID string) string { return "auth:failures:{" + clientID + "}" }
+
+func (s *redisStore) authFailureLimited(clientID string, limit int64) (bool, error) {
+	ctx, cancel := redisContext()
+	defer cancel()
+	count, err := s.client.Get(ctx, authFailureKey(clientID)).Int64()
+	if errors.Is(err, redis.Nil) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return count >= limit, nil
+}
+
+func (s *redisStore) recordAuthFailure(clientID string, window time.Duration) (int64, error) {
+	ctx, cancel := redisContext()
+	defer cancel()
+	script := redis.NewScript(`local count=redis.call('INCR',KEYS[1]); if count==1 then redis.call('PEXPIRE',KEYS[1],ARGV[1]) end; return count`)
+	return script.Run(ctx, s.client, []string{authFailureKey(clientID)}, window.Milliseconds()).Int64()
+}
+
+func (s *redisStore) clearAuthFailures(clientID string) error {
+	ctx, cancel := redisContext()
+	defer cancel()
+	return s.client.Del(ctx, authFailureKey(clientID)).Err()
 }
 
 func (s *redisStore) createToken(record tokenRecord) error {
@@ -269,18 +308,52 @@ func (s *redisStore) getStatusByKey(ctx context.Context, key string) (gatewaySta
 }
 
 func statusToRedis(status gatewayStatusResponse) map[string]any {
-	return map[string]any{
+	values := map[string]any{
 		"gateway_id": status.GatewayID, "gateway_boot_id": status.GatewayBootID,
 		"process_start_time": status.ProcessStartTime, "active_connections": status.ActiveConnections,
 		"total_requests": status.TotalMessages, "bytes_in": status.BytesIn, "bytes_out": status.BytesOut,
 		"errors": status.ErrorCount, "request_queue_capacity": status.RequestQueueCapacity,
 		"request_queue_backlog": status.RequestQueueBacklog, "request_queue_peak": status.RequestQueuePeak,
-		"request_queue_rejected": status.RequestQueueRejected, "response_queue_capacity": status.ResponseQueueCapacity,
-		"response_queue_backlog": status.ResponseQueueBacklog, "response_queue_peak": status.ResponseQueuePeak,
-		"response_queue_rejected": status.ResponseQueueRejected, "slow_client_closed": status.SlowClientClosed,
-		"stale_response_dropped": status.StaleResponseDropped, "auth_success": status.AuthSuccess,
-		"auth_failure": status.AuthFailure, "runtime_config_version": status.RuntimeConfigVersion,
-		"server_state": status.ServerState, "reported_at": status.LastReportTime,
+		"request_queue_rejected": status.RequestQueueRejected,
+		"auth_queue_capacity":    status.AuthQueueCapacity, "auth_queue_backlog": status.AuthQueueBacklog,
+		"auth_queue_peak": status.AuthQueuePeak, "auth_queue_rejected": status.AuthQueueRejected,
+		"auth_in_flight": status.AuthInFlight, "auth_tasks_cancelled_before_start": status.AuthTasksCancelled,
+		"response_queue_capacity": status.ResponseQueueCapacity,
+		"response_queue_backlog":  status.ResponseQueueBacklog, "response_queue_peak": status.ResponseQueuePeak,
+		"response_queue_rejected":        status.ResponseQueueRejected,
+		"response_queue_rejected_normal": status.ResponseRejectedNormal,
+		"response_queue_rejected_auth":   status.ResponseRejectedAuth,
+		"slow_client_closed":             status.SlowClientClosed,
+		"stale_response_dropped":         status.StaleResponseDropped, "auth_success": status.AuthSuccess,
+		"auth_failure": status.AuthFailure, "auth_allowed": status.AuthAllowed,
+		"auth_denied": status.AuthDenied, "auth_unavailable": status.AuthUnavailable,
+		"auth_duration_count":    status.AuthDurationCount,
+		"auth_duration_total_us": status.AuthDurationTotalUS,
+		"runtime_config_version": status.RuntimeConfigVersion,
+		"server_state":           status.ServerState, "reported_at": status.LastReportTime,
+	}
+	for key, value := range controlPlaneTelemetryToRedis(status.controlPlaneTelemetry) {
+		values[key] = value
+	}
+	return values
+}
+
+func controlPlaneTelemetryToRedis(value controlPlaneTelemetry) map[string]any {
+	return map[string]any{
+		"control_plane_requests_auth":           value.ControlPlaneRequestsAuth,
+		"control_plane_requests_config":         value.ControlPlaneRequestsConfig,
+		"control_plane_requests_metrics_report": value.ControlPlaneRequestsMetricsReport,
+		"control_plane_requests_clients_report": value.ControlPlaneRequestsClientsReport,
+		"control_plane_duration_total_us":       value.ControlPlaneDurationTotalUS,
+		"control_plane_errors_resolve":          value.ControlPlaneErrorsResolve,
+		"control_plane_errors_deadline":         value.ControlPlaneErrorsDeadline,
+		"control_plane_errors_connect":          value.ControlPlaneErrorsConnect,
+		"control_plane_errors_send":             value.ControlPlaneErrorsSend,
+		"control_plane_errors_receive":          value.ControlPlaneErrorsReceive,
+		"control_plane_errors_protocol":         value.ControlPlaneErrorsProtocol,
+		"control_plane_errors_status":           value.ControlPlaneErrorsStatus,
+		"control_plane_errors_json":             value.ControlPlaneErrorsJSON,
+		"control_plane_errors_oversize":         value.ControlPlaneErrorsOversize,
 	}
 }
 
@@ -291,11 +364,33 @@ func redisInt(values map[string]string, key string) int64 {
 
 func statusFromRedis(v map[string]string) gatewayStatusResponse {
 	return gatewayStatusResponse{
-		GatewayID: v["gateway_id"], GatewayBootID: v["gateway_boot_id"], ProcessStartTime: redisInt(v, "process_start_time"),
+		controlPlaneTelemetry: controlPlaneTelemetryFromRedis(v),
+		GatewayID:             v["gateway_id"], GatewayBootID: v["gateway_boot_id"], ProcessStartTime: redisInt(v, "process_start_time"),
 		ActiveConnections: redisInt(v, "active_connections"), TotalMessages: redisInt(v, "total_requests"), BytesIn: redisInt(v, "bytes_in"), BytesOut: redisInt(v, "bytes_out"), ErrorCount: redisInt(v, "errors"),
 		RequestQueueCapacity: redisInt(v, "request_queue_capacity"), RequestQueueBacklog: redisInt(v, "request_queue_backlog"), RequestQueuePeak: redisInt(v, "request_queue_peak"), RequestQueueRejected: redisInt(v, "request_queue_rejected"),
+		AuthQueueCapacity: redisInt(v, "auth_queue_capacity"), AuthQueueBacklog: redisInt(v, "auth_queue_backlog"), AuthQueuePeak: redisInt(v, "auth_queue_peak"), AuthQueueRejected: redisInt(v, "auth_queue_rejected"), AuthInFlight: redisInt(v, "auth_in_flight"), AuthTasksCancelled: redisInt(v, "auth_tasks_cancelled_before_start"),
 		ResponseQueueCapacity: redisInt(v, "response_queue_capacity"), ResponseQueueBacklog: redisInt(v, "response_queue_backlog"), ResponseQueuePeak: redisInt(v, "response_queue_peak"), ResponseQueueRejected: redisInt(v, "response_queue_rejected"),
-		SlowClientClosed: redisInt(v, "slow_client_closed"), StaleResponseDropped: redisInt(v, "stale_response_dropped"), AuthSuccess: redisInt(v, "auth_success"), AuthFailure: redisInt(v, "auth_failure"), RuntimeConfigVersion: redisInt(v, "runtime_config_version"), ServerState: v["server_state"], LastReportTime: v["reported_at"],
+		ResponseRejectedNormal: redisInt(v, "response_queue_rejected_normal"), ResponseRejectedAuth: redisInt(v, "response_queue_rejected_auth"),
+		SlowClientClosed: redisInt(v, "slow_client_closed"), StaleResponseDropped: redisInt(v, "stale_response_dropped"), AuthSuccess: redisInt(v, "auth_success"), AuthFailure: redisInt(v, "auth_failure"), AuthAllowed: redisInt(v, "auth_allowed"), AuthDenied: redisInt(v, "auth_denied"), AuthUnavailable: redisInt(v, "auth_unavailable"), AuthDurationCount: redisInt(v, "auth_duration_count"), AuthDurationTotalUS: redisInt(v, "auth_duration_total_us"), RuntimeConfigVersion: redisInt(v, "runtime_config_version"), ServerState: v["server_state"], LastReportTime: v["reported_at"],
+	}
+}
+
+func controlPlaneTelemetryFromRedis(values map[string]string) controlPlaneTelemetry {
+	return controlPlaneTelemetry{
+		ControlPlaneRequestsAuth:          redisInt(values, "control_plane_requests_auth"),
+		ControlPlaneRequestsConfig:        redisInt(values, "control_plane_requests_config"),
+		ControlPlaneRequestsMetricsReport: redisInt(values, "control_plane_requests_metrics_report"),
+		ControlPlaneRequestsClientsReport: redisInt(values, "control_plane_requests_clients_report"),
+		ControlPlaneDurationTotalUS:       redisInt(values, "control_plane_duration_total_us"),
+		ControlPlaneErrorsResolve:         redisInt(values, "control_plane_errors_resolve"),
+		ControlPlaneErrorsDeadline:        redisInt(values, "control_plane_errors_deadline"),
+		ControlPlaneErrorsConnect:         redisInt(values, "control_plane_errors_connect"),
+		ControlPlaneErrorsSend:            redisInt(values, "control_plane_errors_send"),
+		ControlPlaneErrorsReceive:         redisInt(values, "control_plane_errors_receive"),
+		ControlPlaneErrorsProtocol:        redisInt(values, "control_plane_errors_protocol"),
+		ControlPlaneErrorsStatus:          redisInt(values, "control_plane_errors_status"),
+		ControlPlaneErrorsJSON:            redisInt(values, "control_plane_errors_json"),
+		ControlPlaneErrorsOversize:        redisInt(values, "control_plane_errors_oversize"),
 	}
 }
 

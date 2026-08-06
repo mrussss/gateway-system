@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include "business/Dispatcher.hpp"
+#include "business/Handlers.hpp"
 #include "business/StatsManager.hpp"
 #include "common/Logger.hpp"
 #include "control/RuntimeConfig.hpp"
@@ -26,6 +27,25 @@
 namespace
 {
 constexpr uint32_t CLIENT_BASE_EVENTS = EPOLLET | EPOLLRDHUP;
+
+class AtomicCounterGuard
+{
+public:
+    explicit AtomicCounterGuard(std::atomic<size_t> &counter) : counter_(counter)
+    {
+        counter_.fetch_add(1, std::memory_order_relaxed);
+    }
+    ~AtomicCounterGuard()
+    {
+        counter_.fetch_sub(1, std::memory_order_relaxed);
+    }
+
+    AtomicCounterGuard(const AtomicCounterGuard &) = delete;
+    AtomicCounterGuard &operator=(const AtomicCounterGuard &) = delete;
+
+private:
+    std::atomic<size_t> &counter_;
+};
 
 std::string generateBootId()
 {
@@ -83,6 +103,15 @@ Response makeInternalErrorResponse(const Request &request)
     response.payload = R"({"status":500,"message":"internal server error"})";
     return response;
 }
+
+Response makeInternalAuthErrorResponse(const Request &request)
+{
+    Response response = makeInternalErrorResponse(request);
+    response.type = MessageType::AUTH_RESP;
+    response.payload = R"({"allowed":false,"code":"INTERNAL_ERROR"})";
+    response.close_connection = true;
+    return response;
+}
 }
 
 TcpServer *TcpServer::instance_ = nullptr;
@@ -101,17 +130,30 @@ TcpServer::TcpServer(int port, std::string control_plane_host, int control_plane
 TcpServer::TcpServer(int port, std::string control_plane_host, int control_plane_port,
                      std::string gateway_id, size_t request_queue_capacity,
                      size_t response_queue_capacity, int shutdown_timeout_ms,
-                     unsigned int worker_count, std::string gateway_token)
+                     unsigned int worker_count, std::string gateway_token,
+                     int control_plane_timeout_ms, unsigned int auth_worker_count,
+                     size_t auth_queue_capacity)
     : port_(port),
       shutdown_timeout_(std::max(shutdown_timeout_ms, 1)),
       configured_worker_count_(worker_count),
+      configured_auth_worker_count_(auth_worker_count),
       request_queue_(std::max<size_t>(request_queue_capacity, 1)),
+      auth_queue_(std::max<size_t>(auth_queue_capacity, 1)),
       response_queue_(std::max<size_t>(response_queue_capacity, 1)),
-      control_plane_(std::move(control_plane_host), control_plane_port, 1000,
+      control_plane_(std::move(control_plane_host), control_plane_port,
+                     control_plane_timeout_ms,
                      std::move(gateway_token)),
       gateway_id_(std::move(gateway_id)), gateway_boot_id_(generateBootId()),
       process_start_time_(std::time(nullptr))
 {
+    if (configured_auth_worker_count_ == 0 || configured_auth_worker_count_ > 16)
+    {
+        throw std::invalid_argument("auth worker count must be in [1, 16]");
+    }
+    if (auth_queue_capacity == 0 || auth_queue_capacity > 65536)
+    {
+        throw std::invalid_argument("auth queue capacity must be in [1, 65536]");
+    }
 }
 
 TcpServer::~TcpServer()
@@ -179,50 +221,114 @@ void TcpServer::start()
         }
         worker_count = std::min(worker_count, 4u);
     }
-    workers_remaining_ = worker_count;
-    LOG_INFO("gateway started: port=%d workers=%u request_capacity=%zu response_capacity=%zu",
-             port_, worker_count, request_queue_.capacity(), response_queue_.capacity());
+    response_producers_remaining_ = worker_count + configured_auth_worker_count_;
+    LOG_INFO("gateway started: port=%d workers=%u auth_workers=%u request_capacity=%zu auth_capacity=%zu response_capacity=%zu",
+             port_, worker_count, configured_auth_worker_count_, request_queue_.capacity(),
+             auth_queue_.capacity(), response_queue_.capacity());
 
     for (unsigned int worker_id = 0; worker_id < worker_count; ++worker_id)
     {
-        workers_.emplace_back([this, worker_id]
-        {
-            business::Dispatcher dispatcher(control_plane_);
-            Request request{};
-            while (request_queue_.pop(request))
-            {
-                try
-                {
-                    Response response = dispatcher.dispatch(request);
-                    enqueueWorkerResponse(std::move(response));
-                }
-                catch (const std::exception &error)
-                {
-                    business::StatsManager::getInstance().incrementErrors();
-                    LOG_ERROR("worker=%u dispatch failed: %s", worker_id, error.what());
-                    enqueueWorkerResponse(makeInternalErrorResponse(request));
-                }
-                catch (...)
-                {
-                    business::StatsManager::getInstance().incrementErrors();
-                    LOG_ERROR("worker=%u dispatch failed with unknown exception", worker_id);
-                    enqueueWorkerResponse(makeInternalErrorResponse(request));
-                }
-            }
-
-            LOG_DEBUG("worker=%u drained request queue and exited", worker_id);
-            if (workers_remaining_.fetch_sub(1) == 1)
-            {
-                response_queue_.stop();
-                notifier_.notify();
-            }
-        });
+        workers_.emplace_back([this, worker_id] { normalWorkerLoop(worker_id); });
+    }
+    for (unsigned int worker_id = 0; worker_id < configured_auth_worker_count_; ++worker_id)
+    {
+        auth_workers_.emplace_back([this, worker_id] { authWorkerLoop(worker_id); });
     }
 
     startMetricsReporter();
     startConfigPuller();
     loop();
     finishShutdown();
+}
+
+void TcpServer::normalWorkerLoop(unsigned int worker_id)
+{
+    business::Dispatcher dispatcher;
+    Request request{};
+    while (request_queue_.pop(request))
+    {
+        try
+        {
+            enqueueWorkerResponse(dispatcher.dispatch(request), ResponseProducer::NormalWorker);
+        }
+        catch (const std::exception &error)
+        {
+            business::StatsManager::getInstance().incrementErrors();
+            LOG_ERROR("worker=%u dispatch failed: %s", worker_id, error.what());
+            enqueueWorkerResponse(makeInternalErrorResponse(request),
+                                  ResponseProducer::NormalWorker);
+        }
+        catch (...)
+        {
+            business::StatsManager::getInstance().incrementErrors();
+            LOG_ERROR("worker=%u dispatch failed with unknown exception", worker_id);
+            enqueueWorkerResponse(makeInternalErrorResponse(request),
+                                  ResponseProducer::NormalWorker);
+        }
+    }
+    LOG_DEBUG("worker=%u drained request queue and exited", worker_id);
+    onResponseProducerExited();
+}
+
+void TcpServer::authWorkerLoop(unsigned int worker_id)
+{
+    AuthTask task{};
+    while (auth_queue_.pop(task))
+    {
+        if (task.cancellation &&
+            task.cancellation->cancelled.load(std::memory_order_relaxed))
+        {
+            business::StatsManager::getInstance().incrementAuthTaskCancelledBeforeStart();
+            continue;
+        }
+
+        const auto started_at = std::chrono::steady_clock::now();
+        AtomicCounterGuard in_flight(auth_in_flight_);
+        try
+        {
+            business::StatsManager::getInstance().incrementRequests();
+            business::AuthHandlingResult handled =
+                business::handleAuth(task.request, control_plane_);
+            const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - started_at);
+            business::StatsManager::getInstance().recordAuthResult(
+                handled.outcome, static_cast<uint64_t>(duration.count()));
+            enqueueWorkerResponse(std::move(handled.response), ResponseProducer::AuthWorker);
+        }
+        catch (const std::exception &error)
+        {
+            business::StatsManager::getInstance().incrementErrors();
+            const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - started_at);
+            business::StatsManager::getInstance().recordAuthResult(
+                AuthOutcome::Unavailable, static_cast<uint64_t>(duration.count()));
+            LOG_ERROR("auth_worker=%u failed: %s", worker_id, error.what());
+            enqueueWorkerResponse(makeInternalAuthErrorResponse(task.request),
+                                  ResponseProducer::AuthWorker);
+        }
+        catch (...)
+        {
+            business::StatsManager::getInstance().incrementErrors();
+            const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - started_at);
+            business::StatsManager::getInstance().recordAuthResult(
+                AuthOutcome::Unavailable, static_cast<uint64_t>(duration.count()));
+            LOG_ERROR("auth_worker=%u failed with unknown exception", worker_id);
+            enqueueWorkerResponse(makeInternalAuthErrorResponse(task.request),
+                                  ResponseProducer::AuthWorker);
+        }
+    }
+    LOG_DEBUG("auth_worker=%u drained auth queue and exited", worker_id);
+    onResponseProducerExited();
+}
+
+void TcpServer::onResponseProducerExited()
+{
+    if (response_producers_remaining_.fetch_sub(1, std::memory_order_acq_rel) == 1)
+    {
+        response_queue_.stop();
+        notifier_.notify();
+    }
 }
 
 void TcpServer::stop()
@@ -377,9 +483,11 @@ void TcpServer::loop()
             else if (std::chrono::steady_clock::now() >= shutdown_deadline_)
             {
                 const size_t discarded_requests = request_queue_.abort();
+                const size_t discarded_auth_tasks = auth_queue_.abort();
                 const size_t discarded_responses = response_queue_.abort();
-                LOG_ERROR("graceful shutdown deadline reached: discarded_requests=%zu discarded_responses=%zu connections=%zu",
-                          discarded_requests, discarded_responses, connections_.size());
+                LOG_ERROR("graceful shutdown deadline reached: discarded_requests=%zu discarded_auth_tasks=%zu discarded_responses=%zu connections=%zu auth_in_flight=%zu",
+                          discarded_requests, discarded_auth_tasks, discarded_responses,
+                          connections_.size(), auth_in_flight_.load());
                 state_ = ServerState::STOPPED;
             }
         }
@@ -398,8 +506,11 @@ void TcpServer::beginDraining()
     markNotReady();
     closeListener();
     request_queue_.stop();
-    LOG_INFO("graceful shutdown started: deadline_ms=%lld queued_requests=%zu",
-             static_cast<long long>(shutdown_timeout_.count()), request_queue_.size());
+    auth_queue_.stop();
+    background_wait_cv_.notify_all();
+    LOG_INFO("graceful shutdown started: deadline_ms=%lld queued_requests=%zu queued_auth=%zu",
+             static_cast<long long>(shutdown_timeout_.count()), request_queue_.size(),
+             auth_queue_.size());
 
     std::vector<std::pair<int, bool>> connection_states;
     {
@@ -422,7 +533,9 @@ void TcpServer::finishShutdown()
 {
     markNotReady();
     request_queue_.stop();
+    auth_queue_.stop();
     response_queue_.stop();
+    background_wait_cv_.notify_all();
 
     if (metrics_reporter_.joinable())
     {
@@ -433,6 +546,13 @@ void TcpServer::finishShutdown()
         config_puller_.join();
     }
     for (auto &worker : workers_)
+    {
+        if (worker.joinable())
+        {
+            worker.join();
+        }
+    }
+    for (auto &worker : auth_workers_)
     {
         if (worker.joinable())
         {
@@ -488,10 +608,19 @@ void TcpServer::markNotReady()
 
 bool TcpServer::drainComplete()
 {
-    if (workers_remaining_.load() != 0 || !response_queue_.stopped() ||
-        response_queue_.size() != 0)
+    if (response_producers_remaining_.load() != 0 || !request_queue_.stopped() ||
+        request_queue_.size() != 0 || !auth_queue_.stopped() || auth_queue_.size() != 0 ||
+        !response_queue_.stopped() || response_queue_.size() != 0)
     {
         return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(rejected_responses_mutex_);
+        if (!rejected_response_connections_.empty())
+        {
+            return false;
+        }
     }
 
     std::vector<int> completed;
@@ -593,6 +722,14 @@ void TcpServer::handleRead(int fd)
 {
     while (state_.load() == ServerState::RUNNING)
     {
+        {
+            std::lock_guard<std::mutex> lock(connections_mutex_);
+            const auto connection = connections_.find(fd);
+            if (connection == connections_.end() || connection->second.closing)
+            {
+                return;
+            }
+        }
         char buffer[4096];
         ssize_t bytes_read = recv(fd, buffer, sizeof(buffer), 0);
         if (bytes_read > 0)
@@ -673,7 +810,7 @@ void TcpServer::handleWrite(int fd)
                 closeConnection(fd);
                 return;
             }
-            modifyConnectionEvents(fd, connectionEvents(false));
+            modifyConnectionEvents(fd, connectionEvents(false, false));
             return;
         }
         if (sent > 0)
@@ -694,7 +831,7 @@ void TcpServer::handleWrite(int fd)
     }
 }
 
-bool TcpServer::enqueueWorkerResponse(Response response)
+bool TcpServer::enqueueWorkerResponse(Response response, ResponseProducer producer)
 {
     const int fd = response.fd;
     const uint64_t connection_id = response.conn_id;
@@ -712,7 +849,14 @@ bool TcpServer::enqueueWorkerResponse(Response response)
     }
 
     business::StatsManager::getInstance().incrementErrors();
-    business::StatsManager::getInstance().incrementResponseQueueRejected();
+    if (producer == ResponseProducer::AuthWorker)
+    {
+        business::StatsManager::getInstance().incrementResponseQueueRejectedAuth();
+    }
+    else
+    {
+        business::StatsManager::getInstance().incrementResponseQueueRejectedNormal();
+    }
     LOG_ERROR("response queue rejected item: fd=%d conn_id=%llu result=%s", fd,
               static_cast<unsigned long long>(connection_id),
               result == PushResult::FULL ? "full" : "stopped");
@@ -760,6 +904,7 @@ void TcpServer::applyResponse(Response response)
 {
     bool close_now = false;
     bool enable_write = false;
+    bool connection_closing = false;
     RuntimeConfig config = getRuntimeConfigSnapshot();
     {
         std::lock_guard<std::mutex> lock(connections_mutex_);
@@ -777,6 +922,7 @@ void TcpServer::applyResponse(Response response)
         if (response.type == MessageType::AUTH_RESP || response.close_connection)
         {
             current.auth_pending = false;
+            current.auth_cancellation.reset();
         }
         if (response.client_id_to_authenticate)
         {
@@ -830,6 +976,7 @@ void TcpServer::applyResponse(Response response)
                 }
                 current.output_buffer.append(encoded);
                 current.closing = current.closing || response.close_connection;
+                connection_closing = current.closing;
                 enable_write = true;
             }
         }
@@ -841,7 +988,7 @@ void TcpServer::applyResponse(Response response)
     }
     else if (enable_write)
     {
-        modifyConnectionEvents(response.fd, connectionEvents(true));
+        modifyConnectionEvents(response.fd, connectionEvents(true, connection_closing));
     }
 }
 
@@ -849,6 +996,7 @@ bool TcpServer::decodeAndEnqueue(int fd)
 {
     std::vector<Request> decoded_requests;
     std::vector<Request> requests_to_enqueue;
+    std::vector<AuthTask> auth_tasks_to_enqueue;
     std::vector<Response> local_responses;
     bool close_now = false;
     RuntimeConfig config = getRuntimeConfigSnapshot();
@@ -886,7 +1034,16 @@ bool TcpServer::decodeAndEnqueue(int fd)
                     break;
                 }
                 current.auth_pending = true;
-                requests_to_enqueue.push_back(std::move(request));
+                auto cancellation = std::make_shared<AuthCancellation>();
+                auto task = makeAuthTask(std::move(request), cancellation);
+                if (!task)
+                {
+                    business::StatsManager::getInstance().incrementErrors();
+                    close_now = true;
+                    break;
+                }
+                current.auth_cancellation = std::move(cancellation);
+                auth_tasks_to_enqueue.push_back(std::move(*task));
                 continue;
             }
             if (request.type == MessageType::AUTH)
@@ -926,10 +1083,27 @@ bool TcpServer::decodeAndEnqueue(int fd)
         return false;
     }
 
+    for (auto &task : auth_tasks_to_enqueue)
+    {
+        const PushResult result = auth_queue_.push(std::move(task));
+        if (result != PushResult::OK)
+        {
+            business::StatsManager::getInstance().incrementErrors();
+            business::StatsManager::getInstance().incrementAuthQueueRejected();
+            business::StatsManager::getInstance().recordAuthResult(AuthOutcome::Unavailable, 0);
+            LOG_ERROR("auth queue rejected item: fd=%d conn_id=%llu result=%s",
+                      task.request.fd,
+                      static_cast<unsigned long long>(task.request.conn_id),
+                      result == PushResult::FULL ? "full" : "stopped");
+            Response overload = makeOverloadResponse(task.request, true);
+            overload.type = MessageType::AUTH_RESP;
+            overload.payload = R"({"allowed":false,"code":"AUTH_OVERLOADED"})";
+            local_responses.push_back(std::move(overload));
+        }
+    }
     for (auto &request : requests_to_enqueue)
     {
-        const bool auth_request = request.type == MessageType::AUTH;
-        const PushResult result = request_queue_.push(request);
+        const PushResult result = request_queue_.push(std::move(request));
         if (result != PushResult::OK)
         {
             business::StatsManager::getInstance().incrementErrors();
@@ -937,12 +1111,7 @@ bool TcpServer::decodeAndEnqueue(int fd)
             LOG_ERROR("request queue rejected item: fd=%d conn_id=%llu result=%s",
                       request.fd, static_cast<unsigned long long>(request.conn_id),
                       result == PushResult::FULL ? "full" : "stopped");
-            Response overload = makeOverloadResponse(request, auth_request);
-            if (auth_request)
-            {
-                overload.type = MessageType::AUTH_RESP;
-            }
-            local_responses.push_back(std::move(overload));
+            local_responses.push_back(makeOverloadResponse(request, false));
         }
     }
     for (auto &response : local_responses)
@@ -969,10 +1138,10 @@ bool TcpServer::modifyConnectionEvents(int fd, uint32_t events)
     return true;
 }
 
-uint32_t TcpServer::connectionEvents(bool wants_write) const
+uint32_t TcpServer::connectionEvents(bool wants_write, bool closing) const
 {
     uint32_t events = CLIENT_BASE_EVENTS;
-    if (state_.load() == ServerState::RUNNING)
+    if (state_.load() == ServerState::RUNNING && !closing)
     {
         events |= EPOLLIN;
     }
@@ -993,20 +1162,6 @@ void TcpServer::startMetricsReporter()
 
 void TcpServer::startConfigPuller()
 {
-    RuntimeConfig fetched;
-    if (control_plane_.fetchConfig(fetched))
-    {
-        std::lock_guard<std::mutex> lock(runtime_config_mutex_);
-        runtime_config_ = fetched;
-        setGatewayLogLevel(runtime_config_.log_level);
-        LOG_INFO("runtime config initialized: version=%lld",
-                 static_cast<long long>(runtime_config_.version));
-    }
-    else
-    {
-        LOG_ERROR("runtime config startup fetch failed; retaining version=%lld",
-                  static_cast<long long>(runtime_config_.version));
-    }
     config_puller_ = std::thread([this]
     {
         configPullerLoop();
@@ -1020,21 +1175,53 @@ void TcpServer::metricsReporterLoop()
         auto &stats = business::StatsManager::getInstance();
         const auto snapshot = stats.snapshot();
         const RuntimeConfig config = getRuntimeConfigSnapshot();
-        GatewayMetrics metrics{
-            gateway_id_, gateway_boot_id_, process_start_time_, snapshot.active_connections,
-            snapshot.total_requests, snapshot.bytes_in, snapshot.bytes_out, snapshot.errors,
-            request_queue_.capacity(), request_queue_.size(), request_queue_.peakSize(),
-            snapshot.request_queue_rejected, response_queue_.capacity(), response_queue_.size(),
-            response_queue_.peakSize(), snapshot.response_queue_rejected,
-            snapshot.slow_client_closed, snapshot.stale_response_dropped,
-            snapshot.auth_success, snapshot.auth_failure, config.version, "RUNNING",
-            std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())};
+        GatewayMetrics metrics{};
+        metrics.gateway_id = gateway_id_;
+        metrics.gateway_boot_id = gateway_boot_id_;
+        metrics.process_start_time = process_start_time_;
+        metrics.active_connections = snapshot.active_connections;
+        metrics.total_requests = snapshot.total_requests;
+        metrics.bytes_in = snapshot.bytes_in;
+        metrics.bytes_out = snapshot.bytes_out;
+        metrics.error_count = snapshot.errors;
+        metrics.request_queue_capacity = request_queue_.capacity();
+        metrics.request_queue_backlog = request_queue_.size();
+        metrics.request_queue_peak = request_queue_.peakSize();
+        metrics.request_queue_rejected = snapshot.request_queue_rejected;
+        metrics.auth_queue_capacity = auth_queue_.capacity();
+        metrics.auth_queue_backlog = auth_queue_.size();
+        metrics.auth_queue_peak = auth_queue_.peakSize();
+        metrics.auth_queue_rejected = snapshot.auth_queue_rejected;
+        metrics.auth_in_flight = auth_in_flight_.load(std::memory_order_relaxed);
+        metrics.auth_tasks_cancelled_before_start =
+            snapshot.auth_tasks_cancelled_before_start;
+        metrics.response_queue_capacity = response_queue_.capacity();
+        metrics.response_queue_backlog = response_queue_.size();
+        metrics.response_queue_peak = response_queue_.peakSize();
+        metrics.response_queue_rejected = snapshot.response_queue_rejected;
+        metrics.response_queue_rejected_normal = snapshot.response_queue_rejected_normal;
+        metrics.response_queue_rejected_auth = snapshot.response_queue_rejected_auth;
+        metrics.slow_client_closed = snapshot.slow_client_closed;
+        metrics.stale_response_dropped = snapshot.stale_response_dropped;
+        metrics.auth_success = snapshot.auth_success;
+        metrics.auth_failure = snapshot.auth_failure;
+        metrics.auth_allowed = snapshot.auth_allowed;
+        metrics.auth_denied = snapshot.auth_denied;
+        metrics.auth_unavailable = snapshot.auth_unavailable;
+        metrics.auth_duration_count = snapshot.auth_duration_count;
+        metrics.auth_duration_total_us = snapshot.auth_duration_total_us;
+        metrics.control_plane = control_plane_.metricsSnapshot();
+        metrics.runtime_config_version = config.version;
+        metrics.server_state = "RUNNING";
+        metrics.timestamp =
+            std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
         control_plane_.reportMetrics(metrics);
         control_plane_.reportClients(metrics.gateway_id, buildClientSnapshot());
-        for (int tick = 0; tick < 50 && state_.load() == ServerState::RUNNING; ++tick)
+        std::unique_lock<std::mutex> lock(background_wait_mutex_);
+        background_wait_cv_.wait_for(lock, std::chrono::seconds(5), [this]
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
+            return state_.load() != ServerState::RUNNING;
+        });
     }
 }
 
@@ -1059,10 +1246,11 @@ void TcpServer::configPullerLoop()
         {
             LOG_ERROR("%s", "runtime config fetch failed; retaining current snapshot");
         }
-        for (int tick = 0; tick < 50 && state_.load() == ServerState::RUNNING; ++tick)
+        std::unique_lock<std::mutex> lock(background_wait_mutex_);
+        background_wait_cv_.wait_for(lock, std::chrono::seconds(5), [this]
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
+            return state_.load() != ServerState::RUNNING;
+        });
     }
 }
 
@@ -1136,6 +1324,11 @@ void TcpServer::closeConnection(int fd)
         }
         client_id = connection->second.client_id;
         authenticated = connection->second.authenticated;
+        if (connection->second.auth_cancellation)
+        {
+            connection->second.auth_cancellation->cancelled.store(
+                true, std::memory_order_relaxed);
+        }
         connections_.erase(connection);
         if (authenticated && countAuthenticatedConnectionsForClientLocked(client_id, -1) == 0)
         {

@@ -2,10 +2,24 @@ package app
 
 import (
 	"errors"
+	"os"
+	"strconv"
 	"strings"
 )
 
 var errConfigConflict = errors.New("config version conflict")
+
+func readPositiveEnv(name string, fallback int) int {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
 
 func defaultRuntimeConfig() runtimeConfig {
 	return runtimeConfig{

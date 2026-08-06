@@ -6,7 +6,14 @@
 
 namespace business
 {
-    Response handleAuth(const Request &request, const ControlPlaneClient &control_plane);
+    struct AuthHandlingResult
+    {
+        Response response;
+        AuthOutcome outcome = AuthOutcome::Unavailable;
+    };
+
+    AuthHandlingResult handleAuth(const Request &request,
+                                  const ControlPlaneClient &control_plane);
     Response handlePing(const Request &request);
     Response handleEcho(const Request &request);
     Response handleLogPush(const Request &request);

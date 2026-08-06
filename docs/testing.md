@@ -9,7 +9,10 @@
 | `runtime_config_test` | valid/invalid parsing, atomic retention, monotonic versions, failed fetch retention |
 | `reactor_notifier_test` | epoll wakeup and coalesced multi-Worker eventfd writes |
 | `server_stop_test` | concurrent/repeated programmatic `stop()` idempotence |
-| `graceful_shutdown_test` | real process/signals, queue drain, overload 503, repeated stop, slow-client deadline |
+| `control_plane_client_test` | strict framing, outcome mapping, shared deadline, high fd, size limits, CR/LF injection |
+| `startup_config_test` | valid and fail-fast AUTH/HTTP startup settings |
+| `auth_task_test` | AUTH-only task invariant and shared cancellation token |
+| `graceful_shutdown_test` | real process/signals, dual-queue drain, AUTH bulkhead, cancellation, outage, slow-client deadline |
 
 Run:
 
@@ -34,7 +37,8 @@ The protocol suite covers AUTH state, half/sticky packets, malformed lengths, ra
 - Go `errorStore` tests model Redis/store failures.
 - `runtime_config_test` proves a failed fetch cannot mutate the active config object.
 - graceful shutdown integration uses delayed auth to create a real queue backlog.
-- overload integration runs with Request Queue capacity 1 and verifies both admitted AUTH and explicit 503 rejection.
+- overload integration saturates a one-worker/one-slot AUTH Executor, verifies local rejection, and proves ordinary ECHO remains responsive.
 - slow-client integration reduces the receive buffer, generates large responses, and verifies the configured shutdown deadline is exercised.
-- deep-queue deadline integration uses slow AUTH work and proves not-yet-started requests are aborted instead of extending shutdown indefinitely.
+- cancellation integration proves a disconnected queued AUTH does not call Go.
+- deep-queue deadline integration uses slow AUTH work and proves not-yet-started AUTH tasks are aborted instead of extending shutdown indefinitely.
 - control-plane outage integration proves existing authenticated ECHO remains available, new AUTH fails closed, and reporting/config errors do not terminate the Gateway.

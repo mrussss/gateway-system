@@ -506,7 +506,7 @@ func TestTokensCRUDAndAuthFlow(t *testing.T) {
 	deniedReq := newTestRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{"client_id":"client_001","token":"`+created.Token+`"}`))
 	deniedResp := httptest.NewRecorder()
 	router.ServeHTTP(deniedResp, deniedReq)
-	assertAuthResponse(t, deniedResp, http.StatusOK, false, "invalid token")
+	assertAuthResponse(t, deniedResp, http.StatusOK, false, "token disabled")
 }
 
 func TestTokensUpsertRejectsMissingFields(t *testing.T) {
@@ -570,8 +570,8 @@ func TestHandlersReturnStoreError(t *testing.T) {
 			method:     http.MethodPost,
 			path:       "/auth/check",
 			body:       `{"client_id":"client_001","token":"registered-token"}`,
-			wantStatus: http.StatusInternalServerError,
-			wantBody:   storeErrorMessage,
+			wantStatus: http.StatusServiceUnavailable,
+			wantBody:   "authentication service unavailable",
 		},
 		{
 			name:       "metrics report",

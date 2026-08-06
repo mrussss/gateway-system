@@ -7,6 +7,7 @@ type authCheckRequest struct {
 
 type authCheckResponse struct {
 	Allowed bool   `json:"allowed"`
+	Code    string `json:"code"`
 	Reason  string `json:"reason"`
 }
 
@@ -31,60 +32,66 @@ type configUpdateRequest struct {
 	LogLevel                      string `json:"log_level"`
 }
 
+type controlPlaneTelemetry struct {
+	ControlPlaneRequestsAuth          int64 `json:"control_plane_requests_auth"`
+	ControlPlaneRequestsConfig        int64 `json:"control_plane_requests_config"`
+	ControlPlaneRequestsMetricsReport int64 `json:"control_plane_requests_metrics_report"`
+	ControlPlaneRequestsClientsReport int64 `json:"control_plane_requests_clients_report"`
+	ControlPlaneDurationTotalUS       int64 `json:"control_plane_duration_total_us"`
+	ControlPlaneErrorsResolve         int64 `json:"control_plane_errors_resolve"`
+	ControlPlaneErrorsDeadline        int64 `json:"control_plane_errors_deadline"`
+	ControlPlaneErrorsConnect         int64 `json:"control_plane_errors_connect"`
+	ControlPlaneErrorsSend            int64 `json:"control_plane_errors_send"`
+	ControlPlaneErrorsReceive         int64 `json:"control_plane_errors_receive"`
+	ControlPlaneErrorsProtocol        int64 `json:"control_plane_errors_protocol"`
+	ControlPlaneErrorsStatus          int64 `json:"control_plane_errors_status"`
+	ControlPlaneErrorsJSON            int64 `json:"control_plane_errors_json"`
+	ControlPlaneErrorsOversize        int64 `json:"control_plane_errors_oversize"`
+}
+
 type metricsReportRequest struct {
-	GatewayID             string `json:"gateway_id"`
-	GatewayBootID         string `json:"gateway_boot_id"`
-	ProcessStartTime      int64  `json:"process_start_time"`
-	ActiveConnections     int64  `json:"active_connections"`
-	TotalRequests         int64  `json:"total_requests"`
-	TotalMessages         int64  `json:"total_messages,omitempty"`
-	BytesIn               int64  `json:"bytes_in"`
-	BytesOut              int64  `json:"bytes_out"`
-	ErrorCount            int64  `json:"error_count"`
-	RequestQueueCapacity  int64  `json:"request_queue_capacity"`
-	RequestQueueBacklog   int64  `json:"request_queue_backlog"`
-	RequestQueuePeak      int64  `json:"request_queue_peak"`
-	RequestQueueRejected  int64  `json:"request_queue_rejected"`
-	ResponseQueueCapacity int64  `json:"response_queue_capacity"`
-	ResponseQueueBacklog  int64  `json:"response_queue_backlog"`
-	ResponseQueuePeak     int64  `json:"response_queue_peak"`
-	ResponseQueueRejected int64  `json:"response_queue_rejected"`
-	SlowClientClosed      int64  `json:"slow_client_closed"`
-	StaleResponseDropped  int64  `json:"stale_response_dropped"`
-	AuthSuccess           int64  `json:"auth_success"`
-	AuthFailure           int64  `json:"auth_failure"`
-	RuntimeConfigVersion  int64  `json:"runtime_config_version"`
-	ServerState           string `json:"server_state"`
-	Timestamp             int64  `json:"timestamp"`
+	controlPlaneTelemetry
+	GatewayID              string `json:"gateway_id"`
+	GatewayBootID          string `json:"gateway_boot_id"`
+	ProcessStartTime       int64  `json:"process_start_time"`
+	ActiveConnections      int64  `json:"active_connections"`
+	TotalRequests          int64  `json:"total_requests"`
+	TotalMessages          int64  `json:"total_messages,omitempty"`
+	BytesIn                int64  `json:"bytes_in"`
+	BytesOut               int64  `json:"bytes_out"`
+	ErrorCount             int64  `json:"error_count"`
+	RequestQueueCapacity   int64  `json:"request_queue_capacity"`
+	RequestQueueBacklog    int64  `json:"request_queue_backlog"`
+	RequestQueuePeak       int64  `json:"request_queue_peak"`
+	RequestQueueRejected   int64  `json:"request_queue_rejected"`
+	AuthQueueCapacity      int64  `json:"auth_queue_capacity"`
+	AuthQueueBacklog       int64  `json:"auth_queue_backlog"`
+	AuthQueuePeak          int64  `json:"auth_queue_peak"`
+	AuthQueueRejected      int64  `json:"auth_queue_rejected"`
+	AuthInFlight           int64  `json:"auth_in_flight"`
+	AuthTasksCancelled     int64  `json:"auth_tasks_cancelled_before_start"`
+	ResponseQueueCapacity  int64  `json:"response_queue_capacity"`
+	ResponseQueueBacklog   int64  `json:"response_queue_backlog"`
+	ResponseQueuePeak      int64  `json:"response_queue_peak"`
+	ResponseQueueRejected  int64  `json:"response_queue_rejected"`
+	ResponseRejectedNormal int64  `json:"response_queue_rejected_normal"`
+	ResponseRejectedAuth   int64  `json:"response_queue_rejected_auth"`
+	SlowClientClosed       int64  `json:"slow_client_closed"`
+	StaleResponseDropped   int64  `json:"stale_response_dropped"`
+	AuthSuccess            int64  `json:"auth_success"`
+	AuthFailure            int64  `json:"auth_failure"`
+	AuthAllowed            int64  `json:"auth_allowed"`
+	AuthDenied             int64  `json:"auth_denied"`
+	AuthUnavailable        int64  `json:"auth_unavailable"`
+	AuthDurationCount      int64  `json:"auth_duration_count"`
+	AuthDurationTotalUS    int64  `json:"auth_duration_total_us"`
+	RuntimeConfigVersion   int64  `json:"runtime_config_version"`
+	ServerState            string `json:"server_state"`
+	Timestamp              int64  `json:"timestamp"`
 }
 
 type gatewayStatusResponse struct {
-	GatewayID             string `json:"gateway_id"`
-	GatewayBootID         string `json:"gateway_boot_id"`
-	ProcessStartTime      int64  `json:"process_start_time"`
-	ActiveConnections     int64  `json:"active_connections"`
-	TotalMessages         int64  `json:"total_requests"`
-	BytesIn               int64  `json:"bytes_in"`
-	BytesOut              int64  `json:"bytes_out"`
-	ErrorCount            int64  `json:"errors"`
-	RequestQueueCapacity  int64  `json:"request_queue_capacity"`
-	RequestQueueBacklog   int64  `json:"request_queue_backlog"`
-	RequestQueuePeak      int64  `json:"request_queue_peak"`
-	RequestQueueRejected  int64  `json:"request_queue_rejected"`
-	ResponseQueueCapacity int64  `json:"response_queue_capacity"`
-	ResponseQueueBacklog  int64  `json:"response_queue_backlog"`
-	ResponseQueuePeak     int64  `json:"response_queue_peak"`
-	ResponseQueueRejected int64  `json:"response_queue_rejected"`
-	SlowClientClosed      int64  `json:"slow_client_closed"`
-	StaleResponseDropped  int64  `json:"stale_response_dropped"`
-	AuthSuccess           int64  `json:"auth_success"`
-	AuthFailure           int64  `json:"auth_failure"`
-	RuntimeConfigVersion  int64  `json:"runtime_config_version"`
-	ServerState           string `json:"server_state"`
-	LastReportTime        string `json:"reported_at"`
-}
-
-type gatewayStatusView struct {
+	controlPlaneTelemetry
 	GatewayID              string `json:"gateway_id"`
 	GatewayBootID          string `json:"gateway_boot_id"`
 	ProcessStartTime       int64  `json:"process_start_time"`
@@ -97,14 +104,67 @@ type gatewayStatusView struct {
 	RequestQueueBacklog    int64  `json:"request_queue_backlog"`
 	RequestQueuePeak       int64  `json:"request_queue_peak"`
 	RequestQueueRejected   int64  `json:"request_queue_rejected"`
+	AuthQueueCapacity      int64  `json:"auth_queue_capacity"`
+	AuthQueueBacklog       int64  `json:"auth_queue_backlog"`
+	AuthQueuePeak          int64  `json:"auth_queue_peak"`
+	AuthQueueRejected      int64  `json:"auth_queue_rejected"`
+	AuthInFlight           int64  `json:"auth_in_flight"`
+	AuthTasksCancelled     int64  `json:"auth_tasks_cancelled_before_start"`
 	ResponseQueueCapacity  int64  `json:"response_queue_capacity"`
 	ResponseQueueBacklog   int64  `json:"response_queue_backlog"`
 	ResponseQueuePeak      int64  `json:"response_queue_peak"`
 	ResponseQueueRejected  int64  `json:"response_queue_rejected"`
+	ResponseRejectedNormal int64  `json:"response_queue_rejected_normal"`
+	ResponseRejectedAuth   int64  `json:"response_queue_rejected_auth"`
 	SlowClientClosed       int64  `json:"slow_client_closed"`
 	StaleResponseDropped   int64  `json:"stale_response_dropped"`
 	AuthSuccess            int64  `json:"auth_success"`
 	AuthFailure            int64  `json:"auth_failure"`
+	AuthAllowed            int64  `json:"auth_allowed"`
+	AuthDenied             int64  `json:"auth_denied"`
+	AuthUnavailable        int64  `json:"auth_unavailable"`
+	AuthDurationCount      int64  `json:"auth_duration_count"`
+	AuthDurationTotalUS    int64  `json:"auth_duration_total_us"`
+	RuntimeConfigVersion   int64  `json:"runtime_config_version"`
+	ServerState            string `json:"server_state"`
+	LastReportTime         string `json:"reported_at"`
+}
+
+type gatewayStatusView struct {
+	controlPlaneTelemetry
+	GatewayID              string `json:"gateway_id"`
+	GatewayBootID          string `json:"gateway_boot_id"`
+	ProcessStartTime       int64  `json:"process_start_time"`
+	ActiveConnections      int64  `json:"active_connections"`
+	TotalMessages          int64  `json:"total_requests"`
+	BytesIn                int64  `json:"bytes_in"`
+	BytesOut               int64  `json:"bytes_out"`
+	ErrorCount             int64  `json:"errors"`
+	RequestQueueCapacity   int64  `json:"request_queue_capacity"`
+	RequestQueueBacklog    int64  `json:"request_queue_backlog"`
+	RequestQueuePeak       int64  `json:"request_queue_peak"`
+	RequestQueueRejected   int64  `json:"request_queue_rejected"`
+	AuthQueueCapacity      int64  `json:"auth_queue_capacity"`
+	AuthQueueBacklog       int64  `json:"auth_queue_backlog"`
+	AuthQueuePeak          int64  `json:"auth_queue_peak"`
+	AuthQueueRejected      int64  `json:"auth_queue_rejected"`
+	AuthInFlight           int64  `json:"auth_in_flight"`
+	AuthTasksCancelled     int64  `json:"auth_tasks_cancelled_before_start"`
+	ResponseQueueCapacity  int64  `json:"response_queue_capacity"`
+	ResponseQueueBacklog   int64  `json:"response_queue_backlog"`
+	ResponseQueuePeak      int64  `json:"response_queue_peak"`
+	ResponseQueueRejected  int64  `json:"response_queue_rejected"`
+	ResponseRejectedNormal int64  `json:"response_queue_rejected_normal"`
+	ResponseRejectedAuth   int64  `json:"response_queue_rejected_auth"`
+	SlowClientClosed       int64  `json:"slow_client_closed"`
+	StaleResponseDropped   int64  `json:"stale_response_dropped"`
+	AuthSuccess            int64  `json:"auth_success"`
+	AuthFailure            int64  `json:"auth_failure"`
+	AuthAllowed            int64  `json:"auth_allowed"`
+	AuthDenied             int64  `json:"auth_denied"`
+	AuthUnavailable        int64  `json:"auth_unavailable"`
+	AuthDurationCount      int64  `json:"auth_duration_count"`
+	AuthDurationTotalUS    int64  `json:"auth_duration_total_us"`
 	RuntimeConfigVersion   int64  `json:"runtime_config_version"`
 	ServerState            string `json:"server_state"`
 	LastReportTime         string `json:"reported_at"`

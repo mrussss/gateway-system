@@ -12,7 +12,8 @@
 namespace business
 {
 
-    Response handleAuth(const Request &request, const ControlPlaneClient &control_plane)
+    AuthHandlingResult handleAuth(const Request &request,
+                                  const ControlPlaneClient &control_plane)
     {
         Response resp;
         resp.fd = request.fd;
@@ -31,32 +32,43 @@ namespace business
                 !payload["token"].is_string())
             {
                 StatsManager::getInstance().incrementErrors();
+                resp.status_code = 400;
+                resp.payload = R"({"allowed":false,"code":"INVALID_REQUEST"})";
                 resp.close_connection = true;
-                resp.skip_write = true;
-                return resp;
+                return {std::move(resp), AuthOutcome::Denied};
             }
 
             std::string client_id = payload["client_id"];
             std::string token = payload["token"];
-            if (!control_plane.checkAuth(client_id, token))
+            const AuthResult result = control_plane.checkAuth(client_id, token);
+            if (result.outcome != AuthOutcome::Allowed)
             {
                 StatsManager::getInstance().incrementErrors();
+                resp.status_code = result.outcome == AuthOutcome::Denied ? 401 : 503;
+                nlohmann::json response_payload = {
+                    {"allowed", false},
+                    {"code", result.outcome == AuthOutcome::Denied
+                                 ? (result.reason_code.empty() ? "INVALID_CREDENTIALS"
+                                                               : result.reason_code)
+                                 : "AUTH_UNAVAILABLE"},
+                };
+                resp.payload = response_payload.dump();
                 resp.close_connection = true;
-                resp.skip_write = true;
-                return resp;
+                return {std::move(resp), result.outcome};
             }
 
             resp.status_code = 0;
-            resp.payload = R"({"allowed":true,"reason":"ok"})";
+            resp.payload = R"({"allowed":true,"code":"OK"})";
             resp.client_id_to_authenticate = client_id;
-            return resp;
+            return {std::move(resp), AuthOutcome::Allowed};
         }
         catch (const std::exception &)
         {
             StatsManager::getInstance().incrementErrors();
+            resp.status_code = 400;
+            resp.payload = R"({"allowed":false,"code":"INVALID_REQUEST"})";
             resp.close_connection = true;
-            resp.skip_write = true;
-            return resp;
+            return {std::move(resp), AuthOutcome::Denied};
         }
     }
 
@@ -187,37 +199,42 @@ namespace business
         uint64_t response_queue_peak = instance_->getResponseQueuePeakSize();
         uint64_t request_queue_rejected = StatsManager::getInstance().getRequestQueueRejected();
         uint64_t response_queue_rejected = StatsManager::getInstance().getResponseQueueRejected();
+        const StatsSnapshot snapshot = StatsManager::getInstance().snapshot();
+        const uint64_t auth_queue_backlog = instance_->getAuthQueueSize();
+        const uint64_t auth_queue_capacity = instance_->getAuthQueueCapacity();
+        const uint64_t auth_queue_peak = instance_->getAuthQueuePeakSize();
 
-        std::string json = "{\"total_requests\": ";
-        json += std::to_string(requests);
-        json += ", \"total_logs\": ";
-        json += std::to_string(logMessages);
-        json += ", \"total_errors\": ";
-        json += std::to_string(errors);
-        json += ", \"total_recv_bytes\": ";
-        json += std::to_string(recv_bytes);
-        json += ", \"total_sent_bytes\": ";
-        json += std::to_string(sent_bytes);
-        json += ", \"active_connections\": ";
-        json += std::to_string(active_connections);
-        json += ", \"total_request_queue_backlog\": ";
-        json += std::to_string(request_queue_backlog);
-        json += ", \"total_response_queue_backlog\": ";
-        json += std::to_string(response_queue_backlog);
-        json += ", \"request_queue_capacity\": ";
-        json += std::to_string(request_queue_capacity);
-        json += ", \"response_queue_capacity\": ";
-        json += std::to_string(response_queue_capacity);
-        json += ", \"request_queue_peak\": ";
-        json += std::to_string(request_queue_peak);
-        json += ", \"response_queue_peak\": ";
-        json += std::to_string(response_queue_peak);
-        json += ", \"request_queue_rejected\": ";
-        json += std::to_string(request_queue_rejected);
-        json += ", \"response_queue_rejected\": ";
-        json += std::to_string(response_queue_rejected);
-        json += "}";
-        resp.payload = json;
+        resp.payload = nlohmann::json{
+            {"total_requests", requests},
+            {"total_logs", logMessages},
+            {"total_errors", errors},
+            {"total_recv_bytes", recv_bytes},
+            {"total_sent_bytes", sent_bytes},
+            {"active_connections", active_connections},
+            {"total_request_queue_backlog", request_queue_backlog},
+            {"total_response_queue_backlog", response_queue_backlog},
+            {"request_queue_capacity", request_queue_capacity},
+            {"response_queue_capacity", response_queue_capacity},
+            {"request_queue_peak", request_queue_peak},
+            {"response_queue_peak", response_queue_peak},
+            {"request_queue_rejected", request_queue_rejected},
+            {"response_queue_rejected", response_queue_rejected},
+            {"auth_queue_capacity", auth_queue_capacity},
+            {"auth_queue_backlog", auth_queue_backlog},
+            {"auth_queue_peak", auth_queue_peak},
+            {"auth_queue_rejected", snapshot.auth_queue_rejected},
+            {"auth_in_flight", instance_->getAuthInFlight()},
+            {"auth_tasks_cancelled_before_start",
+             snapshot.auth_tasks_cancelled_before_start},
+            {"auth_allowed", snapshot.auth_allowed},
+            {"auth_denied", snapshot.auth_denied},
+            {"auth_unavailable", snapshot.auth_unavailable},
+            {"auth_duration_count", snapshot.auth_duration_count},
+            {"auth_duration_total_us", snapshot.auth_duration_total_us},
+            {"response_queue_rejected_normal",
+             snapshot.response_queue_rejected_normal},
+            {"response_queue_rejected_auth", snapshot.response_queue_rejected_auth},
+        }.dump();
         return resp;
     }
     Response makeErrorResponse(const Request &request)

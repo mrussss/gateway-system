@@ -7,6 +7,7 @@ gateway:status:{gateway_id}   Hash
 gateway:clients:{gateway_id}  String(JSON)
 gateway:index                 ZSET: score=last metrics Unix timestamp, member=gateway_id
 config:active                 Hash
+auth:failures:{client_id}     String(counter) with TTL
 ```
 
 Only HMAC token digests are stored; plaintext tokens and peppers are never
@@ -18,3 +19,5 @@ refresh gateway online time.
 Metrics reporting pipelines `HSET`, `EXPIRE`, and `ZADD`; it reduces round
 trips and is not described as a transaction. Configuration and token rotation
 use Lua compare-and-set for their atomic update boundaries.
+
+AUTH failure recording uses Lua so `INCR` and the first failure's `PEXPIRE` are one atomic operation. Only confirmed missing, disabled, or mismatched credentials increment this key; successful authentication deletes it, while Redis and network failures leave it unchanged.

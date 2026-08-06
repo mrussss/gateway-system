@@ -28,12 +28,16 @@ ctest --test-dir build-sanitized --output-on-failure
 ## Core invariants
 
 - The Reactor exclusively owns accept/read/write/close and epoll state.
-- Workers exchange value objects through bounded Request/Response queues.
+- Normal and AUTH Workers exchange value objects through separately bounded input queues and one bounded Response Queue.
+- Only AUTH Workers call the strict synchronous control-plane client; ordinary Workers never wait on Go/Redis.
+- Control-plane sockets stay non-blocking and use `poll` with one connect/send/receive deadline.
 - Every asynchronous result is checked against `fd + conn_id`.
 - A successful Response Queue push is followed by eventfd notification.
 - Queue `FULL` and `STOPPED` results are handled explicitly.
 - Output uses a write offset; a slow connection is capped at 8 MiB.
 - SIGINT/SIGTERM enters deadline-bounded DRAINING rather than immediately closing admitted work.
 - Per-request logs are DEBUG metadata only; payloads and AUTH tokens are never printed.
+
+Startup controls include `CONTROL_PLANE_TIMEOUT_MS` (default 1000), `AUTH_WORKER_COUNT` (2), and `AUTH_QUEUE_CAPACITY` (32). Invalid or out-of-range values fail startup.
 
 The authoritative system docs are in the repository root: [architecture](../docs/architecture.md), [testing](../docs/testing.md), [shutdown](../docs/shutdown.md), [benchmark](../docs/benchmark.md), and [design decisions](../docs/design_decisions.md).

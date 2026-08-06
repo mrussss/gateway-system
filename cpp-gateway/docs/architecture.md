@@ -10,6 +10,6 @@ epoll Reactor
   └─ offset-based output buffers
 ```
 
-The Reactor owns connection mutation. Workers perform Dispatcher/Handler work and synchronous control-plane AUTH calls, then publish Response values. Eventfd integrates that cross-thread completion path with epoll without timeout polling.
+The Reactor owns connection mutation. Normal Workers dispatch ordinary requests; a separate bounded AUTH Executor performs synchronous control-plane checks. Both groups publish Response values through the shared bounded queue. Eventfd integrates that cross-thread completion path with epoll without timeout polling.
 
 See the authoritative [system architecture](../../docs/architecture.md) and [design decisions](../../docs/design_decisions.md).

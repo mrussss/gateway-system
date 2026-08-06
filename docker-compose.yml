@@ -10,6 +10,10 @@ services:
     environment:
       STORE_BACKEND: redis
       REDIS_ADDR: redis:6379
+      GATEWAY_SHARED_TOKEN: "compose-gateway-secret"
+      TOKEN_PEPPER: "compose-development-pepper"
+      AUTH_FAILURE_LIMIT: "5"
+      AUTH_FAILURE_WINDOW_SECONDS: "60"
     ports:
       - "8080:8080"
     depends_on:
@@ -23,6 +27,10 @@ services:
       GATEWAY_PORT: "9000"
       CONTROL_PLANE_HOST: go-control-plane
       CONTROL_PLANE_PORT: "8080"
+      CONTROL_PLANE_TIMEOUT_MS: "1000"
+      GATEWAY_SHARED_TOKEN: "compose-gateway-secret"
+      AUTH_WORKER_COUNT: "2"
+      AUTH_QUEUE_CAPACITY: "32"
       REQUEST_QUEUE_CAPACITY: "4096"
       RESPONSE_QUEUE_CAPACITY: "4096"
       SHUTDOWN_TIMEOUT_MS: "5000"

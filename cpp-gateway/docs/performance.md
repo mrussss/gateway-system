@@ -26,4 +26,4 @@ The output path uses `output_buffer + write_offset`, avoiding a full-buffer copy
 
 Current reference numbers and methodology live in [the root benchmark report](../../docs/benchmark.md). The former ~100ms single-connection delay fell to local Release P50/P95 of 0.28/0.60ms. These are comparison data, not a production capacity claim.
 
-Known performance limits remain synchronous HTTP AUTH in Workers, synchronous LOG_PUSH file flush, a single Reactor, and a Python benchmark client.
+Known performance limits remain fresh-connection synchronous HTTP AUTH in a fixed independent Worker group, synchronous LOG_PUSH file flush, a single Reactor, and a Python benchmark client.

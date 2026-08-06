@@ -13,6 +13,10 @@ requires Redis and required configuration.
 Gateway-internal endpoints require `X-Gateway-Token`: `POST /auth/check`,
 `POST /metrics/report`, `POST /clients/report`, and `GET /config`.
 
+Internal JSON responses are marshaled before headers are committed and always carry an explicit `Content-Length` without an encoder-added newline. AUTH decisions use HTTP 200 with `allowed` plus a stable `code`: `OK`, `INVALID_CREDENTIALS`, `TOKEN_DISABLED`, or `RATE_LIMITED`. Redis/network/protocol failures use HTTP 503 `AUTH_UNAVAILABLE` and are not credential denials.
+
+`GET /metrics` exposes low-cardinality Prometheus counters for allowed, denied, unavailable, rate-limited, and failure-counter-error AUTH outcomes.
+
 Admin endpoints require `Authorization: Bearer <admin-token>`: token create,
 list, disable, and rotate; gateway status/client queries; and `GET`/`PUT /config`.
 Configuration reads return an ETag containing the quoted version. Updates use

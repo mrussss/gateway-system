@@ -4,7 +4,13 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
+
+type memoryAuthFailure struct {
+	count     int64
+	expiresAt time.Time
+}
 
 type memoryStore struct {
 	mu               sync.RWMutex
@@ -15,6 +21,7 @@ type memoryStore struct {
 	clientsByGateway map[string][]clientInfo
 	gateways         map[string]struct{}
 	tokens           map[string]tokenRecord
+	authFailures     map[string]memoryAuthFailure
 	config           runtimeConfig
 }
 
@@ -25,6 +32,7 @@ func newMemoryStore() *memoryStore {
 		clientsByGateway: map[string][]clientInfo{},
 		gateways:         map[string]struct{}{},
 		tokens:           map[string]tokenRecord{},
+		authFailures:     map[string]memoryAuthFailure{},
 		config:           defaultRuntimeConfig(),
 	}
 }
@@ -119,10 +127,58 @@ func (s *memoryStore) isAllowed(clientID string, token string) (bool, error) {
 }
 
 func (s *memoryStore) isDigestAllowed(clientID, digest string) (bool, error) {
+	decision, err := s.verifyDigest(clientID, digest)
+	return decision == tokenAuthAllowed, err
+}
+
+func (s *memoryStore) verifyDigest(clientID, digest string) (tokenAuthDecision, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	record, ok := s.tokens[clientID]
-	return ok && !record.Disabled && digestEqual(record.Digest, digest), nil
+	if !ok {
+		return tokenAuthInvalid, nil
+	}
+	if record.Disabled {
+		return tokenAuthDisabled, nil
+	}
+	if !digestEqual(record.Digest, digest) {
+		return tokenAuthInvalid, nil
+	}
+	return tokenAuthAllowed, nil
+}
+
+func (s *memoryStore) authFailureLimited(clientID string, limit int64) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	counter, ok := s.authFailures[clientID]
+	if !ok {
+		return false, nil
+	}
+	if !time.Now().Before(counter.expiresAt) {
+		delete(s.authFailures, clientID)
+		return false, nil
+	}
+	return counter.count >= limit, nil
+}
+
+func (s *memoryStore) recordAuthFailure(clientID string, window time.Duration) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	counter, ok := s.authFailures[clientID]
+	if !ok || !now.Before(counter.expiresAt) {
+		counter = memoryAuthFailure{expiresAt: now.Add(window)}
+	}
+	counter.count++
+	s.authFailures[clientID] = counter
+	return counter.count, nil
+}
+
+func (s *memoryStore) clearAuthFailures(clientID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.authFailures, clientID)
+	return nil
 }
 
 func (s *memoryStore) createToken(record tokenRecord) error {

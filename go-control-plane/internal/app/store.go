@@ -34,6 +34,36 @@ type Store interface {
 	updateConfig(expectedVersion int64, req configUpdateRequest) (runtimeConfig, error)
 }
 
+type tokenAuthDecision int
+
+const (
+	tokenAuthInvalid tokenAuthDecision = iota
+	tokenAuthAllowed
+	tokenAuthDisabled
+)
+
+type tokenDecisionStore interface {
+	verifyDigest(clientID, digest string) (tokenAuthDecision, error)
+}
+
+type authFailureStore interface {
+	authFailureLimited(clientID string, limit int64) (bool, error)
+	recordAuthFailure(clientID string, window time.Duration) (int64, error)
+	clearAuthFailures(clientID string) error
+}
+
+type authFailurePolicy struct {
+	limit  int64
+	window time.Duration
+}
+
+func authFailurePolicyFromEnv() authFailurePolicy {
+	return authFailurePolicy{
+		limit:  int64(readPositiveEnv("AUTH_FAILURE_LIMIT", 5)),
+		window: time.Duration(readPositiveEnv("AUTH_FAILURE_WINDOW_SECONDS", 60)) * time.Second,
+	}
+}
+
 func newStoreFromEnv() Store {
 	backend := os.Getenv("STORE_BACKEND")
 	if backend == "" {

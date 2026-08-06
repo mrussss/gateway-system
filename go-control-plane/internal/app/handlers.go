@@ -15,14 +15,17 @@ type application struct {
 	tokens       tokenService
 	adminToken   string
 	gatewayToken string
+	authFailures authFailurePolicy
+	authMetrics  *authMetrics
 }
 
 func routesWithStore(store Store) http.Handler {
-	a := &application{store: store, tokens: tokenServiceFromEnv(), adminToken: os.Getenv("ADMIN_TOKEN"), gatewayToken: os.Getenv("GATEWAY_SHARED_TOKEN")}
+	a := &application{store: store, tokens: tokenServiceFromEnv(), adminToken: os.Getenv("ADMIN_TOKEN"), gatewayToken: os.Getenv("GATEWAY_SHARED_TOKEN"), authFailures: authFailurePolicyFromEnv(), authMetrics: &authMetrics{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", a.handleHealth)
 	mux.HandleFunc("GET /health/live", a.handleHealth)
 	mux.HandleFunc("GET /health/ready", a.handleReady)
+	mux.HandleFunc("GET /metrics", a.handlePrometheusMetrics)
 	mux.Handle("POST /auth/check", a.requireGateway(http.HandlerFunc(a.handleAuthCheck)))
 	mux.Handle("POST /metrics/report", a.requireGateway(http.HandlerFunc(a.handleMetricsReport)))
 	mux.Handle("GET /gateway/status", a.requireAdmin(http.HandlerFunc(a.handleGatewayStatus)))
@@ -60,28 +63,88 @@ func (a *application) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.ClientID == "" || req.Token == "" {
+	if req.ClientID == "" || req.Token == "" || len(req.ClientID) > 128 || len(req.Token) > 4096 {
 		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "client_id and token are required")
 		return
 	}
 
-	allowed, err := a.store.isDigestAllowed(req.ClientID, a.tokens.digest(req.Token))
+	limiter, hasLimiter := a.store.(authFailureStore)
+	if hasLimiter {
+		limited, err := limiter.authFailureLimited(req.ClientID, a.authFailures.limit)
+		if err != nil {
+			a.authMetrics.failureCounterErrors.Add(1)
+			a.authMetrics.recordUnavailable()
+			writeAuthUnavailable(w, r)
+			return
+		}
+		if limited {
+			a.authMetrics.rateLimited.Add(1)
+			a.authMetrics.record(tokenAuthInvalid)
+			writeJSON(w, http.StatusOK, authCheckResponse{Allowed: false, Code: "RATE_LIMITED", Reason: "rate limited"})
+			return
+		}
+	}
+
+	decision, err := a.verifyDigest(req.ClientID, a.tokens.digest(req.Token))
 	if err != nil {
-		writeStoreError(w, r)
+		a.authMetrics.recordUnavailable()
+		writeAuthUnavailable(w, r)
 		return
 	}
-	if !allowed {
-		writeJSON(w, http.StatusOK, authCheckResponse{
-			Allowed: false,
-			Reason:  "invalid token",
-		})
+	if decision != tokenAuthAllowed {
+		count := int64(0)
+		if hasLimiter {
+			count, err = limiter.recordAuthFailure(req.ClientID, a.authFailures.window)
+			if err != nil {
+				a.authMetrics.failureCounterErrors.Add(1)
+				a.authMetrics.recordUnavailable()
+				writeAuthUnavailable(w, r)
+				return
+			}
+		}
+
+		code, reason := "INVALID_CREDENTIALS", "invalid token"
+		if decision == tokenAuthDisabled {
+			code, reason = "TOKEN_DISABLED", "token disabled"
+		}
+		if hasLimiter && count >= a.authFailures.limit {
+			code, reason = "RATE_LIMITED", "rate limited"
+			a.authMetrics.rateLimited.Add(1)
+		}
+		a.authMetrics.record(decision)
+		writeJSON(w, http.StatusOK, authCheckResponse{Allowed: false, Code: code, Reason: reason})
 		return
 	}
+	if hasLimiter {
+		if err := limiter.clearAuthFailures(req.ClientID); err != nil {
+			a.authMetrics.failureCounterErrors.Add(1)
+			a.authMetrics.recordUnavailable()
+			writeAuthUnavailable(w, r)
+			return
+		}
+	}
+	a.authMetrics.record(tokenAuthAllowed)
 
 	writeJSON(w, http.StatusOK, authCheckResponse{
 		Allowed: true,
+		Code:    "OK",
 		Reason:  "ok",
 	})
+}
+
+func (a *application) verifyDigest(clientID, digest string) (tokenAuthDecision, error) {
+	if verifier, ok := a.store.(tokenDecisionStore); ok {
+		return verifier.verifyDigest(clientID, digest)
+	}
+	allowed, err := a.store.isDigestAllowed(clientID, digest)
+	if allowed {
+		return tokenAuthAllowed, err
+	}
+	return tokenAuthInvalid, err
+}
+
+func writeAuthUnavailable(w http.ResponseWriter, r *http.Request) {
+	writeAPIError(w, r, http.StatusServiceUnavailable, "AUTH_UNAVAILABLE", "authentication service unavailable")
 }
 
 func (a *application) handleMetricsReport(w http.ResponseWriter, r *http.Request) {
@@ -350,9 +413,15 @@ func writeStoreError(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		body = []byte(`{"code":"INTERNAL","message":"failed to encode response"}`)
+		statusCode = http.StatusInternalServerError
+	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(statusCode)
-	if err := json.NewEncoder(w).Encode(payload); err != nil {
+	if _, err := w.Write(body); err != nil {
 		log.Printf("write json response failed: %v", err)
 	}
 }
