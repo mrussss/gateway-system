@@ -13,7 +13,7 @@ import (
 func TestTokenDigestAndRotateCAS(t *testing.T) {
 	t.Setenv("TOKEN_PEPPER", "test-pepper")
 	storage := newMemoryStore()
-	service := tokenServiceFromEnv()
+	service := newTokenService("test-pepper")
 	now := nowRFC3339()
 	if err := storage.createToken(tokenRecord{tokenEntry: tokenEntry{ClientID: "client-1", Generation: 1, CreatedAt: now, UpdatedAt: now}, Digest: service.digest("original")}); err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestTokenReturnedOnceAndDisableBlocksAuth(t *testing.T) {
 }
 
 func TestAdminAndGatewayAuthentication(t *testing.T) {
-	t.Setenv("ADMIN_TOKEN", "admin-secret")
+	t.Setenv("CONTROL_PLANE_ADMIN_TOKEN", "admin-secret")
 	t.Setenv("GATEWAY_SHARED_TOKEN", "gateway-secret")
 	router := routesWithStore(newMemoryStore())
 

@@ -12,6 +12,10 @@ This document states implemented behavior, including its limits.
 
 There is no automatic fail-open AUTH path even though `fail_open` remains in the config schema.
 
+## Missing production secrets
+
+`APP_ENV` defaults to `production` and is validated consistently by both processes. Outside explicit `development`, the C++ gateway refuses to start without `GATEWAY_SHARED_TOKEN`; the Go control plane refuses to start without `CONTROL_PLANE_ADMIN_TOKEN`, `GATEWAY_SHARED_TOKEN`, and `TOKEN_PEPPER`. Empty production secrets never silently disable authentication. The legacy `ADMIN_TOKEN` name is intentionally ignored.
+
 ## Redis unavailable
 
 With `STORE_BACKEND=redis`, dependent Go handlers return store errors and AUTH returns HTTP 503 `AUTH_UNAVAILABLE`. Infrastructure failures do not increment the credential-failure counter. The Go process does not automatically swap to MemoryStore; recovery happens when later Redis calls succeed.

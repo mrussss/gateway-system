@@ -38,6 +38,6 @@ ctest --test-dir build-sanitized --output-on-failure
 - SIGINT/SIGTERM enters deadline-bounded DRAINING rather than immediately closing admitted work.
 - Per-request logs are DEBUG metadata only; payloads and AUTH tokens are never printed.
 
-Startup controls include `CONTROL_PLANE_TIMEOUT_MS` (default 1000), `AUTH_WORKER_COUNT` (2), and `AUTH_QUEUE_CAPACITY` (32). Invalid or out-of-range values fail startup.
+Startup controls include `APP_ENV` (default `production`), `CONTROL_PLANE_TIMEOUT_MS` (default 1000), `AUTH_WORKER_COUNT` (2), and `AUTH_QUEUE_CAPACITY` (32). `GATEWAY_SHARED_TOKEN` is mandatory outside explicit development mode. Invalid or out-of-range values fail startup.
 
 The authoritative system docs are in the repository root: [architecture](../docs/architecture.md), [testing](../docs/testing.md), [shutdown](../docs/shutdown.md), [benchmark](../docs/benchmark.md), and [design decisions](../docs/design_decisions.md).

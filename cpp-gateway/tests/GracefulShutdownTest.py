@@ -164,9 +164,11 @@ class GatewayProcess:
         environment.update(
             {
                 "GATEWAY_PORT": str(self.port),
+                "APP_ENV": "production",
                 "CONTROL_PLANE_HOST": "127.0.0.1",
                 "CONTROL_PLANE_PORT": str(control_port),
                 "CONTROL_PLANE_TIMEOUT_MS": str(control_plane_timeout_ms),
+                "GATEWAY_SHARED_TOKEN": "test-gateway-secret",
                 "REQUEST_QUEUE_CAPACITY": str(request_capacity),
                 "RESPONSE_QUEUE_CAPACITY": str(response_capacity),
                 "SHUTDOWN_TIMEOUT_MS": str(shutdown_ms),

@@ -36,9 +36,7 @@ func TestHealth(t *testing.T) {
 
 func TestAuthCheckAllowsValidToken(t *testing.T) {
 	store = newMemoryStore()
-	if err := store.setToken("client_001", "registered-token"); err != nil {
-		t.Fatalf("set token: %v", err)
-	}
+	setTokenForTest(t, store, "client_001", "registered-token")
 	body := bytes.NewBufferString(`{"client_id":"client_001","token":"registered-token"}`)
 	req := newTestRequest(http.MethodPost, "/auth/check", body)
 	resp := httptest.NewRecorder()
@@ -50,9 +48,7 @@ func TestAuthCheckAllowsValidToken(t *testing.T) {
 
 func TestAuthCheckRejectsInvalidToken(t *testing.T) {
 	store = newMemoryStore()
-	if err := store.setToken("client_001", "registered-token"); err != nil {
-		t.Fatalf("set token: %v", err)
-	}
+	setTokenForTest(t, store, "client_001", "registered-token")
 	body := bytes.NewBufferString(`{"client_id":"client_001","token":"bad-token"}`)
 	req := newTestRequest(http.MethodPost, "/auth/check", body)
 	resp := httptest.NewRecorder()
@@ -527,10 +523,11 @@ func TestTokenRegistryConcurrentAccess(t *testing.T) {
 		go func(index int) {
 			defer writers.Done()
 			clientID := "client_" + string(rune('a'+index))
-			if err := store.setToken(clientID, "token"); err != nil {
+			if err := createTokenForTest(store, clientID, "token"); err != nil {
 				t.Errorf("set token: %v", err)
 			}
-			if _, err := store.isAllowed(clientID, "token"); err != nil {
+			service := newTokenService(developmentApplicationConfigFromEnv().tokenPepper)
+			if _, err := store.isDigestAllowed(clientID, service.digest("token")); err != nil {
 				t.Errorf("isAllowed: %v", err)
 			}
 			if _, err := store.listTokens(); err != nil {
@@ -707,18 +704,6 @@ func (s *errorStore) getGatewayStatus(gatewayID string) (gatewayStatusResponse, 
 
 func (s *errorStore) getGatewayClients(gatewayID string) ([]clientInfo, bool, error) {
 	return nil, false, errors.New(storeErrorMessage)
-}
-
-func (s *errorStore) setToken(clientID string, token string) error {
-	return errors.New(storeErrorMessage)
-}
-
-func (s *errorStore) deleteToken(clientID string) error {
-	return errors.New(storeErrorMessage)
-}
-
-func (s *errorStore) isAllowed(clientID string, token string) (bool, error) {
-	return false, errors.New(storeErrorMessage)
 }
 
 func (s *errorStore) isDigestAllowed(clientID string, digest string) (bool, error) {

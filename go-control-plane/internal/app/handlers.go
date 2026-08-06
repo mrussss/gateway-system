@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 )
@@ -19,8 +18,15 @@ type application struct {
 	authMetrics  *authMetrics
 }
 
-func routesWithStore(store Store) http.Handler {
-	a := &application{store: store, tokens: tokenServiceFromEnv(), adminToken: os.Getenv("ADMIN_TOKEN"), gatewayToken: os.Getenv("GATEWAY_SHARED_TOKEN"), authFailures: authFailurePolicyFromEnv(), authMetrics: &authMetrics{}}
+func routesWithConfig(store Store, config applicationConfig) http.Handler {
+	a := &application{
+		store:        store,
+		tokens:       newTokenService(config.tokenPepper),
+		adminToken:   config.adminToken,
+		gatewayToken: config.gatewayToken,
+		authFailures: authFailurePolicyFromEnv(),
+		authMetrics:  &authMetrics{},
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", a.handleHealth)
 	mux.HandleFunc("GET /health/live", a.handleHealth)

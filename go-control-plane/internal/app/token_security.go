@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -21,11 +20,7 @@ var (
 
 type tokenService struct{ pepper []byte }
 
-func tokenServiceFromEnv() tokenService {
-	pepper := os.Getenv("TOKEN_PEPPER")
-	if pepper == "" {
-		pepper = "development-only-token-pepper"
-	}
+func newTokenService(pepper string) tokenService {
 	return tokenService{pepper: []byte(pepper)}
 }
 

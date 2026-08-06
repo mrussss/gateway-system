@@ -35,6 +35,7 @@ private:
 
 int main()
 {
+    ScopedEnv app_environment("APP_ENV", "development");
     return runTests({
         {"new auth and control-plane settings parse", []
          {
@@ -77,6 +78,29 @@ int main()
              ScopedEnv control_plane_timeout("CONTROL_PLANE_TIMEOUT_MS", "1000");
              ScopedEnv shutdown_timeout("SHUTDOWN_TIMEOUT_MS", "2100");
              CHECK_EQ(parseStartupConfig().shutdown_timeout_ms, 2100);
+         }},
+        {"non-development startup requires gateway secret", []
+         {
+             bool missing = false;
+             {
+                 ScopedEnv environment("APP_ENV", "production");
+                 ScopedEnv token("GATEWAY_SHARED_TOKEN", "");
+                 try { (void)parseStartupConfig(); }
+                 catch (const std::invalid_argument &) { missing = true; }
+             }
+             CHECK(missing);
+
+             ScopedEnv environment("APP_ENV", " StAgInG ");
+             ScopedEnv token("GATEWAY_SHARED_TOKEN", "gateway-secret");
+             CHECK_EQ(parseStartupConfig().app_environment, std::string("staging"));
+         }},
+        {"application environment is validated", []
+         {
+             ScopedEnv environment("APP_ENV", "unknown");
+             bool invalid = false;
+             try { (void)parseStartupConfig(); }
+             catch (const std::invalid_argument &) { invalid = true; }
+             CHECK(invalid);
          }},
     });
 }

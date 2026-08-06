@@ -6,13 +6,16 @@ Minimal HTTP control plane for the C++ gateway.
 
 ```bash
 cd go-control-plane
-go run ./cmd/control-plane
+APP_ENV=development go run ./cmd/control-plane
 ```
 
 The service listens on `:8080`.
 
-Set `ADMIN_TOKEN`, `GATEWAY_SHARED_TOKEN`, and `TOKEN_PEPPER` in deployed
-environments. The examples below use `admin-secret` and `gateway-secret`.
+`APP_ENV` defaults to `production`. In `test`, `staging`, and `production`,
+startup requires `CONTROL_PLANE_ADMIN_TOKEN`, `GATEWAY_SHARED_TOKEN`, and
+`TOKEN_PEPPER`. Only explicit `APP_ENV=development` permits empty secrets and
+uses the development-only pepper fallback. The legacy `ADMIN_TOKEN` variable is
+not read. The examples below use `admin-secret` and `gateway-secret`.
 
 For Docker Compose runs, the control plane uses Redis via:
 

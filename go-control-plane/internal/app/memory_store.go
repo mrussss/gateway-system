@@ -101,31 +101,6 @@ func (s *memoryStore) getGatewayClients(gatewayID string) ([]clientInfo, bool, e
 	return append(make([]clientInfo, 0, len(clients)), clients...), true, nil
 }
 
-func (s *memoryStore) setToken(clientID string, token string) error {
-	now := nowRFC3339()
-	return s.createToken(tokenRecord{tokenEntry: tokenEntry{ClientID: clientID, Generation: 1, CreatedAt: now, UpdatedAt: now}, Digest: tokenServiceFromEnv().digest(token)})
-}
-
-func (s *memoryStore) deleteToken(clientID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	record, ok := s.tokens[clientID]
-	if !ok {
-		return errTokenNotFound
-	}
-	record.Disabled = true
-	record.UpdatedAt = nowRFC3339()
-	s.tokens[clientID] = record
-	return nil
-}
-
-func (s *memoryStore) isAllowed(clientID string, token string) (bool, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	record, ok := s.tokens[clientID]
-	return ok && !record.Disabled && digestEqual(record.Digest, tokenServiceFromEnv().digest(token)), nil
-}
-
 func (s *memoryStore) isDigestAllowed(clientID, digest string) (bool, error) {
 	decision, err := s.verifyDigest(clientID, digest)
 	return decision == tokenAuthAllowed, err

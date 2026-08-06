@@ -1,6 +1,8 @@
 #include "control/StartupConfig.hpp"
 
+#include <algorithm>
 #include <charconv>
+#include <cctype>
 #include <cstdlib>
 #include <limits>
 #include <stdexcept>
@@ -47,11 +49,49 @@ uint64_t readUnsigned(const char *name, uint64_t default_value, uint64_t minimum
     }
     return value;
 }
+
+std::string readApplicationEnvironment()
+{
+    std::string environment = readString("APP_ENV", "production", false);
+    const auto first = std::find_if_not(environment.begin(), environment.end(),
+                                        [](unsigned char character)
+                                        {
+                                            return std::isspace(character) != 0;
+                                        });
+    const auto last = std::find_if_not(environment.rbegin(), environment.rend(),
+                                       [](unsigned char character)
+                                       {
+                                           return std::isspace(character) != 0;
+                                       }).base();
+    environment = first < last ? std::string(first, last) : std::string{};
+    std::transform(environment.begin(), environment.end(), environment.begin(),
+                   [](unsigned char character)
+                   {
+                       return static_cast<char>(std::tolower(character));
+                   });
+    if (environment != "development" && environment != "test" &&
+        environment != "staging" && environment != "production")
+    {
+        throw std::invalid_argument(
+            "APP_ENV must be development, test, staging, or production");
+    }
+    return environment;
+}
+
+bool isBlank(std::string_view value)
+{
+    return value.empty() ||
+           std::all_of(value.begin(), value.end(), [](unsigned char character)
+           {
+               return std::isspace(character) != 0;
+           });
+}
 } // namespace
 
 StartupConfig parseStartupConfig()
 {
     StartupConfig config;
+    config.app_environment = readApplicationEnvironment();
     config.gateway_port = static_cast<int>(
         readUnsigned("GATEWAY_PORT", config.gateway_port, 1, 65535));
     config.control_plane_host = readString("CONTROL_PLANE_HOST",
@@ -63,6 +103,11 @@ StartupConfig parseStartupConfig()
                      100, 30000));
     config.gateway_id = readString("GATEWAY_ID", config.gateway_id, false);
     config.gateway_token = readString("GATEWAY_SHARED_TOKEN", "", true);
+    if (config.app_environment != "development" && isBlank(config.gateway_token))
+    {
+        throw std::invalid_argument(
+            "GATEWAY_SHARED_TOKEN must be set unless APP_ENV=development");
+    }
     config.request_queue_capacity = static_cast<size_t>(
         readUnsigned("REQUEST_QUEUE_CAPACITY", config.request_queue_capacity, 1, 65536));
     config.response_queue_capacity = static_cast<size_t>(

@@ -5,6 +5,7 @@
 
 struct StartupConfig
 {
+    std::string app_environment{"production"};
     int gateway_port = 9000;
     std::string control_plane_host{"127.0.0.1"};
     int control_plane_port = 8080;

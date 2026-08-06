@@ -8,10 +8,12 @@ services:
     build:
       context: ./go-control-plane
     environment:
+      APP_ENV: production
       STORE_BACKEND: redis
       REDIS_ADDR: redis:6379
+      CONTROL_PLANE_ADMIN_TOKEN: "compose-admin-secret"
       GATEWAY_SHARED_TOKEN: "compose-gateway-secret"
-      TOKEN_PEPPER: "compose-development-pepper"
+      TOKEN_PEPPER: "compose-token-pepper"
       AUTH_FAILURE_LIMIT: "5"
       AUTH_FAILURE_WINDOW_SECONDS: "60"
     ports:
@@ -23,6 +25,7 @@ services:
     build:
       context: ./cpp-gateway
     environment:
+      APP_ENV: production
       GATEWAY_ID: "gateway-001"
       GATEWAY_PORT: "9000"
       CONTROL_PLANE_HOST: go-control-plane

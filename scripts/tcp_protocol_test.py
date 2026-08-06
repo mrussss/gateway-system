@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 import socket
 import struct
 import threading
@@ -26,6 +27,11 @@ STATS_RESP = 9
 AUTH = 10
 AUTH_RESP = 11
 MAX_BODY_SIZE = 4 * 1024 * 1024 + FIXED_BODY_SIZE
+ADMIN_TOKEN = os.environ.get("CONTROL_PLANE_ADMIN_TOKEN", "compose-admin-secret")
+
+
+def admin_headers() -> dict[str, str]:
+    return {"Authorization": f"Bearer {ADMIN_TOKEN}"}
 
 
 @dataclass
@@ -72,7 +78,7 @@ def register_token(control_plane_url: str, client_id: str) -> str:
     request = urllib.request.Request(
         f"{control_plane_url}/tokens",
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", **admin_headers()},
         method="POST",
     )
     try:
@@ -119,12 +125,18 @@ def expect_closed(sock: socket.socket, message: str) -> None:
 
 
 def fetch_clients(control_plane_url: str) -> list[dict]:
-    with urllib.request.urlopen(f"{control_plane_url}/clients", timeout=2.0) as resp:
+    request = urllib.request.Request(
+        f"{control_plane_url}/clients", headers=admin_headers()
+    )
+    with urllib.request.urlopen(request, timeout=2.0) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
 def update_config(control_plane_url: str, config: dict) -> None:
-    with urllib.request.urlopen(f"{control_plane_url}/config", timeout=2.0) as current:
+    current_request = urllib.request.Request(
+        f"{control_plane_url}/config", headers=admin_headers()
+    )
+    with urllib.request.urlopen(current_request, timeout=2.0) as current:
         etag = current.headers.get("ETag")
     if not etag:
         raise AssertionError("config response missing ETag")
@@ -132,7 +144,7 @@ def update_config(control_plane_url: str, config: dict) -> None:
     request = urllib.request.Request(
         f"{control_plane_url}/config",
         data=payload,
-        headers={"Content-Type": "application/json", "If-Match": etag},
+        headers={"Content-Type": "application/json", "If-Match": etag, **admin_headers()},
         method="PUT",
     )
     try:

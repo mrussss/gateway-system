@@ -64,13 +64,13 @@ Local development:
 
 ```bash
 cd go-control-plane
-go run ./cmd/control-plane
+APP_ENV=development go run ./cmd/control-plane
 ```
 
 ```bash
 cmake -S cpp-gateway -B cpp-gateway/build -DCMAKE_BUILD_TYPE=Debug
 cmake --build cpp-gateway/build --parallel
-./cpp-gateway/build/message_server
+APP_ENV=development ./cpp-gateway/build/message_server
 ```
 
 Default endpoints are TCP `localhost:9000`, HTTP `localhost:8080`, and Redis `localhost:6379`.
@@ -133,12 +133,13 @@ See [shutdown](docs/shutdown.md) for exact guarantees and non-guarantees.
 
 | Variable | Default | Meaning |
 | --- | ---: | --- |
+| `APP_ENV` | `production` | `development`, `test`, `staging`, or `production`; only development permits empty secrets |
 | `GATEWAY_PORT` | `9000` | TCP listen port |
 | `CONTROL_PLANE_HOST` | `127.0.0.1` | control-plane host |
 | `CONTROL_PLANE_PORT` | `8080` | control-plane port |
 | `CONTROL_PLANE_TIMEOUT_MS` | `1000` | shared connect/send/receive deadline after DNS resolution (`100`–`30000`) |
 | `GATEWAY_ID` | `gateway-001` | reporting identity |
-| `GATEWAY_SHARED_TOKEN` | empty | credential sent to gateway-internal control-plane APIs |
+| `GATEWAY_SHARED_TOKEN` | empty | credential sent to gateway-internal control-plane APIs; required unless `APP_ENV=development` |
 | `WORKER_COUNT` | auto, max 4 | worker threads; `0` selects auto |
 | `AUTH_WORKER_COUNT` | `2` | maximum concurrent control-plane AUTH calls (`1`–`16`) |
 | `REQUEST_QUEUE_CAPACITY` | `4096` | accepted work capacity |
@@ -149,6 +150,8 @@ See [shutdown](docs/shutdown.md) for exact guarantees and non-guarantees.
 | `GATEWAY_LOG_PATH` | `logs/access.log` | LOG_PUSH storage path |
 
 Payload, output-buffer, rate, connection, and log-level settings are pulled from the control plane as one immutable validated snapshot. A failed pull or invalid payload leaves the entire active snapshot unchanged; an equal or lower version cannot overwrite a newer one.
+
+The Go control plane uses the same `APP_ENV` contract. Outside development it fails startup unless `CONTROL_PLANE_ADMIN_TOKEN`, `GATEWAY_SHARED_TOKEN`, and `TOKEN_PEPPER` are all non-empty. The legacy `ADMIN_TOKEN` name is not read.
 
 ## Performance
 

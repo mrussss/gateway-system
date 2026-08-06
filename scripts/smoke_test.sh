@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE=(docker compose)
+SMOKE_ADMIN_TOKEN="compose-admin-secret"
 
 cd "$ROOT_DIR"
 
@@ -42,6 +43,14 @@ expect_http_ok() {
   echo
 }
 
+expect_admin_ok() {
+  local name="$1"
+  local url="$2"
+  echo "[smoke] Checking $name: $url"
+  curl -fsS -H "Authorization: Bearer $SMOKE_ADMIN_TOKEN" "$url"
+  echo
+}
+
 echo "[smoke] Waiting for Go control plane health..."
 wait_for_health "http://localhost:8080/health"
 
@@ -57,7 +66,7 @@ echo "$redis_ping"
 
 echo "[smoke] Waiting for gateway metrics report..."
 deadline=$((SECONDS + 70))
-until curl -fsS "http://localhost:8080/gateway/status" >/tmp/gateway_status.json; do
+until curl -fsS -H "Authorization: Bearer $SMOKE_ADMIN_TOKEN" "http://localhost:8080/gateway/status" >/tmp/gateway_status.json; do
   if (( SECONDS >= deadline )); then
     echo "[smoke] FAIL: timed out waiting for /gateway/status" >&2
     exit 1
@@ -67,22 +76,22 @@ done
 cat /tmp/gateway_status.json
 echo
 
-expect_http_ok "gateways" "http://localhost:8080/gateways"
-expect_http_ok "gateway status by id" "http://localhost:8080/gateways/gateway-001/status"
+expect_admin_ok "gateways" "http://localhost:8080/gateways"
+expect_admin_ok "gateway status by id" "http://localhost:8080/gateways/gateway-001/status"
 
 for path in "/gateway/status" "/gateways/gateway-001/status"; do
   echo "[smoke] Checking liveness fields on $path"
-  body="$(curl -fsS "http://localhost:8080$path")"
+  body="$(curl -fsS -H "Authorization: Bearer $SMOKE_ADMIN_TOKEN" "http://localhost:8080$path")"
   [[ "$body" == *"\"online\""* ]] || { echo "[smoke] FAIL: missing online in $path" >&2; exit 1; }
   [[ "$body" == *"\"status\""* ]] || { echo "[smoke] FAIL: missing status in $path" >&2; exit 1; }
   [[ "$body" == *"\"seconds_since_last_report\""* ]] || { echo "[smoke] FAIL: missing seconds_since_last_report in $path" >&2; exit 1; }
 done
 
-expect_http_ok "clients" "http://localhost:8080/clients"
+expect_admin_ok "clients" "http://localhost:8080/clients"
 
 echo "[smoke] Waiting for gateway clients by id..."
 deadline=$((SECONDS + 70))
-until curl -fsS "http://localhost:8080/gateways/gateway-001/clients" >/tmp/gateway_clients.json; do
+until curl -fsS -H "Authorization: Bearer $SMOKE_ADMIN_TOKEN" "http://localhost:8080/gateways/gateway-001/clients" >/tmp/gateway_clients.json; do
   if (( SECONDS >= deadline )); then
     echo "[smoke] FAIL: timed out waiting for /gateways/gateway-001/clients" >&2
     exit 1

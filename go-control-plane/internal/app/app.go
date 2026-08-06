@@ -12,13 +12,17 @@ import (
 
 // Run starts the control plane and blocks until it exits or receives a shutdown signal.
 func Run() {
+	config, err := loadApplicationConfigFromEnv()
+	if err != nil {
+		log.Fatalf("invalid startup configuration: %v", err)
+	}
 	appStore := newStoreFromEnv()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	server := &http.Server{
 		Addr:              ":8080",
-		Handler:           routesWithStore(appStore),
+		Handler:           routesWithConfig(appStore, config),
 		ReadHeaderTimeout: 3 * time.Second,
 		ReadTimeout:       5 * time.Second,
 		WriteTimeout:      5 * time.Second,

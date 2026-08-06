@@ -29,9 +29,7 @@ func TestAuthFailuresAreBoundedAndSuccessClearsCounter(t *testing.T) {
 	t.Setenv("AUTH_FAILURE_LIMIT", "3")
 	t.Setenv("AUTH_FAILURE_WINDOW_SECONDS", "60")
 	storage := newMemoryStore()
-	if err := storage.setToken("client-1", "good-token"); err != nil {
-		t.Fatal(err)
-	}
+	setTokenForTest(t, storage, "client-1", "good-token")
 	router := routesWithStore(storage)
 
 	assertAuthCode(t, router, "client-1", "bad-token", "INVALID_CREDENTIALS")

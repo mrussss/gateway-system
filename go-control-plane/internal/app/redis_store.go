@@ -126,19 +126,6 @@ func (s *redisStore) getGatewayClients(gatewayID string) ([]clientInfo, bool, er
 	return clients, true, nil
 }
 
-func (s *redisStore) setToken(clientID string, token string) error {
-	now := nowRFC3339()
-	return s.createToken(tokenRecord{tokenEntry: tokenEntry{ClientID: clientID, Generation: 1, CreatedAt: now, UpdatedAt: now}, Digest: tokenServiceFromEnv().digest(token)})
-}
-
-func (s *redisStore) deleteToken(clientID string) error {
-	return s.disableToken(clientID, nowRFC3339())
-}
-
-func (s *redisStore) isAllowed(clientID string, token string) (bool, error) {
-	return s.isDigestAllowed(clientID, tokenServiceFromEnv().digest(token))
-}
-
 func (s *redisStore) isDigestAllowed(clientID, digest string) (bool, error) {
 	decision, err := s.verifyDigest(clientID, digest)
 	return decision == tokenAuthAllowed, err
