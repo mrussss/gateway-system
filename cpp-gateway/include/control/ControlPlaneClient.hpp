@@ -9,40 +9,8 @@
 #include <string_view>
 #include <vector>
 
+#include "control/HttpTypes.hpp"
 #include "control/RuntimeConfig.hpp"
-
-enum class HttpError
-{
-    None,
-    ResolveFailed,
-    DeadlineExceeded,
-    ConnectFailed,
-    SendFailed,
-    ReceiveFailed,
-    HeaderTooLarge,
-    BodyTooLarge,
-    MalformedResponse,
-    MissingContentLength,
-    DuplicateContentLength,
-    UnsupportedTransferEncoding,
-    PrematureEof,
-    HttpStatusError,
-    InvalidJson,
-};
-
-const char *httpErrorCategory(HttpError error) noexcept;
-
-struct HttpResult
-{
-    HttpError error = HttpError::None;
-    int status_code = 0;
-    std::string body;
-
-    bool ok() const noexcept
-    {
-        return error == HttpError::None && status_code >= 200 && status_code < 300;
-    }
-};
 
 enum class AuthOutcome
 {
@@ -130,8 +98,10 @@ class ControlPlaneClient
 public:
     using Deadline = std::chrono::steady_clock::time_point;
 
-    static constexpr size_t MAX_HTTP_HEADER_BYTES = 16 * 1024;
-    static constexpr size_t MAX_HTTP_BODY_BYTES = 1024 * 1024;
+    static constexpr size_t MAX_HTTP_HEADER_BYTES =
+        MAX_CONTROL_PLANE_HTTP_HEADER_BYTES;
+    static constexpr size_t MAX_HTTP_BODY_BYTES =
+        MAX_CONTROL_PLANE_HTTP_BODY_BYTES;
 
     ControlPlaneClient(std::string host, int port, int timeout_ms,
                        std::string gateway_token = "");
@@ -153,8 +123,6 @@ private:
     HttpResult requestJsonOnce(std::string_view method, std::string_view path,
                                std::string_view body,
                                std::optional<Deadline> not_after) const;
-    HttpResult readHttpResponseWithDeadline(int fd, Deadline deadline) const;
-    HttpError sendAllWithDeadline(int fd, std::string_view data, Deadline deadline) const;
 
     std::string hostHeader() const;
     static void validateHeaderValue(std::string_view name, std::string_view value);

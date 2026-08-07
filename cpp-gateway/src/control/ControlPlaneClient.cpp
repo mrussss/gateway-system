@@ -1,191 +1,19 @@
 #include "control/ControlPlaneClient.hpp"
 
-#include <algorithm>
-#include <cerrno>
 #include <chrono>
-#include <climits>
-#include <cctype>
-#include <cstring>
-#include <memory>
-#include <netdb.h>
 #include <optional>
-#include <poll.h>
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <sys/socket.h>
-#include <unistd.h>
 #include <utility>
 
 #include "common/Logger.hpp"
+#include "control/HttpResponseParser.hpp"
+#include "control/SocketDeadline.hpp"
 #include "nlohmann/json.hpp"
 
 namespace
 {
-using Clock = std::chrono::steady_clock;
-using Deadline = Clock::time_point;
-
-class UniqueFd
-{
-public:
-    explicit UniqueFd(int fd = -1) noexcept : fd_(fd) {}
-    ~UniqueFd()
-    {
-        if (fd_ != -1)
-        {
-            close(fd_);
-        }
-    }
-
-    UniqueFd(const UniqueFd &) = delete;
-    UniqueFd &operator=(const UniqueFd &) = delete;
-
-    UniqueFd(UniqueFd &&other) noexcept : fd_(other.release()) {}
-    UniqueFd &operator=(UniqueFd &&other) noexcept
-    {
-        if (this != &other)
-        {
-            reset(other.release());
-        }
-        return *this;
-    }
-
-    int get() const noexcept { return fd_; }
-    explicit operator bool() const noexcept { return fd_ != -1; }
-    int release() noexcept
-    {
-        const int value = fd_;
-        fd_ = -1;
-        return value;
-    }
-    void reset(int fd = -1) noexcept
-    {
-        if (fd_ != -1)
-        {
-            close(fd_);
-        }
-        fd_ = fd;
-    }
-
-private:
-    int fd_;
-};
-
-struct AddrInfoDeleter
-{
-    void operator()(addrinfo *value) const noexcept
-    {
-        if (value != nullptr)
-        {
-            freeaddrinfo(value);
-        }
-    }
-};
-
-std::optional<int> remainingMilliseconds(Deadline deadline)
-{
-    const auto now = Clock::now();
-    if (deadline <= now)
-    {
-        return std::nullopt;
-    }
-    const auto remaining = std::chrono::ceil<std::chrono::milliseconds>(deadline - now);
-    return static_cast<int>(std::min<int64_t>(remaining.count(), INT_MAX));
-}
-
-HttpError waitForSocket(int fd, short requested_events, Deadline deadline,
-                        HttpError failure)
-{
-    while (true)
-    {
-        const auto timeout = remainingMilliseconds(deadline);
-        if (!timeout)
-        {
-            return HttpError::DeadlineExceeded;
-        }
-
-        pollfd descriptor{};
-        descriptor.fd = fd;
-        descriptor.events = requested_events;
-        const int result = poll(&descriptor, 1, *timeout);
-        if (result > 0)
-        {
-            if ((descriptor.revents & POLLNVAL) != 0)
-            {
-                return failure;
-            }
-            if ((descriptor.revents &
-                 (requested_events | POLLERR | POLLHUP)) != 0)
-            {
-                // The subsequent connect/send/recv obtains the precise result.
-                return HttpError::None;
-            }
-            continue;
-        }
-        if (result == 0)
-        {
-            return HttpError::DeadlineExceeded;
-        }
-        if (errno != EINTR)
-        {
-            return failure;
-        }
-    }
-}
-
-std::string trimAsciiWhitespace(std::string_view value)
-{
-    size_t first = 0;
-    while (first < value.size() &&
-           (value[first] == ' ' || value[first] == '\t'))
-    {
-        ++first;
-    }
-    size_t last = value.size();
-    while (last > first && (value[last - 1] == ' ' || value[last - 1] == '\t'))
-    {
-        --last;
-    }
-    return std::string(value.substr(first, last - first));
-}
-
-std::string lowerAscii(std::string_view value)
-{
-    std::string result(value);
-    std::transform(result.begin(), result.end(), result.begin(), [](unsigned char character)
-    {
-        return static_cast<char>(std::tolower(character));
-    });
-    return result;
-}
-
-bool parseContentLength(std::string_view raw_value, size_t &value)
-{
-    const std::string text = trimAsciiWhitespace(raw_value);
-    if (text.empty())
-    {
-        return false;
-    }
-
-    size_t parsed = 0;
-    for (const unsigned char character : text)
-    {
-        if (character < '0' || character > '9')
-        {
-            return false;
-        }
-        const size_t digit = static_cast<size_t>(character - '0');
-        if (parsed > (ControlPlaneClient::MAX_HTTP_BODY_BYTES - digit) / 10)
-        {
-            value = ControlPlaneClient::MAX_HTTP_BODY_BYTES + 1;
-            return true;
-        }
-        parsed = parsed * 10 + digit;
-    }
-    value = parsed;
-    return true;
-}
-
 void logHttpFailure(const char *operation, const HttpResult &result)
 {
     LOG_ERROR("control plane request failed: operation=%s category=%s status=%d",
@@ -425,83 +253,10 @@ HttpResult ControlPlaneClient::requestJsonOnce(std::string_view method,
         return {HttpError::MalformedResponse, 0, {}};
     }
 
-    if (not_after && *not_after <= Clock::now())
-    {
-        return {HttpError::DeadlineExceeded, 0, {}};
-    }
-
-    addrinfo hints{};
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-
-    addrinfo *raw_addresses = nullptr;
-    const std::string port = std::to_string(port_);
-    const int resolve_result = getaddrinfo(host_.c_str(), port.c_str(), &hints,
-                                           &raw_addresses);
-    if (resolve_result != 0)
-    {
-        LOG_ERROR("control plane request failed: category=resolve host=%s port=%d error=%s",
-                  host_.c_str(), port_, gai_strerror(resolve_result));
-        return {HttpError::ResolveFailed, 0, {}};
-    }
-    std::unique_ptr<addrinfo, AddrInfoDeleter> addresses(raw_addresses);
-
-    // Synchronous getaddrinfo is the documented boundary. After resolution, all
-    // addresses and socket operations share the tighter of the request budget and
-    // an optional lifecycle deadline supplied by the caller.
-    Deadline deadline = Clock::now() + std::chrono::milliseconds(timeout_ms_);
-    if (not_after)
-    {
-        deadline = std::min(deadline, *not_after);
-    }
-    UniqueFd socket_fd;
-    HttpError connect_error = HttpError::ConnectFailed;
-    for (addrinfo *address = addresses.get(); address != nullptr; address = address->ai_next)
-    {
-        if (!remainingMilliseconds(deadline))
-        {
-            return {HttpError::DeadlineExceeded, 0, {}};
-        }
-
-        UniqueFd candidate(socket(address->ai_family,
-                                  address->ai_socktype | SOCK_NONBLOCK | SOCK_CLOEXEC,
-                                  address->ai_protocol));
-        if (!candidate)
-        {
-            continue;
-        }
-
-        int result = connect(candidate.get(), address->ai_addr, address->ai_addrlen);
-        if (result == -1 && errno != EINPROGRESS && errno != EINTR)
-        {
-            continue;
-        }
-        if (result == -1)
-        {
-            const HttpError waited = waitForSocket(candidate.get(), POLLOUT, deadline,
-                                                   HttpError::ConnectFailed);
-            if (waited == HttpError::DeadlineExceeded)
-            {
-                return {waited, 0, {}};
-            }
-            if (waited != HttpError::None)
-            {
-                continue;
-            }
-
-            int socket_error = 0;
-            socklen_t socket_error_size = sizeof(socket_error);
-            if (getsockopt(candidate.get(), SOL_SOCKET, SO_ERROR, &socket_error,
-                           &socket_error_size) == -1 || socket_error != 0)
-            {
-                continue;
-            }
-        }
-        socket_fd = std::move(candidate);
-        connect_error = HttpError::None;
-        break;
-    }
-    if (!socket_fd)
+    HttpError connect_error = HttpError::None;
+    auto socket = control_detail::SocketDeadline::connect(
+        host_, port_, timeout_ms_, not_after, connect_error);
+    if (!socket)
     {
         return {connect_error, 0, {}};
     }
@@ -523,226 +278,31 @@ HttpResult ControlPlaneClient::requestJsonOnce(std::string_view method,
     }
 
     const std::string serialized = request.str();
-    const HttpError sent = sendAllWithDeadline(socket_fd.get(), serialized, deadline);
+    const HttpError sent = socket->sendAll(serialized);
     if (sent != HttpError::None)
     {
         return {sent, 0, {}};
     }
-    return readHttpResponseWithDeadline(socket_fd.get(), deadline);
-}
 
-HttpError ControlPlaneClient::sendAllWithDeadline(int fd, std::string_view data,
-                                                   Deadline deadline) const
-{
-    size_t offset = 0;
-    while (offset < data.size())
-    {
-        if (!remainingMilliseconds(deadline))
-        {
-            return HttpError::DeadlineExceeded;
-        }
-        const ssize_t sent = send(fd, data.data() + offset, data.size() - offset,
-                                  MSG_NOSIGNAL);
-        if (sent > 0)
-        {
-            offset += static_cast<size_t>(sent);
-            continue;
-        }
-        if (sent == -1 && errno == EINTR)
-        {
-            continue;
-        }
-        if (sent == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
-        {
-            const HttpError waited = waitForSocket(fd, POLLOUT, deadline,
-                                                   HttpError::SendFailed);
-            if (waited != HttpError::None)
-            {
-                return waited;
-            }
-            continue;
-        }
-        return HttpError::SendFailed;
-    }
-    return HttpError::None;
-}
-
-HttpResult ControlPlaneClient::readHttpResponseWithDeadline(int fd,
-                                                            Deadline deadline) const
-{
-    std::string received;
-    received.reserve(MAX_HTTP_HEADER_BYTES);
-    size_t header_end = std::string::npos;
+    control_detail::HttpResponseParser parser;
     char buffer[4096];
-
-    auto receiveMore = [&](HttpError eof_error) -> HttpError
+    while (!parser.done())
     {
-        while (true)
+        const control_detail::SocketReadResult received =
+            socket->receive(buffer, sizeof(buffer));
+        if (received.error != HttpError::None)
         {
-            if (!remainingMilliseconds(deadline))
-            {
-                return HttpError::DeadlineExceeded;
-            }
-            const ssize_t count = recv(fd, buffer, sizeof(buffer), 0);
-            if (count > 0)
-            {
-                received.append(buffer, static_cast<size_t>(count));
-                return HttpError::None;
-            }
-            if (count == 0)
-            {
-                return eof_error;
-            }
-            if (errno == EINTR)
-            {
-                continue;
-            }
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
-            {
-                const HttpError waited = waitForSocket(fd, POLLIN, deadline,
-                                                       HttpError::ReceiveFailed);
-                if (waited != HttpError::None)
-                {
-                    return waited;
-                }
-                continue;
-            }
-            return HttpError::ReceiveFailed;
+            parser.finishOnTransportError(received.error);
+            break;
         }
-    };
-
-    while ((header_end = received.find("\r\n\r\n")) == std::string::npos)
-    {
-        if (received.size() > MAX_HTTP_HEADER_BYTES)
+        if (received.eof)
         {
-            return {HttpError::HeaderTooLarge, 0, {}};
+            parser.finishOnEof();
+            break;
         }
-        const HttpError result = receiveMore(HttpError::MalformedResponse);
-        if (result != HttpError::None)
-        {
-            return {result, 0, {}};
-        }
+        parser.consume(std::string_view(buffer, received.size));
     }
-    if (header_end + 4 > MAX_HTTP_HEADER_BYTES)
-    {
-        return {HttpError::HeaderTooLarge, 0, {}};
-    }
-
-    const size_t status_end = received.find("\r\n");
-    if (status_end == std::string::npos || status_end >= header_end)
-    {
-        return {HttpError::MalformedResponse, 0, {}};
-    }
-
-    const std::string_view status_line(received.data(), status_end);
-    if (status_line.size() < 12 ||
-        (status_line.substr(0, 8) != "HTTP/1.0" &&
-         status_line.substr(0, 8) != "HTTP/1.1") ||
-        status_line[8] != ' ' ||
-        status_line[9] < '1' || status_line[9] > '5' ||
-        status_line[10] < '0' || status_line[10] > '9' ||
-        status_line[11] < '0' || status_line[11] > '9' ||
-        (status_line.size() > 12 && status_line[12] != ' '))
-    {
-        return {HttpError::MalformedResponse, 0, {}};
-    }
-    const int status_code = (status_line[9] - '0') * 100 +
-                            (status_line[10] - '0') * 10 +
-                            (status_line[11] - '0');
-
-    std::optional<size_t> content_length;
-    bool has_transfer_encoding = false;
-    size_t cursor = status_end + 2;
-    while (cursor < header_end)
-    {
-        size_t line_end = received.find("\r\n", cursor);
-        if (line_end == std::string::npos || line_end > header_end)
-        {
-            line_end = header_end;
-        }
-        if (line_end == cursor)
-        {
-            return {HttpError::MalformedResponse, status_code, {}};
-        }
-
-        const std::string_view line(received.data() + cursor, line_end - cursor);
-        const size_t separator = line.find(':');
-        if (separator == std::string_view::npos || separator == 0)
-        {
-            return {HttpError::MalformedResponse, status_code, {}};
-        }
-        const std::string name = lowerAscii(line.substr(0, separator));
-        const std::string_view value = line.substr(separator + 1);
-        if (name == "content-length")
-        {
-            if (content_length)
-            {
-                return {HttpError::DuplicateContentLength, status_code, {}};
-            }
-            size_t parsed = 0;
-            if (!parseContentLength(value, parsed))
-            {
-                return {HttpError::MalformedResponse, status_code, {}};
-            }
-            if (parsed > MAX_HTTP_BODY_BYTES)
-            {
-                return {HttpError::BodyTooLarge, status_code, {}};
-            }
-            content_length = parsed;
-        }
-        else if (name == "transfer-encoding")
-        {
-            has_transfer_encoding = true;
-        }
-        else if (name == "upgrade" || name == "content-encoding")
-        {
-            return {HttpError::MalformedResponse, status_code, {}};
-        }
-        cursor = line_end + 2;
-    }
-
-    if (has_transfer_encoding && content_length)
-    {
-        return {HttpError::MalformedResponse, status_code, {}};
-    }
-    if (has_transfer_encoding)
-    {
-        return {HttpError::UnsupportedTransferEncoding, status_code, {}};
-    }
-    if (!content_length)
-    {
-        return {HttpError::MissingContentLength, status_code, {}};
-    }
-
-    const size_t body_offset = header_end + 4;
-    size_t body_bytes = received.size() - body_offset;
-    if (body_bytes > *content_length)
-    {
-        return {HttpError::MalformedResponse, status_code, {}};
-    }
-    while (body_bytes < *content_length)
-    {
-        const size_t before = received.size();
-        const HttpError result = receiveMore(HttpError::PrematureEof);
-        if (result != HttpError::None)
-        {
-            return {result, status_code, {}};
-        }
-        body_bytes += received.size() - before;
-        if (body_bytes > *content_length)
-        {
-            return {HttpError::MalformedResponse, status_code, {}};
-        }
-    }
-
-    HttpResult result;
-    result.status_code = status_code;
-    result.body.assign(received.data() + body_offset, *content_length);
-    if (status_code < 200 || status_code >= 300)
-    {
-        result.error = HttpError::HttpStatusError;
-    }
-    return result;
+    return parser.takeResult();
 }
 
 std::string ControlPlaneClient::hostHeader() const

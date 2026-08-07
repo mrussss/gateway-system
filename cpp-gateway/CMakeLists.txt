@@ -14,6 +14,8 @@ set(GATEWAY_CORE_SOURCES
     src/net/ReactorNotifier.cpp
     src/net/TcpServer.cpp
     src/control/ControlPlaneClient.cpp
+    src/control/HttpResponseParser.cpp
+    src/control/SocketDeadline.cpp
     src/control/StartupConfig.cpp
     src/control/RuntimeConfig.cpp
     src/protocol/ProtocolCodec.cpp
