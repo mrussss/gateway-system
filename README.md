@@ -163,6 +163,25 @@ The previous implementation drained responses only after `epoll_wait(..., 100)` 
 
 The current local Release reference run measured single-connection steady-state P50 `0.28ms` and P95 `0.60ms`. These are local comparison data, not production capacity claims. Method, environment, 10/100-client results, CPU/RSS, and limitations are in [benchmark](docs/benchmark.md).
 
+## Prometheus
+
+The public `GET /metrics` endpoint uses a private Prometheus registry and exports
+Go runtime/process metrics, low-cardinality HTTP/Redis/AUTH/config metrics, and
+the latest retained C++ gateway snapshots. HTTP labels use registered route
+patterns; client IDs, request IDs, raw paths, remote addresses, and secrets are
+never labels.
+
+```promql
+sum(rate(control_plane_http_requests_total[5m])) by (route, status)
+histogram_quantile(0.95, sum(rate(control_plane_http_request_duration_seconds_bucket[5m])) by (le, route))
+gateway_online == 0
+sum(rate(gateway_response_queue_rejected_total[5m])) by (gateway_id)
+```
+
+Gateway counters are remote process-lifetime snapshots and may reset when a
+gateway restarts. See [metrics contract](docs/metrics_contract.md) for the full
+surface and interpretation rules.
+
 ## v2 roadmap and project boundaries
 
 The fixed v2 system consists of the C++ data plane, Go standard-library control

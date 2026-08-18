@@ -16,9 +16,14 @@ control_plane_redis_operation_duration_seconds{operation}    histogram
 control_plane_redis_errors_total{operation}                   counter
 control_plane_auth_total{result}                              counter
 control_plane_auth_rate_limited_total                         counter
+control_plane_auth_failure_counter_errors_total               counter
 control_plane_config_updates_total{result}                    counter
 control_plane_config_conflicts_total                          counter
 ```
+
+The same private registry includes the standard Go runtime and process
+collectors. The client library is pinned to the newest release compatible with
+the repository's Go 1.22 toolchain.
 
 `result` values are a bounded documented set such as `allowed`, `denied`, and
 `unavailable`. `route` is the registered route pattern, never the raw URL.

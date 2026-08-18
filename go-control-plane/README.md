@@ -41,11 +41,24 @@ Health check:
 curl http://localhost:8080/health
 ```
 
-Prometheus AUTH counters:
+Prometheus metrics (Go runtime/process, HTTP, Redis, AUTH/config, and latest
+gateway snapshots):
 
 ```bash
 curl http://localhost:8080/metrics
 ```
+
+Example PromQL:
+
+```promql
+sum(rate(control_plane_http_requests_total[5m])) by (route, status)
+histogram_quantile(0.95, sum(rate(control_plane_http_request_duration_seconds_bucket[5m])) by (le, route))
+gateway_online == 0
+sum(rate(gateway_request_queue_rejected_total[5m])) by (gateway_id)
+```
+
+HTTP labels use registered route patterns rather than raw URLs. Metrics never
+label by client ID, request ID, remote address, token, or arbitrary error text.
 
 Valid auth request:
 
