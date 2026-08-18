@@ -35,6 +35,10 @@ cleanup() {
     kubectl -n "$NAMESPACE" get pods -o wide || true
     tail -200 "$TMP_DIR/gateway-rollout.log" || true
   fi
+  if [[ -n "${K8S_RESULTS_DIR:-}" ]]; then
+    mkdir -p "$K8S_RESULTS_DIR"
+    cp -a "$TMP_DIR"/. "$K8S_RESULTS_DIR"/
+  fi
   if [[ "${K8S_KEEP_RESULTS:-0}" == "1" ]]; then
     echo "[k8s-roll] retained results in $TMP_DIR"
   else

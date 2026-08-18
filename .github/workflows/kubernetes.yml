@@ -1,0 +1,70 @@
+name: Kubernetes rolling update
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kind-rolling-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CONTROL_PLANE_ADMIN_TOKEN: ci-admin-not-a-production-secret
+      GATEWAY_SHARED_TOKEN: ci-gateway-not-a-production-secret
+      TOKEN_PEPPER: ci-pepper-not-a-production-secret
+      K8S_RESULTS_DIR: results/kubernetes/runtime
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pinned kind and kubectl
+        run: |
+          curl -fsSLo kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
+          curl -fsSLo kind.sha256sum https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64.sha256sum
+          sha256sum -c kind.sha256sum
+          sudo install -m 0755 kind /usr/local/bin/kind
+          curl -fsSLo kubectl https://dl.k8s.io/release/v1.35.5/bin/linux/amd64/kubectl
+          curl -fsSLo kubectl.sha256 https://dl.k8s.io/release/v1.35.5/bin/linux/amd64/kubectl.sha256
+          printf '%s  %s\n' "$(cat kubectl.sha256)" kubectl | sha256sum -c -
+          sudo install -m 0755 kubectl /usr/local/bin/kubectl
+
+      - name: Create pinned Kind cluster
+        run: >-
+          kind create cluster --name gateway-ci
+          --image kindest/node:v1.35.5@sha256:ce977ae6d65918d0b58a5f8b5e940429c2ce42fa3a5619ec2bbc60b949c0ac95
+          --wait 120s
+
+      - name: Capture environment
+        run: scripts/capture_environment.sh results/kubernetes/runtime/environment.txt
+
+      - name: Deploy
+        run: bash scripts/k8s_deploy.sh 2>&1 | tee results/kubernetes/runtime/deploy.log
+
+      - name: Smoke
+        run: bash scripts/k8s_smoke.sh 2>&1 | tee results/kubernetes/runtime/smoke.log
+
+      - name: Rolling-update and drain proof
+        run: bash scripts/k8s_rolling_update_test.sh 2>&1 | tee results/kubernetes/runtime/rolling-update.log
+
+      - name: Dump cluster state on failure
+        if: failure()
+        run: |
+          kubectl -n gateway-system get all -o wide || true
+          kubectl -n gateway-system describe pods || true
+          kubectl -n gateway-system logs -l app.kubernetes.io/name=gateway --all-containers --prefix --tail=-1 || true
+          kind export logs results/kubernetes/runtime/kind-logs --name gateway-ci || true
+
+      - name: Upload raw evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubernetes-runtime-evidence
+          path: results/kubernetes/runtime
+          if-no-files-found: error
+
+      - name: Delete Kind cluster
+        if: always()
+        run: kind delete cluster --name gateway-ci
