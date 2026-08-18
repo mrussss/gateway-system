@@ -28,8 +28,9 @@ Infinite drain lets a slow client prevent deployment or process termination fore
 
 The client is deliberately synchronous and narrow, but its socket is always non-blocking and connect/send/receive share one absolute deadline. AUTH uses a separate bounded queue and fixed Worker group, so Go/Redis delay cannot consume normal Workers or normal Request Queue capacity. Async HTTP, connection pooling, cache, and a second Response Queue remain deferred until measurements justify them.
 
-## v1.0.0 stops at Phase 5
+## v2 continues from the v1 baseline
 
-Prometheus, Kubernetes, Kafka, a dashboard, and an extra database are outside
-the sealed v1.0.0 scope. The release concentrates on the TCP gateway, Go control
-plane, Redis state/configuration, security, telemetry, and correctness evidence.
+The v1.0.0 tag remains the historical Phase 0–5 baseline. V2 retains that
+implementation and adds Prometheus plus Kubernetes rolling updates with graceful
+drain. Kafka, a dashboard, an extra database, multi-Reactor sharding, and the
+other fixed project exclusions remain outside v2.

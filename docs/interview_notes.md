@@ -85,7 +85,8 @@
 
 ## Frozen Boundaries
 
-- do not add Kafka, Kubernetes, multi-Reactor, TLS, or a dashboard without measured need
+- Kubernetes rolling updates and graceful drain are required v2 work; do not add
+  Kafka, multi-Reactor sharding, TLS, or a dashboard without measured need
 - synchronous Worker AUTH, single-Reactor IO, and per-process limits are explicit current constraints
 - the next step is ownership learning and fault reproduction, not expanding the stack
 
