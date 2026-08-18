@@ -40,7 +40,22 @@ be rerun in a Docker-enabled environment.
 | 6 | Complete | Private registry, runtime/process, HTTP, Redis, AUTH/config, gateway snapshot metrics, expiry cleanup, and parser/cardinality tests are implemented. |
 | 7 | Implemented; runtime gate pending | Non-root/read-only images, Compose health dependencies, v2 smoke, Redis recovery, and real-Redis CI are present; Docker execution remains required in a Docker-enabled environment. |
 | 8 | Implemented; cluster gate pending | Manifests, security/resources, probes, PDBs, drain budget, deploy/smoke scripts, and reconnecting rolling-update test are present; a real cluster run remains required. |
-| 9 | Not started | Reproducible performance/failure evidence, final documentation, release gates, and v2.0.0 release. |
+| 9 | Implemented; external release gates pending | Authenticated benchmark matrix, local raw Release evidence, complete fault map, exact queue/fd/SIGTERM tests, final docs, link checker, and staged release gate are present. Docker/Redis and Kubernetes runtime artifacts are still required before `v2.0.0`. |
+
+## Current release evidence
+
+On 2026-08-19, all 10 CTests passed after the added one-slot Request/Response
+Queue and exact fd-reuse cases; the shutdown black-box test also passed three
+consecutive runs. Go Unit, Race, and Vet passed, including the in-flight HTTP
+shutdown/Store Close case. The manifest validator passed all 11 resource
+contracts, and the local Release/MemoryStore benchmark completed seven raw
+scenarios through 500 clients without a request failure.
+
+The evidence and its limits are under `results/`. Docker Desktop WSL integration
+and `kubectl` were unavailable locally, so Docker smoke/Redis recovery and real
+Kubernetes rolling-update results remain honest release blockers. The manual
+workflows and `scripts/release_gate.sh --full` execute those gates elsewhere;
+the repository must not be tagged until successful raw artifacts are committed.
 
 ## Fixed v2 scope
 

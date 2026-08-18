@@ -17,6 +17,13 @@
 - Add two-replica Kubernetes deployments, Redis StatefulSet/PVC, least-privilege
   security contexts, independent probes, PDBs, bounded preStop/SIGTERM drain,
   and automated smoke and rolling-update acceptance scripts.
+- Add an authenticated benchmark matrix with raw 1/10/100/500-client evidence,
+  interval Redis metrics, CPU/RSS, queue telemetry, payload and slow-reader cases.
+- Add deterministic Request/Response Queue saturation, exact fd-reuse, and Go
+  in-flight shutdown tests plus a required-fault evidence matrix.
+- Add a pinned Kind runtime-evidence workflow, documentation link checker, and
+  staged full release gate. Docker/Kubernetes artifacts and the `v2.0.0` tag
+  remain pending until those external gates pass.
 
 ## v1.0.0 - 2026-07-28
 

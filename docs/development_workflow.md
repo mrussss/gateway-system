@@ -58,3 +58,14 @@ The project does not expand into Kafka, SQL databases, Gin/GORM, TLS,
 multi-Reactor sharding, service discovery, service mesh, operators, multi-cluster
 deployment, a Grafana dashboard, automatic fail-open, or global distributed rate
 limiting.
+
+## Release gate
+
+Use `scripts/release_gate.sh --fast` during implementation and
+`scripts/release_gate.sh --full` for a release candidate. Full mode includes
+every required C++/Go/sanitizer/static check plus real Redis integration,
+Docker smoke and recovery, Kubernetes deploy/smoke/rolling update, benchmark
+reproduction, and documentation links. It requires caller-provided test secrets
+and a reachable cluster, produces no tag, and must be followed by review and
+commit of raw environment/results. Only then may an annotated `v2.0.0` tag and
+GitHub Release be created.
