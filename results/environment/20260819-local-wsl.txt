@@ -1,0 +1,39 @@
+captured_at_utc=2026-08-18T16:02:47Z
+git_head=32c1e68a79fa72edcb36082d6f43455a12578a89
+working_tree=2 tracked changes
+
+[kernel]
+Linux LAPTOP-7Q69GP7V 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+
+[cpu]
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           39 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  32
+
+[memory]
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       3.6Gi        10Gi       3.0Mi       969Mi        11Gi
+Swap:          4.0Gi          0B       4.0Gi
+
+[toolchains]
+g++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+Copyright (C) 2021 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+cmake version 3.22.1
+
+CMake suite maintained and supported by Kitware (kitware.com/cmake).
+go version go1.22.12 linux/amd64
+Python 3.10.12
+
+[containers_and_cluster]
+
+The command 'docker' could not be found in this WSL 2 distro.
+We recommend to activate the WSL integration in Docker Desktop settings.
+
+For details about using Docker Desktop with WSL 2, visit:
+kubectl: unavailable
+kind v0.32.0 go1.22.12 linux/amd64
