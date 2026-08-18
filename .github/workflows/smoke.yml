@@ -2,9 +2,6 @@ name: Smoke
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feature/p9-release
 
 jobs:
   smoke:

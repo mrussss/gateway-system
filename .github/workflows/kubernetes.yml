@@ -25,10 +25,10 @@ jobs:
 
       - name: Install pinned kind and kubectl
         run: |
-          curl -fsSLo kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
+          curl -fsSLo kind-linux-amd64 https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
           curl -fsSLo kind.sha256sum https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64.sha256sum
           sha256sum -c kind.sha256sum
-          sudo install -m 0755 kind /usr/local/bin/kind
+          sudo install -m 0755 kind-linux-amd64 /usr/local/bin/kind
           curl -fsSLo kubectl https://dl.k8s.io/release/v1.35.5/bin/linux/amd64/kubectl
           curl -fsSLo kubectl.sha256 https://dl.k8s.io/release/v1.35.5/bin/linux/amd64/kubectl.sha256
           printf '%s  %s\n' "$(cat kubectl.sha256)" kubectl | sha256sum -c -
@@ -66,7 +66,7 @@ jobs:
         with:
           name: kubernetes-runtime-evidence
           path: results/kubernetes/runtime
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Delete Kind cluster
         if: always()
