@@ -61,8 +61,14 @@ See [architecture](docs/architecture.md), [protocol](docs/protocol.md), and [des
 Docker Compose:
 
 ```bash
+cp .env.example .env
+# Replace every placeholder in .env before shared or production-like use.
 docker compose up --build
 ```
+
+The C++ and Go runtime containers use UID/GID 10001, drop capabilities, disable
+privilege escalation, and run with read-only root filesystems in Compose. Redis
+health gates the control plane, whose live/ready checks in turn gate the gateway.
 
 Local development:
 
@@ -109,6 +115,7 @@ Go and full-system checks:
 ```bash
 (cd go-control-plane && go test ./... && go test -race ./... && go vet ./...)
 bash scripts/smoke_test.sh
+bash scripts/redis_recovery_test.sh
 ```
 
 The fast CI workflow runs on every push and pull request. The Docker smoke workflow remains manual because it builds and starts Redis, Go, and C++ containers.
@@ -151,7 +158,7 @@ See [shutdown](docs/shutdown.md) for exact guarantees and non-guarantees.
 | `RESPONSE_QUEUE_CAPACITY` | `4096` | completed work capacity |
 | `SHUTDOWN_TIMEOUT_MS` | `5000` | graceful shutdown deadline; must be at least `2 × CONTROL_PLANE_TIMEOUT_MS + 100` |
 | `GATEWAY_LOG_LEVEL` | `INFO` | set `DEBUG` for per-request metadata |
-| `GATEWAY_LOG_PATH` | `logs/access.log` | LOG_PUSH storage path |
+| `GATEWAY_LOG_PATH` | empty | LOG_PUSH defaults to stdout; set a path only with a writable mounted directory |
 
 Payload, output-buffer, rate, connection, and log-level settings are pulled from the control plane as one immutable validated snapshot. A failed pull or invalid payload leaves the entire active snapshot unchanged; an equal or lower version cannot overwrite a newer one.
 

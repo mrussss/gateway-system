@@ -11,6 +11,9 @@
 - Replace hand-written AUTH exposition with a private Prometheus registry,
   runtime/process collectors, HTTP/Redis/AUTH/config instrumentation, and an
   expiry-aware gateway snapshot collector with parser/cardinality tests.
+- Run application containers as non-root on read-only filesystems, add
+  health-gated Compose startup, expand v2 smoke coverage, automate Redis
+  outage/recovery verification, and run real Redis contracts in CI.
 
 ## v1.0.0 - 2026-07-28
 
