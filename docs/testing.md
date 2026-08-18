@@ -89,4 +89,7 @@ The complete required fault mapping is recorded in the
 [local fault-injection report](../results/failures/20260819-local.md); its
 Docker/Redis and Kubernetes rows were subsequently closed by the
 [final CI release report](../results/release/20260819-ci.md), with raw artifacts
-retained beside that report.
+retained beside that report. The
+[completion audit](../results/release/20260819-completion-audit.md) maps all 30
+final acceptance criteria to implementation, executable tests, and exact-tag
+runtime runs.

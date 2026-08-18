@@ -14,7 +14,9 @@ pending gate; a static manifest check is never presented as a cluster run.
 - `kubernetes/`: the local environment limitation, a retained failed preflight,
   and the final passing pinned Kind smoke/rolling-update artifact.
 - `release/`: complete gate commands, raw outcome summaries, blockers, and the
-  explicit tag decision.
+  explicit tag decision. The final
+  [requirement-by-requirement completion audit](release/20260819-completion-audit.md)
+  maps every Phase and all 30 acceptance criteria to direct evidence.
 
 Capture a new environment and run the complete container benchmark matrix:
 
