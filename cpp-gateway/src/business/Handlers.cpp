@@ -235,6 +235,8 @@ namespace business
             {"response_queue_rejected_normal",
              snapshot.response_queue_rejected_normal},
             {"response_queue_rejected_auth", snapshot.response_queue_rejected_auth},
+            {"slow_client_closed", snapshot.slow_client_closed},
+            {"stale_response_dropped", snapshot.stale_response_dropped},
         }.dump();
         return resp;
     }

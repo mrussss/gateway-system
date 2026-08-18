@@ -59,6 +59,11 @@ The runtime `max_payload_size` is also checked after decode. A stricter runtime 
 
 Every accepted connection receives a unique conn_id. A response or forced-close record applies only when both fd and conn_id match the current map entry. An old response is discarded rather than sent to the new owner of a reused fd.
 
+The black-box regression test delays an AUTH response, closes its connection,
+maps the accepted socket through `/proc`, and forces the next connection to use
+that exact numeric fd. The replacement then authenticates independently and
+the stale-drop counter must increase.
+
 ## Shutdown deadline
 
 The Gateway stops accepting and reading new work, but drains tasks already admitted to both input queues. The last producer across normal and AUTH Workers stops the Response Queue. At the deadline all three queues are aborted and remaining connections close. Startup reserves at least two control-plane timeout budgets plus 100 ms; AUTH calls begun during DRAINING are additionally capped by the shutdown deadline, and the reporter cannot start its clients call after shutdown begins. Synchronous DNS remains the documented exception. The guarantee is bounded best effort, not “every client always receives every response.”

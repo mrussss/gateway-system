@@ -18,10 +18,12 @@ from pathlib import Path
 
 
 FIXED_BODY_SIZE = 10
+PING = 1
 AUTH = 10
 AUTH_RESP = 11
 ECHO = 2
 ECHO_RESP = 6
+ERROR_RESP = 7
 STATS = 4
 STATS_RESP = 9
 
@@ -53,6 +55,29 @@ def unused_port() -> int:
     with closing(socket.socket()) as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def server_fd_for_client(process_id: int, gateway_port: int, client: socket.socket) -> int:
+    remote_port = int(client.getsockname()[1])
+    inode = None
+    for line in Path(f"/proc/{process_id}/net/tcp").read_text().splitlines()[1:]:
+        fields = line.split()
+        local_hex, remote_hex = fields[1], fields[2]
+        if int(local_hex.rsplit(":", 1)[1], 16) != gateway_port:
+            continue
+        if int(remote_hex.rsplit(":", 1)[1], 16) != remote_port or fields[3] != "01":
+            continue
+        inode = fields[9]
+        break
+    if inode is None:
+        raise AssertionError("could not find accepted socket in gateway /proc table")
+    for entry in Path(f"/proc/{process_id}/fd").iterdir():
+        try:
+            if entry.readlink().as_posix() == f"socket:[{inode}]":
+                return int(entry.name)
+        except FileNotFoundError:
+            continue
+    raise AssertionError("could not map accepted socket inode to gateway fd")
 
 
 class ControlPlaneHandler(BaseHTTPRequestHandler):
@@ -312,7 +337,18 @@ def test_slow_client_is_bounded_by_deadline(executable: Path, control_port: int)
         raise AssertionError("slow-client scenario did not exercise forced deadline")
 
 
-def test_request_queue_overload(executable: Path, control_plane: FakeControlPlane) -> None:
+def gateway_stats(gateway: GatewayProcess, client_id: str) -> dict:
+    observer = gateway.connect_authenticated(client_id)
+    observer.settimeout(3)
+    observer.sendall(packet(STATS, 2))
+    message_type, _, payload = recv_packet(observer)
+    observer.close()
+    if message_type != STATS_RESP:
+        raise AssertionError("observer did not receive STATS response")
+    return json.loads(payload)
+
+
+def test_auth_queue_overload(executable: Path, control_plane: FakeControlPlane) -> None:
     control_plane.set_auth_delay(0.0)
     gateway = GatewayProcess(
         executable,
@@ -370,6 +406,59 @@ def test_request_queue_overload(executable: Path, control_plane: FakeControlPlan
         )
 
 
+def test_request_queue_overload(executable: Path, control_plane: FakeControlPlane) -> None:
+    gateway = GatewayProcess(
+        executable,
+        control_plane.port,
+        shutdown_ms=3000,
+        request_capacity=1,
+        response_capacity=256,
+    )
+    client = gateway.connect_authenticated("request-overload")
+    client.settimeout(3)
+    client.sendall(b"".join(packet(ECHO, index + 10, b"x") for index in range(200)))
+
+    saw_503 = False
+    for _ in range(200):
+        message_type, _, payload = recv_packet(client)
+        if message_type == ERROR_RESP and json.loads(payload).get("status") == 503:
+            saw_503 = True
+            break
+    client.close()
+    stats = gateway_stats(gateway, "request-overload-observer")
+    gateway.signal()
+    gateway.wait(timeout=5)
+    if not saw_503 or int(stats.get("request_queue_rejected", 0)) == 0:
+        raise AssertionError(f"Request Queue overload was not observable: {stats}")
+
+
+def test_response_queue_overload(executable: Path, control_plane: FakeControlPlane) -> None:
+    gateway = GatewayProcess(
+        executable,
+        control_plane.port,
+        shutdown_ms=3000,
+        request_capacity=256,
+        response_capacity=1,
+    )
+    client = gateway.connect_authenticated("response-overload")
+    client.settimeout(3)
+    client.sendall(b"".join(packet(PING, index + 10) for index in range(200)))
+
+    closed = False
+    try:
+        while recv_packet(client):
+            pass
+    except (ConnectionError, OSError, RuntimeError):
+        closed = True
+    finally:
+        client.close()
+    stats = gateway_stats(gateway, "response-overload-observer")
+    gateway.signal()
+    gateway.wait(timeout=5)
+    if not closed or int(stats.get("response_queue_rejected", 0)) == 0:
+        raise AssertionError(f"Response Queue overload did not close the connection: {stats}")
+
+
 def test_control_plane_outage(executable: Path) -> None:
     with FakeControlPlane() as control_plane:
         gateway = GatewayProcess(executable, control_plane.port, shutdown_ms=2000)
@@ -420,6 +509,80 @@ def test_control_plane_outage(executable: Path) -> None:
     gateway.wait(timeout=4)
     if gateway.process.returncode != 0:
         raise AssertionError(f"control-plane outage gateway failed; port={control_port}")
+
+
+def test_fd_reuse_rejects_stale_auth_response(
+    executable: Path, control_plane: FakeControlPlane
+) -> None:
+    control_plane.set_auth_delay(0.2)
+    control_plane.reset_auth_requests()
+    gateway = GatewayProcess(executable, control_plane.port, shutdown_ms=2000)
+    time.sleep(0.05)
+    keepers = [
+        socket.create_connection(("127.0.0.1", gateway.port), timeout=3)
+        for _ in range(8)
+    ]
+    old = socket.create_connection(("127.0.0.1", gateway.port), timeout=3)
+    old.sendall(
+        packet(
+            AUTH,
+            1,
+            json.dumps({"client_id": "old-generation", "token": "test-token"}).encode(),
+        )
+    )
+    deadline = time.monotonic() + 1
+    while control_plane.auth_requests() == 0 and time.monotonic() < deadline:
+        time.sleep(0.005)
+    old_server_fd = server_fd_for_client(gateway.process.pid, gateway.port, old)
+    old.close()
+
+    fd_path = Path(f"/proc/{gateway.process.pid}/fd/{old_server_fd}")
+    deadline = time.monotonic() + 1
+    while fd_path.exists() and time.monotonic() < deadline:
+        time.sleep(0.005)
+    replacement = socket.create_connection(("127.0.0.1", gateway.port), timeout=3)
+    replacement.settimeout(3)
+    replacement_server_fd = server_fd_for_client(
+        gateway.process.pid, gateway.port, replacement
+    )
+    if replacement_server_fd != old_server_fd:
+        replacement.close()
+        for keeper in keepers:
+            keeper.close()
+        gateway.signal()
+        gateway.wait(timeout=4)
+        raise AssertionError(
+            f"test could not force fd reuse: old={old_server_fd} new={replacement_server_fd}"
+        )
+
+    time.sleep(0.25)
+    control_plane.set_auth_delay(0.0)
+    replacement.sendall(
+        packet(
+            AUTH,
+            2,
+            json.dumps(
+                {"client_id": "replacement-generation", "token": "test-token"}
+            ).encode(),
+        )
+    )
+    message_type, request_id, payload = recv_packet(replacement)
+    if (
+        message_type != AUTH_RESP
+        or request_id != 2
+        or json.loads(payload).get("allowed") is not True
+    ):
+        raise AssertionError("stale AUTH response affected the reused fd")
+    replacement.sendall(packet(STATS, 3))
+    message_type, _, payload = recv_packet(replacement)
+    replacement.close()
+    for keeper in keepers:
+        keeper.close()
+    gateway.signal()
+    gateway.wait(timeout=4)
+    control_plane.set_auth_delay(0.0)
+    if message_type != STATS_RESP or int(json.loads(payload).get("stale_response_dropped", 0)) == 0:
+        raise AssertionError("stale response drop was not observable after exact fd reuse")
 
 
 def test_cancelled_queued_auth(executable: Path, control_plane: FakeControlPlane) -> None:
@@ -509,8 +672,11 @@ def main() -> int:
     with FakeControlPlane() as control_plane:
         test_idle_and_repeated_stop(executable, control_plane.port)
         test_queued_requests_are_drained(executable, control_plane)
+        test_auth_queue_overload(executable, control_plane)
         test_request_queue_overload(executable, control_plane)
+        test_response_queue_overload(executable, control_plane)
         test_cancelled_queued_auth(executable, control_plane)
+        test_fd_reuse_rejects_stale_auth_response(executable, control_plane)
         test_deep_queue_deadline(executable, control_plane)
         test_slow_client_is_bounded_by_deadline(executable, control_plane.port)
     test_control_plane_outage(executable)

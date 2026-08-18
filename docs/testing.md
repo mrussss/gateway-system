@@ -70,5 +70,15 @@ runs on every push. It is not a substitute for the cluster tests.
 - cancellation integration proves a disconnected queued AUTH does not call Go.
 - deep-queue deadline integration uses slow AUTH work and proves not-yet-started AUTH tasks are aborted instead of extending shutdown indefinitely.
 - control-plane outage integration proves existing authenticated ECHO remains available, new AUTH fails closed, and reporting/config errors do not terminate the Gateway.
+- one-slot Request and Response Queue black-box cases prove explicit 503 and
+  connection-close policies; the response path exposes rejection counters.
+- the fd-generation case resolves the accepted socket through Linux `/proc`,
+  forces exact fd reuse while an old AUTH is in flight, and proves the stale
+  response cannot affect the replacement connection.
+- the Go shutdown test cancels the SIGTERM-owned server context while a handler
+  is in flight and proves listener closure, request completion, and Store Close.
 - the Compose Redis recovery test proves live/ready separation and automatic
   recovery against a real paused Redis process.
+
+The complete required fault mapping and local/pending status are recorded in
+the [fault-injection report](../results/failures/20260819-local.md).
