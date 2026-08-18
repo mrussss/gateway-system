@@ -61,6 +61,38 @@ func TestStrictJSONRejectsTrailingValue(t *testing.T) {
 	}
 }
 
+func TestRoutingErrorsUseTheAPIEnvelope(t *testing.T) {
+	store = newMemoryStore()
+	router := routesWithStore(store)
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "unknown path", method: http.MethodGet, path: "/not-present", wantStatus: http.StatusNotFound, wantCode: "NOT_FOUND"},
+		{name: "known path wrong method", method: http.MethodPatch, path: "/config", wantStatus: http.StatusMethodNotAllowed, wantCode: "METHOD_NOT_ALLOWED"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, newTestRequest(test.method, test.path, nil))
+			if response.Code != test.wantStatus {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			var body apiErrorResponse
+			if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+				t.Fatalf("decode response: %v; body=%q", err, response.Body.String())
+			}
+			if body.RequestID == "" || body.Code != test.wantCode || body.Message == "" {
+				t.Fatalf("unexpected error response: %+v", body)
+			}
+		})
+	}
+}
+
 type unhealthyStore struct{ *memoryStore }
 
 func (s unhealthyStore) Ping(context.Context) error { return errors.New("unavailable") }
