@@ -22,6 +22,7 @@ type runtimeConfig struct {
 	MaxRequestsPerClientPerSecond int    `json:"max_requests_per_client_per_second"`
 	SlowClientOutputLimit         int    `json:"slow_client_output_limit"`
 	LogLevel                      string `json:"log_level"`
+	RequestQueueCapacityDisplay   int    `json:"request_queue_capacity_display"`
 }
 
 type configUpdateRequest struct {

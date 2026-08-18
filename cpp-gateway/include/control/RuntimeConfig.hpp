@@ -12,6 +12,7 @@ struct RuntimeConfig
     int max_requests_per_client_per_second = 100;
     size_t slow_client_output_limit = 8 * 1024 * 1024;
     std::string log_level = "INFO";
+    size_t request_queue_capacity_display = 4096;
 };
 
 bool parseRuntimeConfig(const std::string &json_body, RuntimeConfig &config);

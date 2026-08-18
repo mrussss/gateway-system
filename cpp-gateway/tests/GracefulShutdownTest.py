@@ -81,6 +81,7 @@ class ControlPlaneHandler(BaseHTTPRequestHandler):
                     "max_requests_per_client_per_second": 100_000,
                     "slow_client_output_limit": 8 * 1024 * 1024,
                     "log_level": "INFO",
+                    "request_queue_capacity_display": 4096,
                 }
             )
             return
