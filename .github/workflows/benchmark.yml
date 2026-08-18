@@ -2,6 +2,9 @@ name: Benchmark matrix
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/p9-release
 
 permissions:
   contents: read
