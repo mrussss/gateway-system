@@ -2,22 +2,10 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <iostream>
 
 namespace business
 {
-    namespace
-    {
-        std::filesystem::path defaultLogPath()
-        {
-            const char *env_path = std::getenv("GATEWAY_LOG_PATH");
-            if (env_path != nullptr && env_path[0] != '\0')
-            {
-                return env_path;
-            }
-            return "logs/access.log";
-        }
-    }
-
     LogStorage &LogStorage::getInstance()
     {
 
@@ -27,24 +15,44 @@ namespace business
 
     LogStorage::LogStorage()
     {
-        std::filesystem::path path = defaultLogPath();
-        if (path.has_parent_path())
+        const char *env_path = std::getenv("GATEWAY_LOG_PATH");
+        if (env_path == nullptr || env_path[0] == '\0')
         {
-            std::filesystem::create_directories(path.parent_path());
+            m_use_stdout = true;
+            return;
         }
-        m_ofs.open(path, std::ios::app);
+
+        try
+        {
+            const std::filesystem::path path(env_path);
+            if (path.has_parent_path())
+            {
+                std::filesystem::create_directories(path.parent_path());
+            }
+            m_ofs.open(path, std::ios::app);
+        }
+        catch (const std::filesystem::filesystem_error &)
+        {
+            // append() returns false so the request receives an explicit failure.
+        }
     }
 
     bool LogStorage::append(const std::string &log_line)
     {
+        std::lock_guard<std::mutex> guard(m_mutex);
+        if (m_use_stdout)
+        {
+            std::cout << log_line << '\n';
+            std::cout.flush();
+            return static_cast<bool>(std::cout);
+        }
         if (!m_ofs.is_open())
         {
             return false;
         }
 
-        std::lock_guard<std::mutex> guard(m_mutex);
         m_ofs << log_line << "\n";
         m_ofs.flush();
-        return true;
+        return static_cast<bool>(m_ofs);
     }
 }

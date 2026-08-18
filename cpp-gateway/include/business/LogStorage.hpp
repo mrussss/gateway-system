@@ -19,5 +19,6 @@ namespace business
         ~LogStorage() = default;
         std::mutex m_mutex;
         std::ofstream m_ofs;
+        bool m_use_stdout = false;
     };
 }

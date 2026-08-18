@@ -18,8 +18,12 @@ RUN cmake -S . -B build \
 
 FROM ubuntu:22.04
 
+RUN groupadd --system --gid 10001 gateway \
+    && useradd --system --uid 10001 --gid gateway --home-dir /nonexistent --shell /usr/sbin/nologin gateway
+
 WORKDIR /app
-COPY --from=build /app/build/message_server /app/message_server
+COPY --from=build --chown=gateway:gateway /app/build/message_server /app/message_server
 
 EXPOSE 9000
+USER 10001:10001
 CMD ["/app/message_server"]
