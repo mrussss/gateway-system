@@ -189,6 +189,26 @@ Gateway counters are remote process-lifetime snapshots and may reset when a
 gateway restarts. See [metrics contract](docs/metrics_contract.md) for the full
 surface and interpretation rules.
 
+## Kubernetes rolling updates
+
+The demonstration deployment runs two Gateway replicas with
+`maxUnavailable: 0`, `maxSurge: 1`, and a PDB requiring one available replica.
+On pod termination, preStop sends SIGTERM, the Gateway closes TCP 9000 and
+becomes unready, accepted work drains within a 20-second deadline, and the pod
+has a 30-second termination grace period. Liveness checks process existence, not
+the draining listener, so it cannot race readiness by restarting the pod.
+
+```bash
+python3 scripts/k8s_manifest_test.py
+bash scripts/k8s_deploy.sh
+bash scripts/k8s_smoke.sh
+bash scripts/k8s_rolling_update_test.sh
+```
+
+See the [Kubernetes deployment guide](deploy/kubernetes/README.md) for secrets,
+image loading, exact probes, and limitations. The single Redis StatefulSet is a
+demonstration with persistent storage, not a high-availability Redis design.
+
 ## v2 roadmap and project boundaries
 
 The fixed v2 system consists of the C++ data plane, Go standard-library control

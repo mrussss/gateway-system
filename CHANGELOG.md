@@ -14,6 +14,9 @@
 - Run application containers as non-root on read-only filesystems, add
   health-gated Compose startup, expand v2 smoke coverage, automate Redis
   outage/recovery verification, and run real Redis contracts in CI.
+- Add two-replica Kubernetes deployments, Redis StatefulSet/PVC, least-privilege
+  security contexts, independent probes, PDBs, bounded preStop/SIGTERM drain,
+  and automated smoke and rolling-update acceptance scripts.
 
 ## v1.0.0 - 2026-07-28
 

@@ -2,6 +2,7 @@
 .claude/
 
 build/
+build-*/
 .vscode/
 .idea/
 results/
