@@ -1,11 +1,52 @@
-# Current State
+# Current State and v2 Baseline
 
-This document records the Phase 5 completion state on 2026-08-06.
+This document records the Gateway System v2 development baseline at commit
+`b94fedd13ee65f98af11e539219289d3563e53c0` on 2026-08-18. Development is
+incremental: verified Phase 1–5 behavior is retained and only missing v2 work is
+added.
 
-The C++ gateway now uses a strict deadline-bounded internal HTTP client and a bounded independent AUTH Executor. The client separates socket/deadline transport, incremental HTTP framing, and control-plane JSON/metrics mapping without introducing a general HTTP framework. AUTH never executes in the Reactor or normal Worker pool. The normal Request Queue, AUTH Queue, and shared Response Queue are all bounded and participate in one explicit shutdown lifecycle.
+## Verified baseline
 
-The Go control plane emits fixed-length JSON responses and separates credential denial from infrastructure unavailability. Memory and Redis backends implement TTL AUTH failure counters; Redis increments and first-failure expiry are atomic. Stable result codes and low-cardinality AUTH metrics are exposed. Both processes default to production mode and fail startup when their required shared/admin/pepper secrets are absent; only explicit development mode permits empty secrets.
+- The C++17 data plane owns every socket in one edge-triggered `epoll` Reactor,
+  uses `accept4` and `eventfd`, validates `fd + conn_id`, and handles partial,
+  combined, and invalid length-prefixed frames.
+- Normal, AUTH, and Response queues are bounded and expose backlog, capacity,
+  peak, and rejection telemetry. AUTH has an isolated worker pool.
+- Shutdown is `RUNNING -> DRAINING -> STOPPED`, closes the listener immediately,
+  drains accepted work until a deadline, and force-closes remaining connections.
+- The Go standard-library control plane has strict JSON handling, bounded bodies,
+  request IDs, structured access logging, panic recovery, route authentication,
+  liveness/readiness, graceful HTTP shutdown, and Store cleanup.
+- Tokens are generated with `crypto/rand`, stored only as HMAC-SHA256 digests,
+  compared in constant time, returned only on create/rotate, and protected by
+  generation CAS during rotation.
+- Redis gateway status and client snapshots have TTLs; stale index entries are
+  cleaned during listing. Reporting uses Pipeline only to reduce round trips.
+- Runtime configuration uses `ETag`/`If-Match` and Redis Lua CAS. The C++ gateway
+  applies only a complete, valid, strictly newer snapshot.
+- C++ telemetry includes queue, AUTH, control-plane client, slow-client,
+  stale-response, config-version, and server-state fields.
 
-Implemented verification includes strict C++ compilation, framing/deadline/high-fd fake-server tests, AUTH saturation with ordinary ECHO isolation, queued-task cancellation, dual-queue shutdown and forced abort, Go race tests, and Redis integration tests when `REDIS_TEST_ADDR` is available.
+Baseline evidence on 2026-08-18: Go unit/race/vet passed and all 10 CTest tests
+passed. Docker validation was unavailable in the local WSL environment and must
+be rerun in a Docker-enabled environment.
 
-Known boundaries remain deliberate: synchronous DNS is outside the socket deadline; each HTTP call opens a fresh connection; AUTH overload fails closed; no TLS, async HTTP, keep-alive pool, local auth cache, HTTP/2, or general-purpose HTTP compatibility is provided.
+## Remaining v2 work
+
+| Phase | State | Remaining work |
+| --- | --- | --- |
+| 0 | Complete | Final v2 API, Redis, metrics, shutdown, scope, and workflow contracts are frozen in `docs/`. |
+| 1–5 | Implemented; retain and regression-test | Close only contract gaps found by tests, including the display-only request queue capacity field. |
+| 6 | Partial | Replace the five hand-written AUTH counters with a Prometheus registry, HTTP/Redis/config/gateway metrics, expiry cleanup, and parser tests. |
+| 7 | Not complete | Non-root images, Compose health dependencies, v2 smoke/failure scripts, and integration CI. |
+| 8 | Not started | Kubernetes manifests, probes, security contexts, PDBs, preStop drain, and rolling-update test. |
+| 9 | Not started | Reproducible performance/failure evidence, final documentation, release gates, and v2.0.0 release. |
+
+## Fixed v2 scope
+
+The required system is the C++ data plane, Go standard-library control plane,
+Redis, Prometheus, and Kubernetes rolling updates with graceful connection
+draining. Kafka, SQL databases, Gin/GORM, HTTP reverse proxying, TLS,
+multi-Reactor sharding, service discovery, service mesh, operators, multi-cluster
+deployment, a Grafana dashboard, automatic fail-open, and global distributed
+rate limiting remain outside the project.
