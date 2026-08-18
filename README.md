@@ -2,13 +2,17 @@
 
 `gateway-system` is a compact C++/Go backend system built around a custom TCP data plane and an HTTP control plane. The repository focuses on Linux networking correctness, bounded concurrency, observable overload behavior, deterministic shutdown, and repeatable tests rather than adding more infrastructure products.
 
-## v1.0.0 release scope
+## v2 development baseline
 
-Version `v1.0.0` is the completed Phase 0–5 release: contract freeze, Go HTTP
-foundation, secure token lifecycle, Redis-backed gateway state, Redis config
-CAS, and C++ telemetry/dynamic configuration. This release is sealed at that
-scope. Phase 6–9 work is not part of v1.0.0; Prometheus and Kubernetes are not
-required components and are not implemented by this version.
+Version `v1.0.0` remains the completed Phase 0–5 baseline: Go HTTP engineering,
+secure token lifecycle, Redis-backed expiring gateway state, Redis Lua config
+CAS, and C++ telemetry/dynamic configuration. The active v2 scope continues from
+that implementation instead of rebuilding it. The required destination adds a
+complete Prometheus metrics surface, hardened local containers and CI,
+Kubernetes deployment, and verified rolling updates with bounded graceful drain.
+
+See [current state](docs/current_state.md) for the evidence-based gap matrix and
+the repository-root development plan for the complete checkpoint sequence.
 
 ## What is implemented
 
@@ -159,9 +163,23 @@ The previous implementation drained responses only after `epoll_wait(..., 100)` 
 
 The current local Release reference run measured single-connection steady-state P50 `0.28ms` and P95 `0.60ms`. These are local comparison data, not production capacity claims. Method, environment, 10/100-client results, CPU/RSS, and limitations are in [benchmark](docs/benchmark.md).
 
-## Project boundaries
+## v2 roadmap and project boundaries
 
-The project intentionally does not add Kubernetes, Kafka, a dashboard, multi-Reactor sharding, TLS, or an asynchronous HTTP client. The synchronous client is deliberately narrow: HTTP/1.0/1.1 JSON, exactly one `Content-Length`, `Connection: close`, no transfer/content encoding, and a fresh TCP connection per call. Synchronous DNS remains outside the socket deadline. These boundaries are deliberate and recorded in [design decisions](docs/design_decisions.md).
+The fixed v2 system consists of the C++ data plane, Go standard-library control
+plane, Redis, Prometheus, and Kubernetes rolling updates with graceful drain.
+Phases 1–5 are already implemented and remain under regression coverage. Active
+delivery continues through Prometheus (Phase 6), Docker/CI and local fault
+verification (Phase 7), Kubernetes deployment and rolling-update proof (Phase
+8), and reproducible release evidence (Phase 9).
+
+The project intentionally does not add Kafka, a SQL database, Gin/GORM, an HTTP
+reverse proxy, TLS, multi-Reactor sharding, service discovery, service mesh, an
+operator, multi-cluster deployment, a Grafana dashboard, automatic fail-open, or
+global distributed rate limiting. The synchronous internal client remains
+deliberately narrow: HTTP/1.0/1.1 JSON, exactly one `Content-Length`,
+`Connection: close`, no transfer/content encoding, and a fresh TCP connection
+per call. Synchronous DNS remains outside the socket deadline. These boundaries
+are recorded in [design decisions](docs/design_decisions.md).
 
 ## Documentation
 

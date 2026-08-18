@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.0.0 - Unreleased
+
+- Continue from the verified v1 Phase 0–5 implementation rather than replacing
+  the TCP, HTTP, token, Redis, configuration, or telemetry foundations.
+- Fix the project scope: Prometheus and Kubernetes rolling updates with graceful
+  drain are required v2 deliverables.
+- Freeze the v2 API, Redis, metrics, and shutdown contracts before incremental
+  Phase 6–9 implementation.
+
 ## v1.0.0 - 2026-07-28
 
 - Freeze the Phase 0–5 API, Redis, telemetry, and shutdown contracts.
@@ -14,5 +23,5 @@
 - Validate with Go race/vet, CTest, ASan/UBSan, Redis integration tests, Docker
   Compose smoke, and the TCP protocol suite.
 
-Phase 6–9, including Prometheus and Kubernetes, are explicitly outside this
-release and are not required for v1.0.0.
+This tag remains the historical Phase 0–5 baseline. Phase 6–9 are delivered by
+the subsequent v2 roadmap and do not alter the contents of the v1.0.0 tag.
