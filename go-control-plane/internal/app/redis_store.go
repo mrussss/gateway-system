@@ -16,10 +16,13 @@ type redisStore struct {
 	client *redis.Client
 }
 
-func newRedisStore(addr string) *redisStore {
+func newRedisStore(addr string, registries ...*metricsRegistry) *redisStore {
 	client := redis.NewClient(&redis.Options{
 		Addr: addr,
 	})
+	if len(registries) > 0 && registries[0] != nil {
+		client.AddHook(redisMetricsHook{metrics: registries[0]})
+	}
 
 	return &redisStore{client: client}
 }

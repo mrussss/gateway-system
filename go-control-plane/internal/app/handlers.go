@@ -16,22 +16,30 @@ type application struct {
 	gatewayToken string
 	authFailures authFailurePolicy
 	authMetrics  *authMetrics
+	metrics      *metricsRegistry
 }
 
 func routesWithConfig(store Store, config applicationConfig) http.Handler {
+	metrics := newMetricsRegistry()
+	return routesWithConfigAndMetrics(store, config, metrics)
+}
+
+func routesWithConfigAndMetrics(store Store, config applicationConfig, metrics *metricsRegistry) http.Handler {
+	metrics.attachGatewayStore(store)
 	a := &application{
 		store:        store,
 		tokens:       newTokenService(config.tokenPepper),
 		adminToken:   config.adminToken,
 		gatewayToken: config.gatewayToken,
 		authFailures: authFailurePolicyFromEnv(),
-		authMetrics:  &authMetrics{},
+		authMetrics:  metrics.auth,
+		metrics:      metrics,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", a.handleHealth)
 	mux.HandleFunc("GET /health/live", a.handleHealth)
 	mux.HandleFunc("GET /health/ready", a.handleReady)
-	mux.HandleFunc("GET /metrics", a.handlePrometheusMetrics)
+	mux.Handle("GET /metrics", metrics.handler())
 	mux.Handle("POST /auth/check", a.requireGateway(http.HandlerFunc(a.handleAuthCheck)))
 	mux.Handle("POST /metrics/report", a.requireGateway(http.HandlerFunc(a.handleMetricsReport)))
 	mux.Handle("GET /gateway/status", a.requireAdmin(http.HandlerFunc(a.handleGatewayStatus)))
@@ -46,7 +54,7 @@ func routesWithConfig(store Store, config applicationConfig) http.Handler {
 	mux.Handle("POST /tokens/{client_id}/rotate", a.requireAdmin(http.HandlerFunc(a.handleTokensRotate)))
 	mux.Handle("GET /config", a.requireAdminOrGateway(http.HandlerFunc(a.handleConfigGet)))
 	mux.Handle("PUT /config", a.requireAdmin(http.HandlerFunc(a.handleConfigUpdate)))
-	return middleware(mux)
+	return middleware(mux, metrics)
 }
 
 func (a *application) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -159,8 +167,8 @@ func (a *application) handleMetricsReport(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if req.GatewayID == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "gateway_id is required")
+	if !validGatewayID(req.GatewayID) {
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "gateway_id is invalid")
 		return
 	}
 
@@ -220,8 +228,8 @@ func (a *application) handleClientsReport(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if req.GatewayID == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "gateway_id is required")
+	if !validGatewayID(req.GatewayID) {
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "gateway_id is invalid")
 		return
 	}
 
@@ -382,6 +390,10 @@ func (a *application) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *application) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
+	result := "invalid"
+	defer func() {
+		a.metrics.configUpdates.WithLabelValues(result).Inc()
+	}()
 	if r.Header.Get("If-Match") == "" {
 		writeAPIError(w, r, http.StatusPreconditionRequired, "PRECONDITION_REQUIRED", "If-Match is required")
 		return
@@ -403,13 +415,17 @@ func (a *application) handleConfigUpdate(w http.ResponseWriter, r *http.Request)
 
 	cfg, err := a.store.updateConfig(expected, req)
 	if errors.Is(err, errConfigConflict) {
+		result = "conflict"
+		a.metrics.configConflicts.Inc()
 		writeAPIError(w, r, http.StatusConflict, "CONFLICT", "config version conflict")
 		return
 	}
 	if err != nil {
+		result = "error"
 		writeStoreError(w, r)
 		return
 	}
+	result = "success"
 	w.Header().Set("ETag", `"`+strconv.FormatInt(cfg.Version, 10)+`"`)
 	writeJSON(w, http.StatusOK, cfg)
 }
