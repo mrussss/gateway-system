@@ -69,8 +69,8 @@ func TestRedisConfigCASContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.Version != 1 {
-		t.Fatalf("initial version %d", config.Version)
+	if config.Version != 1 || config.RequestQueueCapacityDisplay != 4096 {
+		t.Fatalf("unexpected initial config %+v", config)
 	}
 	if kind, _ := storage.client.Type(ctx, "config:active").Result(); kind != "hash" {
 		t.Fatalf("config type %q", kind)
@@ -95,7 +95,7 @@ func TestRedisConfigCASContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.Version != 2 || config.MaxConnectionsPerClient != 4 {
+	if config.Version != 2 || config.MaxConnectionsPerClient != 4 || config.RequestQueueCapacityDisplay != 4096 {
 		t.Fatalf("unexpected config %+v", config)
 	}
 }

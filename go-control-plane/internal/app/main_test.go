@@ -369,6 +369,7 @@ func TestConfigGetReturnsDefault(t *testing.T) {
 		MaxRequestsPerClientPerSecond: 100,
 		SlowClientOutputLimit:         8388608,
 		LogLevel:                      "INFO",
+		RequestQueueCapacityDisplay:   4096,
 	})
 	if resp.Header().Get("ETag") != `"1"` {
 		t.Fatalf("unexpected ETag %q", resp.Header().Get("ETag"))
@@ -397,6 +398,7 @@ func TestConfigUpdate(t *testing.T) {
 		MaxRequestsPerClientPerSecond: 50,
 		SlowClientOutputLimit:         8388608,
 		LogLevel:                      "DEBUG",
+		RequestQueueCapacityDisplay:   4096,
 	})
 
 	getReq := newTestRequest(http.MethodGet, "/config", nil)
@@ -410,6 +412,7 @@ func TestConfigUpdate(t *testing.T) {
 		MaxRequestsPerClientPerSecond: 50,
 		SlowClientOutputLimit:         8388608,
 		LogLevel:                      "DEBUG",
+		RequestQueueCapacityDisplay:   4096,
 	})
 }
 
@@ -547,6 +550,7 @@ func TestStoreDefaultConfigMatchesExpected(t *testing.T) {
 		MaxRequestsPerClientPerSecond: 100,
 		SlowClientOutputLimit:         8388608,
 		LogLevel:                      "INFO",
+		RequestQueueCapacityDisplay:   4096,
 	}
 	if got != want {
 		t.Fatalf("expected default config %+v, got %+v", want, got)
