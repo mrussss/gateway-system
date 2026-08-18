@@ -47,6 +47,19 @@ fails closed. It then unpauses Redis and verifies readiness, new AUTH, reporting
 and the previously active configuration version recover without rollback. Set
 `RECOVERY_KEEP_STACK=1` to retain the stack.
 
+## Kubernetes smoke and rolling update
+
+After `bash scripts/k8s_deploy.sh`, run `bash scripts/k8s_smoke.sh` and
+`bash scripts/k8s_rolling_update_test.sh`. The smoke test covers replica count,
+security context, protocol behavior, Prometheus, and Redis TTL. The rolling test
+keeps reconnecting ECHO traffic active while replacing both gateway pods,
+checks that old endpoint IPs stop listening, waits for rollout success, and
+requires DRAINING logs plus new-pod metrics. The client fails if its observed
+outage exceeds ten seconds.
+
+`python3 scripts/k8s_manifest_test.py` is the fast no-cluster contract check and
+runs on every push. It is not a substitute for the cluster tests.
+
 ## Failure evidence
 
 - Go `errorStore` tests model Redis/store failures.

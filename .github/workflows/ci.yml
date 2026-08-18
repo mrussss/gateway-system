@@ -104,3 +104,7 @@ jobs:
         run: bash -n scripts/*.sh
       - name: Check Python syntax
         run: python3 -m compileall -q scripts cpp-gateway/scripts cpp-gateway/tests
+      - name: Install manifest test dependency
+        run: python3 -m pip install PyYAML==6.0.2
+      - name: Check Kubernetes invariants
+        run: python3 scripts/k8s_manifest_test.py

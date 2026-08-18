@@ -39,7 +39,7 @@ be rerun in a Docker-enabled environment.
 | 1–5 | Implemented; retain and regression-test | Close only contract gaps found by tests, including the display-only request queue capacity field. |
 | 6 | Complete | Private registry, runtime/process, HTTP, Redis, AUTH/config, gateway snapshot metrics, expiry cleanup, and parser/cardinality tests are implemented. |
 | 7 | Implemented; runtime gate pending | Non-root/read-only images, Compose health dependencies, v2 smoke, Redis recovery, and real-Redis CI are present; Docker execution remains required in a Docker-enabled environment. |
-| 8 | Not started | Kubernetes manifests, probes, security contexts, PDBs, preStop drain, and rolling-update test. |
+| 8 | Implemented; cluster gate pending | Manifests, security/resources, probes, PDBs, drain budget, deploy/smoke scripts, and reconnecting rolling-update test are present; a real cluster run remains required. |
 | 9 | Not started | Reproducible performance/failure evidence, final documentation, release gates, and v2.0.0 release. |
 
 ## Fixed v2 scope
