@@ -38,7 +38,7 @@ be rerun in a Docker-enabled environment.
 | 0 | Complete | Final v2 API, Redis, metrics, shutdown, scope, and workflow contracts are frozen in `docs/`. |
 | 1–5 | Implemented; retain and regression-test | Close only contract gaps found by tests, including the display-only request queue capacity field. |
 | 6 | Complete | Private registry, runtime/process, HTTP, Redis, AUTH/config, gateway snapshot metrics, expiry cleanup, and parser/cardinality tests are implemented. |
-| 7 | Not complete | Non-root images, Compose health dependencies, v2 smoke/failure scripts, and integration CI. |
+| 7 | Implemented; runtime gate pending | Non-root/read-only images, Compose health dependencies, v2 smoke, Redis recovery, and real-Redis CI are present; Docker execution remains required in a Docker-enabled environment. |
 | 8 | Not started | Kubernetes manifests, probes, security contexts, PDBs, preStop drain, and rolling-update test. |
 | 9 | Not started | Reproducible performance/failure evidence, final documentation, release gates, and v2.0.0 release. |
 

@@ -10,7 +10,8 @@ This document states implemented behavior, including its limits.
 - Metrics/client report failure logs an error; the Gateway keeps running.
 - The control-plane view eventually marks the Gateway offline when its last report ages past the liveness window.
 
-There is no automatic fail-open AUTH path even though `fail_open` remains in the config schema.
+There is no automatic fail-open AUTH path. `fail_open` is not part of the v2
+runtime configuration schema.
 
 ## Missing production secrets
 
@@ -18,7 +19,7 @@ There is no automatic fail-open AUTH path even though `fail_open` remains in the
 
 ## Redis unavailable
 
-With `STORE_BACKEND=redis`, dependent Go handlers return store errors and AUTH returns HTTP 503 `AUTH_UNAVAILABLE`. Infrastructure failures do not increment the credential-failure counter. The Go process does not automatically swap to MemoryStore; recovery happens when later Redis calls succeed.
+With `STORE_BACKEND=redis`, dependent Go handlers return service errors and AUTH returns HTTP 503 `AUTH_UNAVAILABLE`. `/health/live` remains 200 while `/health/ready` returns 503. Infrastructure failures do not increment the credential-failure counter. The Go process does not automatically swap to MemoryStore; recovery happens when later Redis calls succeed.
 
 ## AUTH Queue full
 
@@ -34,7 +35,11 @@ The Worker increments `response_queue_rejected`, records the matching fd and con
 
 ## Slow client
 
-Per-connection pending output is capped at 8 MiB. Exceeding the cap closes that connection. During shutdown, a slow reader may retain pending output only until `SHUTDOWN_TIMEOUT_MS`; the remaining connection is then force-closed.
+Per-connection pending output is capped by the validated
+`slow_client_output_limit` runtime setting (8 MiB by default). Exceeding the
+active cap closes that connection. During shutdown, a slow reader may retain
+pending output only until `SHUTDOWN_TIMEOUT_MS`; the remaining connection is
+then force-closed.
 
 ## Control-plane HTTP errors
 

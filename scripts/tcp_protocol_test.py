@@ -27,7 +27,7 @@ STATS_RESP = 9
 AUTH = 10
 AUTH_RESP = 11
 MAX_BODY_SIZE = 4 * 1024 * 1024 + FIXED_BODY_SIZE
-ADMIN_TOKEN = os.environ.get("CONTROL_PLANE_ADMIN_TOKEN", "compose-admin-secret")
+ADMIN_TOKEN = os.environ.get("CONTROL_PLANE_ADMIN_TOKEN", "local-admin-change-me")
 
 
 def admin_headers() -> dict[str, str]:
