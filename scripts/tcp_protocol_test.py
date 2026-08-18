@@ -28,10 +28,15 @@ AUTH = 10
 AUTH_RESP = 11
 MAX_BODY_SIZE = 4 * 1024 * 1024 + FIXED_BODY_SIZE
 ADMIN_TOKEN = os.environ.get("CONTROL_PLANE_ADMIN_TOKEN", "local-admin-change-me")
+RUN_ID = os.environ.get("TCP_TEST_RUN_ID", f"{int(time.time())}-{os.getpid()}")
 
 
 def admin_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {ADMIN_TOKEN}"}
+
+
+def unique_client_id(prefix: str) -> str:
+    return f"{prefix}-{RUN_ID}"
 
 
 @dataclass
@@ -99,7 +104,7 @@ def authenticate(
     client_id: str | None = None,
     token: str = "test-token",
 ) -> str:
-    resolved_client_id = client_id or f"tcp-test-{request_id}"
+    resolved_client_id = client_id or unique_client_id(f"tcp-test-{request_id}")
     token = register_token(control_plane_url, resolved_client_id)
     payload = json.dumps({
         "client_id": resolved_client_id,
@@ -390,7 +395,7 @@ def test_auth_duplicate(host: str, port: int, control_plane_url: str) -> None:
 
 
 def test_clients_reports_authenticated_id(host: str, port: int, control_plane_url: str) -> None:
-    client_id = "tcp-test-real-client-id"
+    client_id = unique_client_id("tcp-test-real-client-id")
     with connect(host, port) as sock:
         authenticate(sock, control_plane_url, 4105, client_id=client_id)
         deadline = time.time() + 8.0
@@ -455,9 +460,10 @@ def test_concurrent_auth_echo(host: str, port: int, control_plane_url: str) -> N
 
 
 def test_auth_pending_second_request_closes(host: str, port: int, control_plane_url: str) -> None:
-    pending_token = register_token(control_plane_url, "tcp-test-pending-close")
+    client_id = unique_client_id("tcp-test-pending-close")
+    pending_token = register_token(control_plane_url, client_id)
     payload = json.dumps({
-        "client_id": "tcp-test-pending-close",
+        "client_id": client_id,
         "token": pending_token,
     }).encode("utf-8")
     with connect(host, port) as sock:
@@ -468,7 +474,7 @@ def test_auth_pending_second_request_closes(host: str, port: int, control_plane_
 
 
 def test_clients_remove_disconnected_client(host: str, port: int, control_plane_url: str) -> None:
-    client_id = "tcp-test-disconnect-cleanup"
+    client_id = unique_client_id("tcp-test-disconnect-cleanup")
     with connect(host, port) as sock:
         authenticate(sock, control_plane_url, 5501, client_id=client_id)
         deadline = time.time() + 12.0
@@ -502,7 +508,7 @@ def test_max_connections_per_client(host: str, port: int, control_plane_url: str
         })
         wait_for_config_pull()
 
-        client_id = "tcp-test-max-connections"
+        client_id = unique_client_id("tcp-test-max-connections")
         token = "test-token"
         first = connect(host, port)
         try:
@@ -542,7 +548,7 @@ def test_rate_limit_per_client(host: str, port: int, control_plane_url: str) -> 
         wait_for_config_pull()
 
         with connect(host, port) as sock:
-            authenticate(sock, control_plane_url, 5701, client_id="tcp-test-rate-limit")
+            authenticate(sock, control_plane_url, 5701, client_id=unique_client_id("tcp-test-rate-limit"))
             sock.sendall(
                 packet(PING, 5702) +
                 packet(PING, 5703) +
