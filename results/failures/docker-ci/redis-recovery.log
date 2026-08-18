@@ -1,0 +1,163 @@
+#1 [internal] load local bake definitions
+#1 reading from stdin 824B done
+#1 DONE 0.0s
+
+#2 [go-control-plane internal] load build definition from Dockerfile
+#2 transferring dockerfile: 708B done
+#2 DONE 0.0s
+
+#3 [cpp-gateway internal] load build definition from Dockerfile
+#3 transferring dockerfile: 822B done
+#3 DONE 0.0s
+
+#4 [cpp-gateway internal] load metadata for docker.io/library/ubuntu:22.04
+#4 DONE 0.3s
+
+#5 [go-control-plane internal] load metadata for docker.io/library/golang:1.22-bookworm
+#5 DONE 0.3s
+
+#6 [cpp-gateway internal] load .dockerignore
+#6 transferring context: 2B done
+#6 DONE 0.0s
+
+#7 [go-control-plane internal] load metadata for docker.io/library/debian:bookworm-slim
+#7 DONE 0.3s
+
+#8 [cpp-gateway build 1/7] FROM docker.io/library/ubuntu:22.04@sha256:2edbbc5dc405e9612ba3584ce95480277e3eb374407b5505fe26f17df77c7dbc
+#8 resolve docker.io/library/ubuntu:22.04@sha256:2edbbc5dc405e9612ba3584ce95480277e3eb374407b5505fe26f17df77c7dbc done
+#8 DONE 0.0s
+
+#9 [cpp-gateway internal] load build context
+#9 transferring context: 2.25kB done
+#9 DONE 0.0s
+
+#10 [cpp-gateway build 6/7] COPY src ./src
+#10 CACHED
+
+#11 [cpp-gateway build 5/7] COPY include ./include
+#11 CACHED
+
+#12 [cpp-gateway build 7/7] RUN cmake -S . -B build         -DCMAKE_BUILD_TYPE=Release         -DBUILD_TESTING=OFF         -DGATEWAY_WARNINGS_AS_ERRORS=ON     && cmake --build build --parallel
+#12 CACHED
+
+#13 [cpp-gateway build 2/7] RUN apt-get update     && apt-get install -y --no-install-recommends cmake g++ make ca-certificates     && rm -rf /var/lib/apt/lists/*
+#13 CACHED
+
+#14 [cpp-gateway stage-1 2/4] RUN groupadd --system --gid 10001 gateway     && useradd --system --uid 10001 --gid gateway --home-dir /nonexistent --shell /usr/sbin/nologin gateway
+#14 CACHED
+
+#15 [cpp-gateway build 4/7] COPY CMakeLists.txt ./
+#15 CACHED
+
+#16 [cpp-gateway build 3/7] WORKDIR /app
+#16 CACHED
+
+#17 [cpp-gateway stage-1 3/4] WORKDIR /app
+#17 CACHED
+
+#18 [cpp-gateway stage-1 4/4] COPY --from=build --chown=gateway:gateway /app/build/message_server /app/message_server
+#18 CACHED
+
+#19 [go-control-plane internal] load .dockerignore
+#19 transferring context: 2B done
+#19 DONE 0.0s
+
+#20 [go-control-plane build 1/6] FROM docker.io/library/golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253
+#20 resolve docker.io/library/golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253 0.0s done
+#20 DONE 0.0s
+
+#21 [go-control-plane stage-1 1/4] FROM docker.io/library/debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
+#21 resolve docker.io/library/debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 0.0s done
+#21 DONE 0.0s
+
+#22 [go-control-plane internal] load build context
+#22 transferring context: 1.35kB done
+#22 DONE 0.0s
+
+#23 [go-control-plane build 4/6] RUN go mod download
+#23 CACHED
+
+#24 [go-control-plane stage-1 3/4] WORKDIR /app
+#24 CACHED
+
+#25 [go-control-plane build 2/6] WORKDIR /app
+#25 CACHED
+
+#26 [go-control-plane build 6/6] RUN go test ./... && go build -o /out/control-plane ./cmd/control-plane
+#26 CACHED
+
+#27 [go-control-plane build 5/6] COPY . ./
+#27 CACHED
+
+#28 [go-control-plane stage-1 2/4] RUN apt-get update     && apt-get install -y --no-install-recommends ca-certificates curl     && rm -rf /var/lib/apt/lists/*     && groupadd --system --gid 10001 control-plane     && useradd --system --uid 10001 --gid control-plane --home-dir /nonexistent --shell /usr/sbin/nologin control-plane
+#28 CACHED
+
+#29 [go-control-plane build 3/6] COPY go.mod go.sum ./
+#29 CACHED
+
+#30 [go-control-plane stage-1 4/4] COPY --from=build --chown=control-plane:control-plane /out/control-plane /app/control-plane
+#30 CACHED
+
+#31 [go-control-plane] exporting to docker image format
+#31 exporting layers done
+#31 exporting manifest sha256:b1b6f93815742c3e0d93e13c4f489503bd4c914ee0c7fd364d2e7fadaa9f7269 done
+#31 exporting config sha256:af6743c5f3fd46ee0e46ec012a2bd9fe12be738e64063023f54821dd60b001d6 done
+#31 sending tarball
+#31 sending tarball 0.4s done
+#31 DONE 0.4s
+
+#32 [cpp-gateway] exporting to docker image format
+#32 exporting layers done
+#32 exporting manifest sha256:ec5d21d61d1ccc0e3c7f202907f6b6f4de09b3d1d377c34bb33552a9d22d1a3d done
+#32 exporting config sha256:6366905c95d0de35038ae7dbbbe6596faf1aa93f480b3b072467e88542e319c7 done
+#32 sending tarball 0.4s done
+#32 DONE 0.4s
+
+#33 importing to docker
+#33 DONE 0.0s
+
+#34 [cpp-gateway] resolving provenance for metadata file
+#34 DONE 0.0s
+
+#35 importing to docker
+#35 DONE 0.0s
+
+#36 [go-control-plane] resolving provenance for metadata file
+#36 DONE 0.0s
+ go-control-plane  Built
+ cpp-gateway  Built
+ Network gateway-system_default  Creating
+ Network gateway-system_default  Created
+ Container gateway-system-redis-1  Creating
+ Container gateway-system-redis-1  Created
+ Container gateway-system-go-control-plane-1  Creating
+ Container gateway-system-go-control-plane-1  Created
+ Container gateway-system-cpp-gateway-1  Creating
+ Container gateway-system-cpp-gateway-1  Created
+ Container gateway-system-redis-1  Starting
+ Container gateway-system-redis-1  Started
+ Container gateway-system-redis-1  Waiting
+ Container gateway-system-redis-1  Healthy
+ Container gateway-system-go-control-plane-1  Starting
+ Container gateway-system-go-control-plane-1  Started
+ Container gateway-system-go-control-plane-1  Waiting
+ Container gateway-system-go-control-plane-1  Healthy
+ Container gateway-system-cpp-gateway-1  Starting
+ Container gateway-system-cpp-gateway-1  Started
+ Container gateway-system-redis-1  Paused
+ Container gateway-system-redis-1  Unpaused
+[redis-recovery] PASS live/ready, fail-closed AUTH, established ECHO, recovery, config retention
+ Container gateway-system-cpp-gateway-1  Stopping
+ Container gateway-system-cpp-gateway-1  Stopped
+ Container gateway-system-cpp-gateway-1  Removing
+ Container gateway-system-cpp-gateway-1  Removed
+ Container gateway-system-go-control-plane-1  Stopping
+ Container gateway-system-go-control-plane-1  Stopped
+ Container gateway-system-go-control-plane-1  Removing
+ Container gateway-system-go-control-plane-1  Removed
+ Container gateway-system-redis-1  Stopping
+ Container gateway-system-redis-1  Stopped
+ Container gateway-system-redis-1  Removing
+ Container gateway-system-redis-1  Removed
+ Network gateway-system_default  Removing
+ Network gateway-system_default  Removed

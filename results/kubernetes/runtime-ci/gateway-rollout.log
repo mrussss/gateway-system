@@ -1,0 +1,25 @@
+[pod/gateway-c77589c56-jwk46/gateway] [ERROR] [Thread 13803551291819803794] control plane request failed: operation=config category=connect status=0
+[pod/gateway-c77589c56-jwk46/gateway] [ERROR] [Thread 13803551291819803794] runtime config fetch failed; retaining current snapshot
+[pod/gateway-c77589c56-jwk46/gateway] [ERROR] [Thread 13878998138956007495] control plane request failed: operation=metrics_report category=connect status=0
+[pod/gateway-c77589c56-jwk46/gateway] [ERROR] [Thread 13878998138956007495] control plane request failed: operation=clients_report category=connect status=0
+[pod/gateway-c77589c56-h5cjx/gateway] [ERROR] [Thread 16482331890784584511] control plane request failed: operation=metrics_report category=connect status=0
+[pod/gateway-c77589c56-h5cjx/gateway] [ERROR] [Thread 17031372384524736099] control plane request failed: operation=config category=connect status=0
+[pod/gateway-c77589c56-h5cjx/gateway] [ERROR] [Thread 17031372384524736099] runtime config fetch failed; retaining current snapshot
+[pod/gateway-c77589c56-h5cjx/gateway] [ERROR] [Thread 16482331890784584511] control plane request failed: operation=clients_report category=connect status=0
+[pod/gateway-c77589c56-h5cjx/gateway] [INFO] [Thread 9914691031272713156] gateway started: port=9000 workers=4 auth_workers=2 request_capacity=4096 auth_capacity=32 response_capacity=4096
+[pod/gateway-c77589c56-h5cjx/gateway] [2026-08-18 16:37:19] fd=9 request_id=1004 payload={"level": "INFO", "service": "tcp-protocol-test", "message": "log push smoke test"}
+[pod/gateway-c77589c56-h5cjx/gateway] [INFO] [Thread 17031372384524736099] runtime config updated: version=1->2
+[pod/gateway-c77589c56-h5cjx/gateway] [INFO] [Thread 17031372384524736099] runtime config updated: version=2->3
+[pod/gateway-c77589c56-h5cjx/gateway] [INFO] [Thread 17031372384524736099] runtime config updated: version=3->4
+[pod/gateway-c77589c56-h5cjx/gateway] [INFO] [Thread 17031372384524736099] runtime config updated: version=4->5
+[pod/gateway-c77589c56-h5cjx/gateway] [INFO] [Thread 9914691031272713156] graceful shutdown started: deadline_ms=20000 queued_requests=0 queued_auth=0
+[pod/gateway-c77589c56-h5cjx/gateway] [INFO] [Thread 9914691031272713156] graceful shutdown drain completed
+[pod/gateway-c77589c56-h5cjx/gateway] [INFO] [Thread 9914691031272713156] gateway shutdown complete
+[pod/gateway-c77589c56-jwk46/gateway] [INFO] [Thread 7799811090083226823] gateway started: port=9000 workers=4 auth_workers=2 request_capacity=4096 auth_capacity=32 response_capacity=4096
+[pod/gateway-c77589c56-jwk46/gateway] [INFO] [Thread 13803551291819803794] runtime config updated: version=1->2
+[pod/gateway-c77589c56-jwk46/gateway] [INFO] [Thread 13803551291819803794] runtime config updated: version=2->3
+[pod/gateway-c77589c56-jwk46/gateway] [INFO] [Thread 13803551291819803794] runtime config updated: version=3->4
+[pod/gateway-c77589c56-jwk46/gateway] [INFO] [Thread 13803551291819803794] runtime config updated: version=4->5
+[pod/gateway-c77589c56-jwk46/gateway] [INFO] [Thread 7799811090083226823] graceful shutdown started: deadline_ms=20000 queued_requests=0 queued_auth=0
+[pod/gateway-c77589c56-jwk46/gateway] [INFO] [Thread 7799811090083226823] graceful shutdown drain completed
+[pod/gateway-c77589c56-jwk46/gateway] [INFO] [Thread 7799811090083226823] gateway shutdown complete

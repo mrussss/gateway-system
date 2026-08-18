@@ -1,6 +1,6 @@
 # Changelog
 
-## v2.0.0 - Unreleased
+## v2.0.0 - 2026-08-19
 
 - Continue from the verified v1 Phase 0–5 implementation rather than replacing
   the TCP, HTTP, token, Redis, configuration, or telemetry foundations.
@@ -22,8 +22,9 @@
 - Add deterministic Request/Response Queue saturation, exact fd-reuse, and Go
   in-flight shutdown tests plus a required-fault evidence matrix.
 - Add a pinned Kind runtime-evidence workflow, documentation link checker, and
-  staged full release gate. Docker/Kubernetes artifacts and the `v2.0.0` tag
-  remain pending until those external gates pass.
+  staged full release gate. Docker Smoke/Redis recovery, the 18-scenario
+  container benchmark, and pinned Kind rolling drain passed; raw artifacts and
+  limitations are committed under `results/`.
 
 ## v1.0.0 - 2026-07-28
 

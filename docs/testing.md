@@ -80,5 +80,8 @@ runs on every push. It is not a substitute for the cluster tests.
 - the Compose Redis recovery test proves live/ready separation and automatic
   recovery against a real paused Redis process.
 
-The complete required fault mapping and local/pending status are recorded in
-the [fault-injection report](../results/failures/20260819-local.md).
+The complete required fault mapping is recorded in the
+[local fault-injection report](../results/failures/20260819-local.md); its
+Docker/Redis and Kubernetes rows were subsequently closed by the
+[final CI release report](../results/release/20260819-ci.md), with raw artifacts
+retained beside that report.

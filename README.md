@@ -271,9 +271,10 @@ demonstration with persistent storage, not a high-availability Redis design.
 The fixed v2 system consists of the C++ data plane, Go standard-library control
 plane, Redis, Prometheus, and Kubernetes rolling updates with graceful drain.
 Phases 1–9 are implemented on the incremental v1 foundation and remain under
-regression coverage. Local C++/Go/static evidence is recorded in `results/`.
-Docker and real Kubernetes runtime gates must still produce successful raw logs
-in a capable environment before the repository may be tagged `v2.0.0`.
+regression coverage. `results/` contains local C++/Go/sanitizer evidence plus
+successful Docker/Redis, 18-scenario container benchmark, and pinned Kind
+rolling-update artifacts from GitHub Actions. The release still makes no
+production-capacity or high-availability claim.
 
 The project intentionally does not add Kafka, a SQL database, Gin/GORM, an HTTP
 reverse proxy, TLS, multi-Reactor sharding, service discovery, service mesh, an

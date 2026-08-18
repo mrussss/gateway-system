@@ -1,0 +1,9 @@
+Forwarding from 127.0.0.1:19000 -> 9000
+Forwarding from [::1]:19000 -> 9000
+Handling connection for 19000
+Handling connection for 19000
+E0818 16:32:40.978774   23473 portforward.go:424] "Unhandled Error" err="an error occurred forwarding 19000 -> 9000: error forwarding port 9000 to pod 3d0636ee7ba01da479426b98c51f16cdce2f6be6587524096c88f627b83669a8, uid : network namespace for sandbox \"3d0636ee7ba01da479426b98c51f16cdce2f6be6587524096c88f627b83669a8\" is closed"
+error: lost connection to pod
+Forwarding from 127.0.0.1:19000 -> 9000
+Forwarding from [::1]:19000 -> 9000
+Handling connection for 19000

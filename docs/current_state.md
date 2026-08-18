@@ -38,9 +38,9 @@ be rerun in a Docker-enabled environment.
 | 0 | Complete | Final v2 API, Redis, metrics, shutdown, scope, and workflow contracts are frozen in `docs/`. |
 | 1–5 | Implemented; retain and regression-test | Close only contract gaps found by tests, including the display-only request queue capacity field. |
 | 6 | Complete | Private registry, runtime/process, HTTP, Redis, AUTH/config, gateway snapshot metrics, expiry cleanup, and parser/cardinality tests are implemented. |
-| 7 | Implemented; runtime gate pending | Non-root/read-only images, Compose health dependencies, v2 smoke, Redis recovery, and real-Redis CI are present; Docker execution remains required in a Docker-enabled environment. |
-| 8 | Implemented; cluster gate pending | Manifests, security/resources, probes, PDBs, drain budget, deploy/smoke scripts, and reconnecting rolling-update test are present; a real cluster run remains required. |
-| 9 | Implemented; external release gates pending | Authenticated benchmark matrix, local raw Release evidence, complete fault map, exact queue/fd/SIGTERM tests, final docs, link checker, and staged release gate are present. Docker/Redis and Kubernetes runtime artifacts are still required before `v2.0.0`. |
+| 7 | Complete | Non-root/read-only images, health-gated Compose, v2 smoke, real Redis integration, and pause/recovery passed in GitHub Actions run `32161089687`; raw logs are committed. |
+| 8 | Complete | Hardened two-replica manifests, static contracts, full protocol smoke, TTL/metrics, and reconnecting rolling drain passed in pinned Kind run `32161089464`; maximum client outage was 0.609 s. |
+| 9 | Complete | Local/sanitizer/fault evidence, 18-scenario Docker/Redis benchmark run `32160645066`, final docs/link checks, and all release artifacts are committed. |
 
 ## Current release evidence
 
@@ -51,12 +51,12 @@ shutdown/Store Close case. The manifest validator passed all 11 resource
 contracts, and the local Release/MemoryStore benchmark completed seven raw
 scenarios through 500 clients without a request failure.
 
-The evidence and its limits are under `results/`. The final local environment
-had Docker and kubectl clients but no Docker daemon socket or Kubernetes
-context, so Docker smoke/Redis recovery and real Kubernetes rolling-update
-results remain honest release blockers. The manual
-workflows and `scripts/release_gate.sh --full` execute those gates elsewhere;
-the repository must not be tagged until successful raw artifacts are committed.
+The evidence and its limits are under `results/`. The local WSL environment had
+no Docker daemon socket or Kubernetes context, so the external gates ran on
+GitHub-hosted Linux: Docker Smoke/Redis recovery, the full container benchmark
+matrix, and pinned Kind rolling drain all passed and their raw artifacts are
+committed. Manual workflows and `scripts/release_gate.sh --full` preserve the
+same reproducible gates for future release candidates.
 
 ## Fixed v2 scope
 

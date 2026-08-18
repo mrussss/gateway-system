@@ -1,6 +1,15 @@
 # Kubernetes runtime evidence
 
-## Local WSL status — pending
+## Final GitHub Actions result — passed
+
+Pinned Kind v0.32.0/Kubernetes v1.35.5 run `32161089464` passed deployment,
+two-replica security/protocol/Prometheus/TTL smoke, and rolling drain. Raw logs
+and the report are in [`runtime-ci/`](runtime-ci/). The reconnecting client
+observed a maximum outage of 0.609 seconds against the 10-second acceptance
+bound. [`runtime-ci-preflight/`](runtime-ci-preflight/) retains the earlier
+failure that led to multi-Gateway snapshot and `pipefail` corrections.
+
+## Historical local WSL status — infrastructure unavailable
 
 On 2026-08-19 the manifest contract passed with:
 
@@ -33,5 +42,5 @@ v0.32.0/Kubernetes v1.35.5 cluster, runs the same deploy/smoke/rolling scripts,
 and uploads environment, command, reconnecting-client, forwarding, and cluster
 logs as the `kubernetes-runtime-evidence` artifact. The node image is pinned by
 digest so a rerun does not silently change Kubernetes bits. A successful
-artifact still needs to be copied into this directory before release so the tag
-is self-contained.
+artifact is committed under `runtime-ci/`, making the release evidence
+self-contained.

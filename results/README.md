@@ -11,9 +11,8 @@ pending gate; a static manifest check is never presented as a cluster run.
   cluster capture.
 - `benchmark/`: raw benchmark JSON plus a human-readable run report.
 - `failures/`: fault-injection matrix mapped to executable tests and evidence.
-- `kubernetes/`: cluster smoke and rolling-update reports. The local report is
-  pending because this WSL environment has no configured cluster or enabled
-  Docker daemon.
+- `kubernetes/`: the local environment limitation, a retained failed preflight,
+  and the final passing pinned Kind smoke/rolling-update artifact.
 - `release/`: complete gate commands, raw outcome summaries, blockers, and the
   explicit tag decision.
 

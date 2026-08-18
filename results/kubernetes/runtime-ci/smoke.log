@@ -1,0 +1,26 @@
+partitioned roll out complete: 1 new pods have been updated...
+deployment "control-plane" successfully rolled out
+deployment "gateway" successfully rolled out
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Couldn't connect to server
+[tcp] PASS ping
+[tcp] PASS echo
+[tcp] PASS stats
+[tcp] PASS log_push
+[tcp] PASS half_packet
+[tcp] PASS sticky_packet
+[tcp] PASS invalid_length
+[tcp] PASS auth_required
+[tcp] PASS auth_invalid_json
+[tcp] PASS auth_missing_fields
+[tcp] PASS auth_invalid_field_types
+[tcp] PASS auth_duplicate
+[tcp] PASS clients_reports_authenticated_id
+[tcp] PASS clients_excludes_unauthenticated
+[tcp] PASS repeated_auth_ping_close
+[tcp] PASS concurrent_auth_echo
+[tcp] PASS auth_pending_second_request_closes
+[tcp] PASS clients_remove_disconnected_client
+[tcp] PASS max_connections_per_client
+[tcp] PASS max_requests_per_client_per_second
+[tcp] PASS all protocol checks
+[k8s-smoke] PASS two replicas, security context, protocol, Prometheus, and Redis TTL

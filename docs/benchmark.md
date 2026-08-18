@@ -72,7 +72,8 @@ The historical engineering result remains removal of the deterministic roughly
 
 These reference runs use loopback, one shared WSL machine, no TLS, a Python
 client, and MemoryStore. Redis observations are zero because Redis was not the
-active backend. Docker was unavailable locally, so the Worker/Queue container
-matrix remains a release gate rather than a claimed result. Re-run on the
-target environment and retain the generated raw files before making capacity or
-SLO statements.
+active backend. The separate [Docker/Redis matrix](../results/benchmark/container-ci/README.md)
+records 18 Release-container scenarios across Workers, Queue capacities,
+payloads, 1/10/100/500 clients, slow readers, CPU/RSS, rejection counters, AUTH,
+and Redis latency. Both remain comparison evidence rather than an SLO. Re-run on
+target hardware before making capacity claims.
