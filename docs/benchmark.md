@@ -1,52 +1,79 @@
 # Benchmark
 
-`scripts/benchmark_tcp.py` reports success/failure, QPS, average, P50/P95/P99/Max, optional gateway CPU/RSS, and Request/Response Queue telemetry.
+`scripts/benchmark_tcp.py` exercises the current v2 token and AUTH contract. It
+creates a one-time token for every client, authenticates one persistent TCP
+connection per Python thread, and writes structured JSON containing raw
+per-client latency samples and aggregate evidence.
 
-## Modes
+## Measurements and modes
 
-- `--mode steady`: register tokens, connect, and authenticate all clients before starting the timer. This isolates the authenticated TCP data path.
-- `--mode full`: include token registration, TCP connect, and AUTH in total elapsed time. Per-request latency still measures the selected business request.
+Every run records success/failure, QPS, request average/P50/P95/P99/Max, AUTH
+latency, setup latency, payload, client count, slow-reader ratio, build mode,
+Worker/Queue settings, and Gateway STATS before/after. With `--gateway-pid`, it
+also samples local Linux CPU and RSS. The control-plane Prometheus histogram is
+sampled before and after the workload to report benchmark-interval Redis
+operation count and mean latency.
+
+- `--mode steady` prepares and authenticates all clients before the timer. It
+  isolates the authenticated TCP request/response path.
+- `--mode full` includes token registration, TCP connect, and AUTH in elapsed
+  throughput. Per-request latency still measures only the selected TCP request.
 
 Example:
 
 ```bash
 python3 scripts/benchmark_tcp.py \
   --mode steady \
-  --build-mode Release \
-  --clients 10 \
-  --requests-per-client 100 \
-  --message ping \
-  --gateway-pid "$(pgrep -n -x message_server)"
+  --build-mode Release-local \
+  --clients 100 \
+  --requests-per-client 50 \
+  --payload-size 4096 \
+  --gateway-pid "$(pgrep -n -x message_server)" \
+  --worker-count 4 \
+  --request-queue-capacity 4096 \
+  --response-queue-capacity 4096 \
+  --output results/benchmark/manual.json
 ```
 
-`--gateway-pid` works only when the gateway is a local Linux process. It samples `/proc`; omit it for Docker or remote targets.
+The complete Docker/Redis matrix is reproducible with:
 
-## Eventfd result
-
-Before this change, the Reactor called `epoll_wait(..., 100)` and drained the Response Queue only after epoll returned. The historical one-connection average was approximately 100ms. The current Worker path performs:
-
-```text
-successful response_queue.push
-  → eventfd write
-  → epoll_wait returns immediately
-  → eventfd read until EAGAIN
-  → Response Queue drain
+```bash
+scripts/benchmark_matrix.sh
 ```
 
-Reference runs on 2026-07-22 used a local Release build, the in-memory Go control plane, ping requests, 4 workers, and queue capacities of 8192:
+It builds Release containers and compares one Worker with 64-slot queues to
+four Workers with 4096-slot queues for 1/10/100/500 clients, 128/4096-byte
+payloads, and a 10% slow-reader case. Environment variables documented by
+`--help` and in the script can shorten or retain a run.
 
-| Clients × requests | Success | QPS | Avg | P50 | P95 | P99 | Max | Gateway CPU | Peak RSS |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 × 100 | 100 | 2947.57 | 0.33ms | 0.28ms | 0.60ms | 0.82ms | 0.93ms | 29.48% | 3584 KiB |
-| 10 × 100 | 1000 | 3699.42 | 2.64ms | 2.47ms | 4.77ms | 5.90ms | 7.98ms | 33.29% | 3840 KiB |
-| 100 × 100 | 10000 | 4459.63 | 21.78ms | 20.54ms | 39.57ms | 49.77ms | 71.57ms | 32.56% | 3840 KiB |
+## Current local reference
 
-No Request/Response Queue rejection occurred. Process-lifetime observed queue peaks were 1 at one client and 5 at 10/100 clients.
+The 2026-08-19 Release/MemoryStore loopback run completed all seven scenarios
+without a failed request. Selected steady-state results were:
 
-A 10-client × 20-request full-path Echo run completed 200/200 requests at 2513.29 QPS; request P50/P95/P99 were 2.57/5.11/6.91ms. Full-path QPS is not directly comparable with steady-state QPS because it includes HTTP token registration and AUTH setup.
+| Clients × requests | Payload | Slow | Success | QPS | P50 | P95 | P99 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 × 100 | 128 B | 0% | 100/100 | 5201.56 | 0.18 ms | 0.26 ms | 0.30 ms |
+| 10 × 100 | 128 B | 0% | 1000/1000 | 7198.55 | 1.31 ms | 2.23 ms | 2.77 ms |
+| 100 × 50 | 128 B | 0% | 5000/5000 | 6448.45 | 14.41 ms | 26.00 ms | 31.96 ms |
+| 500 × 20 | 128 B | 0% | 10000/10000 | 4903.89 | 15.77 ms | 33.79 ms | 49.44 ms |
+| 100 × 20 | 4096 B | 0% | 2000/2000 | 5825.65 | 14.61 ms | 29.92 ms | 38.63 ms |
+| 100 × 10 | 4096 B | 10% | 1000/1000 | 1764.04 | 15.40 ms | 50.36 ms | 68.90 ms |
+
+No queue rejection occurred; process-lifetime peaks reached 7 Request and 10
+Response entries. The exact environment, commands, CPU/RSS/AUTH values, raw
+JSON, and limitations are in the [run report](../results/benchmark/local-release/README.md).
 
 ## Interpretation and limits
 
-The important result is removal of the deterministic ~100ms low-load wait, not an absolute QPS claim. These runs use loopback, a short request/response pattern, one machine, and no TLS. Python client scheduling affects higher-concurrency percentiles. Re-run on the target machine and record CPU model, kernel, compiler, build flags, payload, process placement, and control-plane backend before publishing other numbers.
+The historical engineering result remains removal of the deterministic roughly
+100 ms response wait: successful Worker pushes now notify eventfd and wake
+`epoll_wait` immediately. Absolute QPS is not a capacity guarantee.
 
-Useful scenarios are 1/10/100/500 clients, slow readers, and deliberately small queue capacities. Overload tests should report rejection counters rather than hiding failed requests.
+These reference runs use loopback, one shared WSL machine, no TLS, a Python
+client, and MemoryStore. Redis observations are zero because Redis was not the
+active backend. The separate [Docker/Redis matrix](../results/benchmark/container-ci/README.md)
+records 18 Release-container scenarios across Workers, Queue capacities,
+payloads, 1/10/100/500 clients, slow readers, CPU/RSS, rejection counters, AUTH,
+and Redis latency. Both remain comparison evidence rather than an SLO. Re-run on
+target hardware before making capacity claims.

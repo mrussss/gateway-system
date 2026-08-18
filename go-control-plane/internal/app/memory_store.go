@@ -231,6 +231,7 @@ func (s *memoryStore) updateConfig(expectedVersion int64, req configUpdateReques
 		MaxRequestsPerClientPerSecond: req.MaxRequestsPerClientPerSecond,
 		SlowClientOutputLimit:         req.SlowClientOutputLimit,
 		LogLevel:                      strings.ToUpper(req.LogLevel),
+		RequestQueueCapacityDisplay:   s.config.RequestQueueCapacityDisplay,
 	}
 	return s.config, nil
 }

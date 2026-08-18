@@ -18,6 +18,8 @@ bool parseRuntimeConfig(const std::string &json_body, RuntimeConfig &config)
             json.at("max_requests_per_client_per_second").get<int>();
         parsed.slow_client_output_limit = json.at("slow_client_output_limit").get<size_t>();
         parsed.log_level = json.at("log_level").get<std::string>();
+        parsed.request_queue_capacity_display =
+            json.at("request_queue_capacity_display").get<size_t>();
 
         if (parsed.version <= 0 || parsed.max_payload_size < 10 ||
             parsed.max_payload_size > static_cast<int>(MAX_PAYLOAD_SIZE + 10) ||
@@ -25,6 +27,8 @@ bool parseRuntimeConfig(const std::string &json_body, RuntimeConfig &config)
             parsed.max_requests_per_client_per_second <= 0 ||
             parsed.slow_client_output_limit < static_cast<size_t>(parsed.max_payload_size) ||
             parsed.slow_client_output_limit > 64 * 1024 * 1024 ||
+            parsed.request_queue_capacity_display == 0 ||
+            parsed.request_queue_capacity_display > 65536 ||
             (parsed.log_level != "DEBUG" && parsed.log_level != "INFO" &&
              parsed.log_level != "WARN" && parsed.log_level != "ERROR"))
         {

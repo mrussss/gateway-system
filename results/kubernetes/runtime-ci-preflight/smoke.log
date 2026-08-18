@@ -1,0 +1,41 @@
+partitioned roll out complete: 1 new pods have been updated...
+deployment "control-plane" successfully rolled out
+deployment "gateway" successfully rolled out
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Couldn't connect to server
+[tcp] PASS ping
+[tcp] PASS echo
+[tcp] PASS stats
+[tcp] PASS log_push
+[tcp] PASS half_packet
+[tcp] PASS sticky_packet
+[tcp] PASS invalid_length
+[tcp] PASS auth_required
+[tcp] PASS auth_invalid_json
+[tcp] PASS auth_missing_fields
+[tcp] PASS auth_invalid_field_types
+[tcp] PASS auth_duplicate
+Traceback (most recent call last):
+  File "/home/runner/work/gateway-system/gateway-system/scripts/tcp_protocol_test.py", line 618, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/home/runner/work/gateway-system/gateway-system/scripts/tcp_protocol_test.py", line 604, in main
+    test_clients_reports_authenticated_id(args.host, args.port, args.control_plane_url)
+  File "/home/runner/work/gateway-system/gateway-system/scripts/tcp_protocol_test.py", line 409, in test_clients_reports_authenticated_id
+    raise AssertionError(f"/clients did not include authenticated client_id={client_id}")
+AssertionError: /clients did not include authenticated client_id=tcp-test-real-client-id-1787070731-23170
+NAME                             READY   STATUS    RESTARTS   AGE   IP            NODE                       NOMINATED NODE   READINESS GATES
+control-plane-5c6dd5bdb9-mlb64   1/1     Running   0          25s   10.244.0.7    gateway-ci-control-plane   <none>           <none>
+control-plane-5c6dd5bdb9-vlhwm   1/1     Running   0          25s   10.244.0.8    gateway-ci-control-plane   <none>           <none>
+gateway-c77589c56-2w8nz          1/1     Running   0          25s   10.244.0.10   gateway-ci-control-plane   <none>           <none>
+gateway-c77589c56-949gw          1/1     Running   0          25s   10.244.0.9    gateway-ci-control-plane   <none>           <none>
+redis-0                          1/1     Running   0          33s   10.244.0.6    gateway-ci-control-plane   <none>           <none>
+[pod/gateway-c77589c56-949gw/gateway] [ERROR] [Thread 7456344544006930274] control plane request failed: operation=config category=connect status=0
+[pod/gateway-c77589c56-949gw/gateway] [ERROR] [Thread 7456344544006930274] runtime config fetch failed; retaining current snapshot
+[pod/gateway-c77589c56-949gw/gateway] [ERROR] [Thread 8437065641438234922] control plane request failed: operation=metrics_report category=connect status=0
+[pod/gateway-c77589c56-949gw/gateway] [ERROR] [Thread 8437065641438234922] control plane request failed: operation=clients_report category=connect status=0
+[pod/gateway-c77589c56-2w8nz/gateway] [ERROR] [Thread 8607507044889692841] control plane request failed: operation=metrics_report category=connect status=0
+[pod/gateway-c77589c56-2w8nz/gateway] [ERROR] [Thread 9733873736152131006] control plane request failed: operation=config category=connect status=0
+[pod/gateway-c77589c56-2w8nz/gateway] [ERROR] [Thread 9733873736152131006] runtime config fetch failed; retaining current snapshot
+[pod/gateway-c77589c56-2w8nz/gateway] [ERROR] [Thread 8607507044889692841] control plane request failed: operation=clients_report category=connect status=0
+[pod/gateway-c77589c56-2w8nz/gateway] [INFO] [Thread 4095892169406919828] gateway started: port=9000 workers=4 auth_workers=2 request_capacity=4096 auth_capacity=32 response_capacity=4096
+[pod/gateway-c77589c56-2w8nz/gateway] [2026-08-18 16:32:11] fd=9 request_id=1004 payload={"level": "INFO", "service": "tcp-protocol-test", "message": "log push smoke test"}

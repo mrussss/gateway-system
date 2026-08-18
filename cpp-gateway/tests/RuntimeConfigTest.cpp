@@ -13,7 +13,8 @@ int main()
         "max_connections_per_client": 4,
         "max_requests_per_client_per_second": 200,
         "slow_client_output_limit": 8192,
-        "log_level": "DEBUG"
+        "log_level": "DEBUG",
+        "request_queue_capacity_display": 4096
     })";
 
     return runTests({
@@ -24,6 +25,7 @@ int main()
              CHECK_EQ(config.version, int64_t{2});
              CHECK_EQ(config.max_payload_size, 1024);
              CHECK_EQ(config.max_connections_per_client, 4);
+             CHECK_EQ(config.request_queue_capacity_display, size_t{4096});
          }},
         {"invalid config does not mutate destination", []
          {
@@ -44,7 +46,8 @@ int main()
                  "max_connections_per_client": 2,
                  "max_requests_per_client_per_second": 100,
                  "slow_client_output_limit": 8388608,
-                 "log_level": "INFO"
+                 "log_level": "INFO",
+                 "request_queue_capacity_display": 4096
              })";
              CHECK(!parseRuntimeConfig(oversized, config));
              CHECK_EQ(config.version, int64_t{3});
@@ -70,10 +73,12 @@ int main()
              candidate.version = 2;
              candidate.slow_client_output_limit = 4096;
              candidate.log_level = "DEBUG";
+             candidate.request_queue_capacity_display = 32;
              CHECK(applyRuntimeConfigIfNewer(current, candidate));
              CHECK_EQ(current.version, int64_t{2});
              CHECK_EQ(current.slow_client_output_limit, size_t{4096});
              CHECK_EQ(current.log_level, std::string{"DEBUG"});
+             CHECK_EQ(current.request_queue_capacity_display, size_t{32});
          }},
         {"fetch failure retains caller config", []
          {

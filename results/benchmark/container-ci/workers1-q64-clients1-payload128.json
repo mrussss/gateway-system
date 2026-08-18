@@ -1,0 +1,158 @@
+{
+  "auth_latency_ms": {
+    "average": 1.2097320000066247,
+    "observations": 1,
+    "p50": 1.2097320000066247,
+    "p95": 1.2097320000066247,
+    "p99": 1.2097320000066247
+  },
+  "clients": [
+    {
+      "auth_latency_ms": 1.2097320000066247,
+      "error": null,
+      "failed": 0,
+      "request_latencies_ms": [
+        0.16316600000720882,
+        0.1324790000012399,
+        0.15226600000062263,
+        0.14133800000593055,
+        0.13930999999445248,
+        0.11952500000234068,
+        0.11962499999640386,
+        0.1168099999944161,
+        0.1193750000112459,
+        0.11572700000783698,
+        0.18409799999119514,
+        0.12338999999883526,
+        0.12422300000025643,
+        0.11465500000440443,
+        0.11880600000324648,
+        0.12007600000174534,
+        0.11607800000490442,
+        0.12858200000209763,
+        0.15886599999248574,
+        0.12122799999758627
+      ],
+      "setup_latency_ms": 2.3404319999968948,
+      "success": 20
+    }
+  ],
+  "gateway_stats_after": {
+    "active_connections": 1,
+    "auth_allowed": 3,
+    "auth_denied": 0,
+    "auth_duration_count": 3,
+    "auth_duration_total_us": 2881,
+    "auth_in_flight": 0,
+    "auth_queue_backlog": 0,
+    "auth_queue_capacity": 32,
+    "auth_queue_peak": 1,
+    "auth_queue_rejected": 0,
+    "auth_tasks_cancelled_before_start": 0,
+    "auth_unavailable": 0,
+    "request_queue_capacity": 64,
+    "request_queue_peak": 1,
+    "request_queue_rejected": 0,
+    "response_queue_capacity": 64,
+    "response_queue_peak": 1,
+    "response_queue_rejected": 0,
+    "response_queue_rejected_auth": 0,
+    "response_queue_rejected_normal": 0,
+    "slow_client_closed": 0,
+    "stale_response_dropped": 0,
+    "total_errors": 0,
+    "total_logs": 0,
+    "total_recv_bytes": 3342,
+    "total_request_queue_backlog": 0,
+    "total_requests": 25,
+    "total_response_queue_backlog": 0,
+    "total_sent_bytes": 3699
+  },
+  "gateway_stats_before": {
+    "active_connections": 1,
+    "auth_allowed": 1,
+    "auth_denied": 0,
+    "auth_duration_count": 1,
+    "auth_duration_total_us": 1167,
+    "auth_in_flight": 0,
+    "auth_queue_backlog": 0,
+    "auth_queue_capacity": 32,
+    "auth_queue_peak": 1,
+    "auth_queue_rejected": 0,
+    "auth_tasks_cancelled_before_start": 0,
+    "auth_unavailable": 0,
+    "request_queue_capacity": 64,
+    "request_queue_peak": 1,
+    "request_queue_rejected": 0,
+    "response_queue_capacity": 64,
+    "response_queue_peak": 1,
+    "response_queue_rejected": 0,
+    "response_queue_rejected_auth": 0,
+    "response_queue_rejected_normal": 0,
+    "slow_client_closed": 0,
+    "stale_response_dropped": 0,
+    "total_errors": 0,
+    "total_logs": 0,
+    "total_recv_bytes": 179,
+    "total_request_queue_backlog": 0,
+    "total_requests": 2,
+    "total_response_queue_backlog": 0,
+    "total_sent_bytes": 42
+  },
+  "parameters": {
+    "build_mode": "Release-container",
+    "clients": 1,
+    "host": "127.0.0.1",
+    "message": "echo",
+    "mode": "steady",
+    "payload_bytes": 128,
+    "port": 9000,
+    "request_queue_capacity": 64,
+    "requests_per_client": 20,
+    "response_queue_capacity": 64,
+    "setup_concurrency": 16,
+    "slow_client_ratio": 0.0,
+    "slow_read_delay_ms": 25.0,
+    "worker_count": 1
+  },
+  "process": {
+    "after": {
+      "cpu_seconds": 0.03,
+      "peak_rss_kib": 4516,
+      "rss_kib": 4516
+    },
+    "before": {
+      "cpu_seconds": 0.03,
+      "peak_rss_kib": 4512,
+      "rss_kib": 4512
+    },
+    "cpu_percent": 0.0,
+    "cpu_seconds_delta": 0.0,
+    "rss_kib_delta": 4
+  },
+  "redis_operation_latency": {
+    "average_ms": 0.11551055555555564,
+    "observations": 9,
+    "total_seconds": 0.0010395950000000008
+  },
+  "requests": {
+    "attempted": 20,
+    "elapsed_seconds": 0.0027477200000021185,
+    "failed": 0,
+    "latency_ms": {
+      "average": 0.13148115000092275,
+      "max": 0.18409799999119514,
+      "p50": 0.12122799999758627,
+      "p95": 0.16316600000720882,
+      "p99": 0.18409799999119514
+    },
+    "qps": 7278.76202814864,
+    "success": 20
+  },
+  "schema_version": 1,
+  "setup_latency_ms": {
+    "average": 2.3404319999968948,
+    "observations": 1
+  },
+  "timestamp_utc": "2026-08-18T16:31:38Z"
+}

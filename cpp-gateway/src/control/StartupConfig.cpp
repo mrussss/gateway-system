@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cctype>
+#include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <stdexcept>

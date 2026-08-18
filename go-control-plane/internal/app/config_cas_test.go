@@ -34,6 +34,9 @@ func TestMemoryConfigConcurrentCAS(t *testing.T) {
 	if config.Version != 2 {
 		t.Fatalf("expected version 2, got %d", config.Version)
 	}
+	if config.RequestQueueCapacityDisplay != 4096 {
+		t.Fatalf("display-only request queue capacity changed: %d", config.RequestQueueCapacityDisplay)
+	}
 }
 
 func TestConfigHTTPPreconditionAndConflict(t *testing.T) {

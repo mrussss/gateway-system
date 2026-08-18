@@ -1,5 +1,31 @@
 # Changelog
 
+## v2.0.0 - 2026-08-19
+
+- Continue from the verified v1 Phase 0–5 implementation rather than replacing
+  the TCP, HTTP, token, Redis, configuration, or telemetry foundations.
+- Fix the project scope: Prometheus and Kubernetes rolling updates with graceful
+  drain are required v2 deliverables.
+- Freeze the v2 API, Redis, metrics, and shutdown contracts before incremental
+  Phase 6–9 implementation.
+- Replace hand-written AUTH exposition with a private Prometheus registry,
+  runtime/process collectors, HTTP/Redis/AUTH/config instrumentation, and an
+  expiry-aware gateway snapshot collector with parser/cardinality tests.
+- Run application containers as non-root on read-only filesystems, add
+  health-gated Compose startup, expand v2 smoke coverage, automate Redis
+  outage/recovery verification, and run real Redis contracts in CI.
+- Add two-replica Kubernetes deployments, Redis StatefulSet/PVC, least-privilege
+  security contexts, independent probes, PDBs, bounded preStop/SIGTERM drain,
+  and automated smoke and rolling-update acceptance scripts.
+- Add an authenticated benchmark matrix with raw 1/10/100/500-client evidence,
+  interval Redis metrics, CPU/RSS, queue telemetry, payload and slow-reader cases.
+- Add deterministic Request/Response Queue saturation, exact fd-reuse, and Go
+  in-flight shutdown tests plus a required-fault evidence matrix.
+- Add a pinned Kind runtime-evidence workflow, documentation link checker, and
+  staged full release gate. Docker Smoke/Redis recovery, the 18-scenario
+  container benchmark, and pinned Kind rolling drain passed; raw artifacts and
+  limitations are committed under `results/`.
+
 ## v1.0.0 - 2026-07-28
 
 - Freeze the Phase 0–5 API, Redis, telemetry, and shutdown contracts.
@@ -14,5 +40,5 @@
 - Validate with Go race/vet, CTest, ASan/UBSan, Redis integration tests, Docker
   Compose smoke, and the TCP protocol suite.
 
-Phase 6–9, including Prometheus and Kubernetes, are explicitly outside this
-release and are not required for v1.0.0.
+This tag remains the historical Phase 0–5 baseline. Phase 6–9 are delivered by
+the subsequent v2 roadmap and do not alter the contents of the v1.0.0 tag.

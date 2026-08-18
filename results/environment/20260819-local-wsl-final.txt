@@ -1,0 +1,40 @@
+captured_at_utc=2026-08-18T16:20:07Z
+git_head=01d4e7e90435792db1430f3568b49ffb67dd0429
+working_tree=0 tracked changes
+
+[kernel]
+Linux LAPTOP-7Q69GP7V 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+
+[cpu]
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           39 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  32
+
+[memory]
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       4.7Gi       7.0Gi        27Mi       3.8Gi        10Gi
+Swap:          4.0Gi          0B       4.0Gi
+
+[toolchains]
+g++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+Copyright (C) 2021 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+cmake version 3.22.1
+
+CMake suite maintained and supported by Kitware (kitware.com/cmake).
+go version go1.22.12 linux/amd64
+Python 3.10.12
+
+[containers_and_cluster]
+Client:
+ Version:           29.6.2
+ API version:       1.55
+ Go version:        go1.26.5
+ Git commit:        dfc4efb
+Client Version: v1.36.1
+Kustomize Version: v5.8.1
+kind v0.32.0 go1.22.12 linux/amd64

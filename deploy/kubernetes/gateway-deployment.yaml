@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: gateway-system
+  labels:
+    app.kubernetes.io/name: gateway
+    app.kubernetes.io/part-of: gateway-system
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gateway
+        app.kubernetes.io/part-of: gateway-system
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway
+          image: gateway-system/cpp-gateway:v2-local
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: gateway-system-config
+          env:
+            - name: GATEWAY_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: GATEWAY_SHARED_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: gateway-system-secrets
+                  key: gateway-token
+          ports:
+            - name: tcp
+              containerPort: 9000
+          startupProbe:
+            tcpSocket:
+              port: tcp
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            tcpSocket:
+              port: tcp
+            periodSeconds: 1
+            timeoutSeconds: 1
+            failureThreshold: 1
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "kill -0 1"]
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "kill -TERM 1; sleep 3"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

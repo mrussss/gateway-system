@@ -1,0 +1,13 @@
+deployment "gateway" successfully rolled out
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Couldn't connect to server
+deployment.apps/gateway restarted
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+deployment "gateway" successfully rolled out
+[k8s-rolling-client] PASS {'successes': 851, 'failures': 3, 'connections': 2, 'max_outage_seconds': 0.609}
+[k8s-roll] PASS old_endpoints_removed old_listeners_closed rollout_complete client={"successes": 851, "failures": 3, "connections": 2, "max_outage_seconds": 0.609}

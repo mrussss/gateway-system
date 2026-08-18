@@ -1,0 +1,974 @@
+[smoke] Starting services with Docker Compose...
+ redis Pulling
+ 897d797d2723 Pulling fs layer
+ f5a655897537 Pulling fs layer
+ 63e63047b377 Pulling fs layer
+ 627d9d06d3d0 Pulling fs layer
+ 93ebed1aef27 Pulling fs layer
+ 4f4fb700ef54 Pulling fs layer
+ db197c512a33 Pulling fs layer
+ 93ebed1aef27 Waiting
+ 4f4fb700ef54 Waiting
+ db197c512a33 Waiting
+ 627d9d06d3d0 Waiting
+ 897d797d2723 Downloading [>                                                  ]  48.51kB/3.647MB
+ 63e63047b377 Downloading [>                                                  ]  3.498kB/194.3kB
+ 63e63047b377 Downloading [==================================================>]  194.3kB/194.3kB
+ 63e63047b377 Verifying Checksum
+ 63e63047b377 Download complete
+ f5a655897537 Downloading [==================================================>]     949B/949B
+ f5a655897537 Verifying Checksum
+ f5a655897537 Download complete
+ 897d797d2723 Verifying Checksum
+ 897d797d2723 Download complete
+ 897d797d2723 Extracting [>                                                  ]  65.54kB/3.647MB
+ 897d797d2723 Extracting [==================================================>]  3.647MB/3.647MB
+ 897d797d2723 Extracting [==================================================>]  3.647MB/3.647MB
+ 897d797d2723 Pull complete
+ f5a655897537 Extracting [==================================================>]     949B/949B
+ f5a655897537 Extracting [==================================================>]     949B/949B
+ f5a655897537 Pull complete
+ 63e63047b377 Extracting [========>                                          ]  32.77kB/194.3kB
+ 63e63047b377 Extracting [==================================================>]  194.3kB/194.3kB
+ 63e63047b377 Extracting [==================================================>]  194.3kB/194.3kB
+ 93ebed1aef27 Downloading [==================================================>]      99B/99B
+ 93ebed1aef27 Verifying Checksum
+ 93ebed1aef27 Download complete
+ 4f4fb700ef54 Downloading [==================================================>]      32B/32B
+ 4f4fb700ef54 Verifying Checksum
+ 4f4fb700ef54 Download complete
+ 627d9d06d3d0 Downloading [>                                                  ]  130.5kB/12.41MB
+ 627d9d06d3d0 Verifying Checksum
+ 627d9d06d3d0 Download complete
+ 63e63047b377 Pull complete
+ 627d9d06d3d0 Extracting [>                                                  ]  131.1kB/12.41MB
+ 627d9d06d3d0 Extracting [===========================>                       ]  6.816MB/12.41MB
+ db197c512a33 Downloading [==================================================>]     605B/605B
+ db197c512a33 Verifying Checksum
+ db197c512a33 Download complete
+ 627d9d06d3d0 Extracting [==================================================>]  12.41MB/12.41MB
+ 627d9d06d3d0 Pull complete
+ 93ebed1aef27 Extracting [==================================================>]      99B/99B
+ 93ebed1aef27 Extracting [==================================================>]      99B/99B
+ 93ebed1aef27 Pull complete
+ 4f4fb700ef54 Extracting [==================================================>]      32B/32B
+ 4f4fb700ef54 Extracting [==================================================>]      32B/32B
+ 4f4fb700ef54 Pull complete
+ db197c512a33 Extracting [==================================================>]     605B/605B
+ db197c512a33 Extracting [==================================================>]     605B/605B
+ db197c512a33 Pull complete
+ redis Pulled
+#1 [internal] load local bake definitions
+#1 reading from stdin 824B done
+#1 DONE 0.0s
+
+#2 [cpp-gateway internal] load build definition from Dockerfile
+#2 transferring dockerfile: 822B done
+#2 DONE 0.0s
+
+#3 [go-control-plane internal] load build definition from Dockerfile
+#3 transferring dockerfile: 708B done
+#3 DONE 0.0s
+
+#4 [go-control-plane internal] load metadata for docker.io/library/golang:1.22-bookworm
+#4 ...
+
+#5 [auth] library/ubuntu:pull token for registry-1.docker.io
+#5 DONE 0.0s
+
+#6 [auth] library/debian:pull token for registry-1.docker.io
+#6 DONE 0.0s
+
+#7 [auth] library/golang:pull token for registry-1.docker.io
+#7 DONE 0.0s
+
+#8 [cpp-gateway internal] load metadata for docker.io/library/ubuntu:22.04
+#8 ...
+
+#9 [go-control-plane internal] load metadata for docker.io/library/debian:bookworm-slim
+#9 DONE 0.7s
+
+#8 [cpp-gateway internal] load metadata for docker.io/library/ubuntu:22.04
+#8 DONE 0.8s
+
+#4 [go-control-plane internal] load metadata for docker.io/library/golang:1.22-bookworm
+#4 DONE 0.8s
+
+#10 [cpp-gateway internal] load .dockerignore
+#10 transferring context: 2B done
+#10 DONE 0.0s
+
+#11 [go-control-plane internal] load .dockerignore
+#11 transferring context: 2B done
+#11 DONE 0.0s
+
+#12 [go-control-plane internal] load build context
+#12 DONE 0.0s
+
+#13 [cpp-gateway internal] load build context
+#13 DONE 0.0s
+
+#14 [go-control-plane build 1/6] FROM docker.io/library/golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253
+#14 resolve docker.io/library/golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253 done
+#14 ...
+
+#12 [go-control-plane internal] load build context
+#12 transferring context: 148.85kB done
+#12 DONE 0.0s
+
+#13 [cpp-gateway internal] load build context
+#13 transferring context: 1.06MB 0.0s done
+#13 DONE 0.1s
+
+#14 [go-control-plane build 1/6] FROM docker.io/library/golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253
+#14 sha256:1451027d3c0ee892b96310c034788bbe22b30b8ea2d075edbd09acfeaaaa439f 126B / 126B 0.1s done
+#14 sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1 32B / 32B 0.1s done
+#14 sha256:afa154b433c7f72db064d19e1bcfa84ee196ad29120328f6bdb2c5fbd7b8eeac 19.92MB / 69.36MB 0.2s
+#14 sha256:3b7f19923e1501f025b9459750b20f5df37af452482f75b91205f345d1c0e1b5 35.65MB / 92.33MB 0.2s
+#14 sha256:35af2a7690f2b43e7237d1fae8e3f2350dfb25f3249e9cf65121866f9c56c772 8.39MB / 64.39MB 0.2s
+#14 sha256:32b550be6cb62359a0f3a96bc0dc289f8b45d097eaad275887f163c6780b4108 24.06MB / 24.06MB 0.2s done
+#14 sha256:afa154b433c7f72db064d19e1bcfa84ee196ad29120328f6bdb2c5fbd7b8eeac 56.62MB / 69.36MB 0.3s
+#14 sha256:3b7f19923e1501f025b9459750b20f5df37af452482f75b91205f345d1c0e1b5 80.74MB / 92.33MB 0.3s
+#14 sha256:35af2a7690f2b43e7237d1fae8e3f2350dfb25f3249e9cf65121866f9c56c772 49.28MB / 64.39MB 0.3s
+#14 sha256:a492eee5e55976c7d3feecce4c564aaf6f14fb07fdc5019d06f4154eddc93fde 24.12MB / 48.48MB 0.2s
+#14 sha256:afa154b433c7f72db064d19e1bcfa84ee196ad29120328f6bdb2c5fbd7b8eeac 69.36MB / 69.36MB 0.5s done
+#14 sha256:3b7f19923e1501f025b9459750b20f5df37af452482f75b91205f345d1c0e1b5 92.33MB / 92.33MB 0.4s done
+#14 sha256:35af2a7690f2b43e7237d1fae8e3f2350dfb25f3249e9cf65121866f9c56c772 64.39MB / 64.39MB 0.5s
+#14 sha256:a492eee5e55976c7d3feecce4c564aaf6f14fb07fdc5019d06f4154eddc93fde 48.48MB / 48.48MB 0.3s
+#14 sha256:35af2a7690f2b43e7237d1fae8e3f2350dfb25f3249e9cf65121866f9c56c772 64.39MB / 64.39MB 0.7s done
+#14 sha256:a492eee5e55976c7d3feecce4c564aaf6f14fb07fdc5019d06f4154eddc93fde 48.48MB / 48.48MB 0.5s done
+#14 extracting sha256:a492eee5e55976c7d3feecce4c564aaf6f14fb07fdc5019d06f4154eddc93fde
+#14 ...
+
+#15 [cpp-gateway build 1/7] FROM docker.io/library/ubuntu:22.04@sha256:2edbbc5dc405e9612ba3584ce95480277e3eb374407b5505fe26f17df77c7dbc
+#15 resolve docker.io/library/ubuntu:22.04@sha256:2edbbc5dc405e9612ba3584ce95480277e3eb374407b5505fe26f17df77c7dbc done
+#15 sha256:d544298cabd50e7c86bfef1e52b67f01db6b3a57bfecfe37a851873dee83e52a 29.74MB / 29.74MB 0.2s done
+#15 extracting sha256:d544298cabd50e7c86bfef1e52b67f01db6b3a57bfecfe37a851873dee83e52a 1.4s done
+#15 DONE 1.6s
+
+#16 [go-control-plane stage-1 1/4] FROM docker.io/library/debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
+#16 resolve docker.io/library/debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 done
+#16 sha256:039e6f9f9752f74a3ff4a6a224f64c7c864da16ed98f882107704328f41b9c42 28.23MB / 28.23MB 0.2s done
+#16 extracting sha256:039e6f9f9752f74a3ff4a6a224f64c7c864da16ed98f882107704328f41b9c42 1.4s done
+#16 DONE 1.6s
+
+#17 [go-control-plane stage-1 2/4] RUN apt-get update     && apt-get install -y --no-install-recommends ca-certificates curl     && rm -rf /var/lib/apt/lists/*     && groupadd --system --gid 10001 control-plane     && useradd --system --uid 10001 --gid control-plane --home-dir /nonexistent --shell /usr/sbin/nologin control-plane
+#17 0.134 Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]
+#17 0.149 Get:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]
+#17 0.150 Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]
+#17 0.248 Get:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]
+#17 0.329 Get:5 http://deb.debian.org/debian bookworm-updates/main amd64 Packages [6924 B]
+#17 0.404 Get:6 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [338 kB]
+#17 ...
+
+#18 [cpp-gateway stage-1 2/4] RUN groupadd --system --gid 10001 gateway     && useradd --system --uid 10001 --gid gateway --home-dir /nonexistent --shell /usr/sbin/nologin gateway
+#18 DONE 0.5s
+
+#19 [cpp-gateway stage-1 3/4] WORKDIR /app
+#19 DONE 0.1s
+
+#20 [cpp-gateway build 2/7] RUN apt-get update     && apt-get install -y --no-install-recommends cmake g++ make ca-certificates     && rm -rf /var/lib/apt/lists/*
+#20 0.312 Get:1 http://security.ubuntu.com/ubuntu jammy-security InRelease [129 kB]
+#20 0.558 Get:2 http://security.ubuntu.com/ubuntu jammy-security/restricted amd64 Packages [7569 kB]
+#20 0.606 Get:3 http://archive.ubuntu.com/ubuntu jammy InRelease [270 kB]
+#20 0.638 Get:4 http://security.ubuntu.com/ubuntu jammy-security/main amd64 Packages [4202 kB]
+#20 0.773 Get:5 http://security.ubuntu.com/ubuntu jammy-security/universe amd64 Packages [1314 kB]
+#20 0.783 Get:6 http://security.ubuntu.com/ubuntu jammy-security/multiverse amd64 Packages [84.1 kB]
+#20 ...
+
+#14 [go-control-plane build 1/6] FROM docker.io/library/golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253
+#14 extracting sha256:a492eee5e55976c7d3feecce4c564aaf6f14fb07fdc5019d06f4154eddc93fde 1.8s done
+#14 DONE 2.7s
+
+#14 [go-control-plane build 1/6] FROM docker.io/library/golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253
+#14 extracting sha256:32b550be6cb62359a0f3a96bc0dc289f8b45d097eaad275887f163c6780b4108
+#14 extracting sha256:32b550be6cb62359a0f3a96bc0dc289f8b45d097eaad275887f163c6780b4108 0.5s done
+#14 extracting sha256:35af2a7690f2b43e7237d1fae8e3f2350dfb25f3249e9cf65121866f9c56c772
+#14 extracting sha256:35af2a7690f2b43e7237d1fae8e3f2350dfb25f3249e9cf65121866f9c56c772 1.9s done
+#14 extracting sha256:3b7f19923e1501f025b9459750b20f5df37af452482f75b91205f345d1c0e1b5
+#14 extracting sha256:3b7f19923e1501f025b9459750b20f5df37af452482f75b91205f345d1c0e1b5 2.1s done
+#14 DONE 7.1s
+
+#17 [go-control-plane stage-1 2/4] RUN apt-get update     && apt-get install -y --no-install-recommends ca-certificates curl     && rm -rf /var/lib/apt/lists/*     && groupadd --system --gid 10001 control-plane     && useradd --system --uid 10001 --gid control-plane --home-dir /nonexistent --shell /usr/sbin/nologin control-plane
+#17 1.328 Fetched 9376 kB in 1s (7771 kB/s)
+#17 1.328 Reading package lists...
+#17 1.984 Reading package lists...
+#17 2.665 Building dependency tree...
+#17 2.822 Reading state information...
+#17 2.975 The following additional packages will be installed:
+#17 2.976   libbrotli1 libcurl4 libgssapi-krb5-2 libk5crypto3 libkeyutils1 libkrb5-3
+#17 2.977   libkrb5support0 libldap-2.5-0 libnghttp2-14 libpsl5 librtmp1 libsasl2-2
+#17 2.977   libsasl2-modules-db libssh2-1 libssl3 openssl
+#17 2.978 Suggested packages:
+#17 2.978   krb5-doc krb5-user
+#17 2.978 Recommended packages:
+#17 2.978   krb5-locales libldap-common publicsuffix libsasl2-modules
+#17 3.139 The following NEW packages will be installed:
+#17 3.140   ca-certificates curl libbrotli1 libcurl4 libgssapi-krb5-2 libk5crypto3
+#17 3.140   libkeyutils1 libkrb5-3 libkrb5support0 libldap-2.5-0 libnghttp2-14 libpsl5
+#17 3.141   librtmp1 libsasl2-2 libsasl2-modules-db libssh2-1 libssl3 openssl
+#17 3.167 0 upgraded, 18 newly installed, 0 to remove and 0 not upgraded.
+#17 3.167 Need to get 5843 kB of archives.
+#17 3.167 After this operation, 14.7 MB of additional disk space will be used.
+#17 3.167 Get:1 http://deb.debian.org/debian bookworm/main amd64 libssl3 amd64 3.0.20-1~deb12u2 [2036 kB]
+#17 3.187 Get:2 http://deb.debian.org/debian bookworm/main amd64 openssl amd64 3.0.20-1~deb12u2 [1439 kB]
+#17 3.195 Get:3 http://deb.debian.org/debian-security bookworm-security/main amd64 ca-certificates all 20250419~deb12u1 [162 kB]
+#17 3.196 Get:4 http://deb.debian.org/debian bookworm/main amd64 libbrotli1 amd64 1.0.9-2+b6 [275 kB]
+#17 3.199 Get:5 http://deb.debian.org/debian bookworm/main amd64 libkrb5support0 amd64 1.20.1-2+deb12u5 [33.2 kB]
+#17 3.199 Get:6 http://deb.debian.org/debian bookworm/main amd64 libk5crypto3 amd64 1.20.1-2+deb12u5 [79.7 kB]
+#17 3.200 Get:7 http://deb.debian.org/debian bookworm/main amd64 libkeyutils1 amd64 1.6.3-2 [8808 B]
+#17 3.201 Get:8 http://deb.debian.org/debian bookworm/main amd64 libkrb5-3 amd64 1.20.1-2+deb12u5 [332 kB]
+#17 3.203 Get:9 http://deb.debian.org/debian bookworm/main amd64 libgssapi-krb5-2 amd64 1.20.1-2+deb12u5 [135 kB]
+#17 3.204 Get:10 http://deb.debian.org/debian bookworm/main amd64 libsasl2-modules-db amd64 2.1.28+dfsg-10 [20.3 kB]
+#17 3.205 Get:11 http://deb.debian.org/debian bookworm/main amd64 libsasl2-2 amd64 2.1.28+dfsg-10 [59.7 kB]
+#17 3.207 Get:12 http://deb.debian.org/debian bookworm/main amd64 libldap-2.5-0 amd64 2.5.13+dfsg-5 [183 kB]
+#17 3.207 Get:13 http://deb.debian.org/debian bookworm/main amd64 libnghttp2-14 amd64 1.52.0-1+deb12u3 [72.4 kB]
+#17 3.208 Get:14 http://deb.debian.org/debian bookworm/main amd64 libpsl5 amd64 0.21.2-1 [58.7 kB]
+#17 3.209 Get:15 http://deb.debian.org/debian bookworm/main amd64 librtmp1 amd64 2.4+20151223.gitfa8646d.1-2+b2 [60.8 kB]
+#17 3.210 Get:16 http://deb.debian.org/debian bookworm/main amd64 libssh2-1 amd64 1.10.0-3+b1 [179 kB]
+#17 3.211 Get:17 http://deb.debian.org/debian bookworm/main amd64 libcurl4 amd64 7.88.1-10+deb12u15 [392 kB]
+#17 3.214 Get:18 http://deb.debian.org/debian bookworm/main amd64 curl amd64 7.88.1-10+deb12u15 [316 kB]
+#17 3.339 debconf: delaying package configuration, since apt-utils is not installed
+#17 3.368 Fetched 5843 kB in 0s (90.2 MB/s)
+#17 3.389 Selecting previously unselected package libssl3:amd64.
+#17 3.389 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 6096 files and directories currently installed.)
+#17 3.395 Preparing to unpack .../00-libssl3_3.0.20-1~deb12u2_amd64.deb ...
+#17 3.397 Unpacking libssl3:amd64 (3.0.20-1~deb12u2) ...
+#17 3.561 Selecting previously unselected package openssl.
+#17 3.563 Preparing to unpack .../01-openssl_3.0.20-1~deb12u2_amd64.deb ...
+#17 3.563 Unpacking openssl (3.0.20-1~deb12u2) ...
+#17 3.703 Selecting previously unselected package ca-certificates.
+#17 3.706 Preparing to unpack .../02-ca-certificates_20250419~deb12u1_all.deb ...
+#17 3.709 Unpacking ca-certificates (20250419~deb12u1) ...
+#17 3.775 Selecting previously unselected package libbrotli1:amd64.
+#17 3.777 Preparing to unpack .../03-libbrotli1_1.0.9-2+b6_amd64.deb ...
+#17 3.778 Unpacking libbrotli1:amd64 (1.0.9-2+b6) ...
+#17 3.826 Selecting previously unselected package libkrb5support0:amd64.
+#17 3.828 Preparing to unpack .../04-libkrb5support0_1.20.1-2+deb12u5_amd64.deb ...
+#17 3.829 Unpacking libkrb5support0:amd64 (1.20.1-2+deb12u5) ...
+#17 3.851 Selecting previously unselected package libk5crypto3:amd64.
+#17 3.853 Preparing to unpack .../05-libk5crypto3_1.20.1-2+deb12u5_amd64.deb ...
+#17 3.855 Unpacking libk5crypto3:amd64 (1.20.1-2+deb12u5) ...
+#17 3.882 Selecting previously unselected package libkeyutils1:amd64.
+#17 3.885 Preparing to unpack .../06-libkeyutils1_1.6.3-2_amd64.deb ...
+#17 3.886 Unpacking libkeyutils1:amd64 (1.6.3-2) ...
+#17 3.908 Selecting previously unselected package libkrb5-3:amd64.
+#17 3.910 Preparing to unpack .../07-libkrb5-3_1.20.1-2+deb12u5_amd64.deb ...
+#17 3.912 Unpacking libkrb5-3:amd64 (1.20.1-2+deb12u5) ...
+#17 3.957 Selecting previously unselected package libgssapi-krb5-2:amd64.
+#17 3.958 Preparing to unpack .../08-libgssapi-krb5-2_1.20.1-2+deb12u5_amd64.deb ...
+#17 3.960 Unpacking libgssapi-krb5-2:amd64 (1.20.1-2+deb12u5) ...
+#17 4.001 Selecting previously unselected package libsasl2-modules-db:amd64.
+#17 4.003 Preparing to unpack .../09-libsasl2-modules-db_2.1.28+dfsg-10_amd64.deb ...
+#17 4.005 Unpacking libsasl2-modules-db:amd64 (2.1.28+dfsg-10) ...
+#17 4.025 Selecting previously unselected package libsasl2-2:amd64.
+#17 4.028 Preparing to unpack .../10-libsasl2-2_2.1.28+dfsg-10_amd64.deb ...
+#17 4.029 Unpacking libsasl2-2:amd64 (2.1.28+dfsg-10) ...
+#17 4.055 Selecting previously unselected package libldap-2.5-0:amd64.
+#17 4.057 Preparing to unpack .../11-libldap-2.5-0_2.5.13+dfsg-5_amd64.deb ...
+#17 4.058 Unpacking libldap-2.5-0:amd64 (2.5.13+dfsg-5) ...
+#17 4.095 Selecting previously unselected package libnghttp2-14:amd64.
+#17 4.097 Preparing to unpack .../12-libnghttp2-14_1.52.0-1+deb12u3_amd64.deb ...
+#17 4.098 Unpacking libnghttp2-14:amd64 (1.52.0-1+deb12u3) ...
+#17 4.125 Selecting previously unselected package libpsl5:amd64.
+#17 4.126 Preparing to unpack .../13-libpsl5_0.21.2-1_amd64.deb ...
+#17 4.127 Unpacking libpsl5:amd64 (0.21.2-1) ...
+#17 4.151 Selecting previously unselected package librtmp1:amd64.
+#17 4.153 Preparing to unpack .../14-librtmp1_2.4+20151223.gitfa8646d.1-2+b2_amd64.deb ...
+#17 4.155 Unpacking librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2+b2) ...
+#17 4.182 Selecting previously unselected package libssh2-1:amd64.
+#17 4.184 Preparing to unpack .../15-libssh2-1_1.10.0-3+b1_amd64.deb ...
+#17 4.188 Unpacking libssh2-1:amd64 (1.10.0-3+b1) ...
+#17 4.225 Selecting previously unselected package libcurl4:amd64.
+#17 4.229 Preparing to unpack .../16-libcurl4_7.88.1-10+deb12u15_amd64.deb ...
+#17 4.230 Unpacking libcurl4:amd64 (7.88.1-10+deb12u15) ...
+#17 4.276 Selecting previously unselected package curl.
+#17 4.279 Preparing to unpack .../17-curl_7.88.1-10+deb12u15_amd64.deb ...
+#17 4.280 Unpacking curl (7.88.1-10+deb12u15) ...
+#17 4.333 Setting up libkeyutils1:amd64 (1.6.3-2) ...
+#17 4.336 Setting up libpsl5:amd64 (0.21.2-1) ...
+#17 4.338 Setting up libbrotli1:amd64 (1.0.9-2+b6) ...
+#17 4.341 Setting up libssl3:amd64 (3.0.20-1~deb12u2) ...
+#17 4.343 Setting up libnghttp2-14:amd64 (1.52.0-1+deb12u3) ...
+#17 4.346 Setting up libkrb5support0:amd64 (1.20.1-2+deb12u5) ...
+#17 4.348 Setting up libsasl2-modules-db:amd64 (2.1.28+dfsg-10) ...
+#17 4.351 Setting up librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2+b2) ...
+#17 4.353 Setting up libk5crypto3:amd64 (1.20.1-2+deb12u5) ...
+#17 4.356 Setting up libsasl2-2:amd64 (2.1.28+dfsg-10) ...
+#17 4.359 Setting up libssh2-1:amd64 (1.10.0-3+b1) ...
+#17 4.361 Setting up libkrb5-3:amd64 (1.20.1-2+deb12u5) ...
+#17 4.364 Setting up openssl (3.0.20-1~deb12u2) ...
+#17 4.369 Setting up libldap-2.5-0:amd64 (2.5.13+dfsg-5) ...
+#17 4.372 Setting up ca-certificates (20250419~deb12u1) ...
+#17 4.474 debconf: unable to initialize frontend: Dialog
+#17 4.474 debconf: (TERM is not set, so the dialog frontend is not usable.)
+#17 4.474 debconf: falling back to frontend: Readline
+#17 4.475 debconf: unable to initialize frontend: Readline
+#17 4.475 debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC contains: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.36.0 /usr/local/share/perl/5.36.0 /usr/lib/x86_64-linux-gnu/perl5/5.36 /usr/share/perl5 /usr/lib/x86_64-linux-gnu/perl-base /usr/lib/x86_64-linux-gnu/perl/5.36 /usr/share/perl/5.36 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 7.)
+#17 4.475 debconf: falling back to frontend: Teletype
+#17 5.108 Updating certificates in /etc/ssl/certs...
+#17 6.014 150 added, 0 removed; done.
+#17 6.032 Setting up libgssapi-krb5-2:amd64 (1.20.1-2+deb12u5) ...
+#17 6.038 Setting up libcurl4:amd64 (7.88.1-10+deb12u15) ...
+#17 6.044 Setting up curl (7.88.1-10+deb12u15) ...
+#17 6.050 Processing triggers for libc-bin (2.36-9+deb12u14) ...
+#17 6.064 Processing triggers for ca-certificates (20250419~deb12u1) ...
+#17 6.072 Updating certificates in /etc/ssl/certs...
+#17 6.728 0 added, 0 removed; done.
+#17 6.728 Running hooks in /etc/ca-certificates/update.d...
+#17 6.730 done.
+#17 6.769 useradd warning: control-plane's uid 10001 is greater than SYS_UID_MAX 999
+#17 DONE 8.6s
+
+#21 [go-control-plane stage-1 3/4] WORKDIR /app
+#21 DONE 0.3s
+
+#20 [cpp-gateway build 2/7] RUN apt-get update     && apt-get install -y --no-install-recommends cmake g++ make ca-certificates     && rm -rf /var/lib/apt/lists/*
+#20 1.502 Get:7 http://archive.ubuntu.com/ubuntu jammy-updates InRelease [128 kB]
+#20 2.221 Get:8 http://archive.ubuntu.com/ubuntu jammy-backports InRelease [127 kB]
+#20 2.347 Get:9 http://archive.ubuntu.com/ubuntu jammy/main amd64 Packages [1792 kB]
+#20 2.371 Get:10 http://archive.ubuntu.com/ubuntu jammy/universe amd64 Packages [17.5 MB]
+#20 2.550 Get:11 http://archive.ubuntu.com/ubuntu jammy/restricted amd64 Packages [164 kB]
+#20 2.551 Get:12 http://archive.ubuntu.com/ubuntu jammy/multiverse amd64 Packages [266 kB]
+#20 2.557 Get:13 http://archive.ubuntu.com/ubuntu jammy-updates/restricted amd64 Packages [7914 kB]
+#20 2.607 Get:14 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 Packages [1617 kB]
+#20 2.623 Get:15 http://archive.ubuntu.com/ubuntu jammy-updates/multiverse amd64 Packages [92.7 kB]
+#20 2.631 Get:16 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages [4563 kB]
+#20 2.664 Get:17 http://archive.ubuntu.com/ubuntu jammy-backports/universe amd64 Packages [35.6 kB]
+#20 2.669 Get:18 http://archive.ubuntu.com/ubuntu jammy-backports/main amd64 Packages [82.8 kB]
+#20 3.857 Fetched 47.8 MB in 4s (12.8 MB/s)
+#20 3.857 Reading package lists...
+#20 5.526 Reading package lists...
+#20 7.035 Building dependency tree...
+#20 7.297 Reading state information...
+#20 7.528 The following additional packages will be installed:
+#20 7.528   binutils binutils-common binutils-x86-64-linux-gnu cmake-data cpp cpp-11
+#20 7.528   dh-elpa-helper emacsen-common g++-11 gcc gcc-11 gcc-11-base libarchive13
+#20 7.528   libasan6 libatomic1 libbinutils libbrotli1 libc-dev-bin libc6-dev libcc1-0
+#20 7.528   libcrypt-dev libctf-nobfd0 libctf0 libcurl4 libexpat1 libgcc-11-dev libgomp1
+#20 7.528   libicu70 libisl23 libitm1 libjsoncpp25 libldap-2.5-0 liblsan0 libmpc3
+#20 7.529   libmpfr6 libnghttp2-14 libnsl-dev libpsl5 libquadmath0 librhash0 librtmp1
+#20 7.529   libsasl2-2 libsasl2-modules-db libssh-4 libstdc++-11-dev libtirpc-dev
+#20 7.530   libtsan0 libubsan1 libuv1 libxml2 linux-libc-dev openssl rpcsvc-proto
+#20 7.530 Suggested packages:
+#20 7.530   binutils-doc cmake-doc ninja-build cmake-format cpp-doc gcc-11-locales
+#20 7.530   g++-multilib g++-11-multilib gcc-11-doc gcc-multilib manpages-dev autoconf
+#20 7.530   automake libtool flex bison gdb gcc-doc gcc-11-multilib lrzip glibc-doc
+#20 7.530   libstdc++-11-doc make-doc
+#20 7.530 Recommended packages:
+#20 7.530   manpages manpages-dev libc-devtools libldap-common publicsuffix
+#20 7.530   libsasl2-modules
+#20 7.754 The following NEW packages will be installed:
+#20 7.754   binutils binutils-common binutils-x86-64-linux-gnu ca-certificates cmake
+#20 7.754   cmake-data cpp cpp-11 dh-elpa-helper emacsen-common g++ g++-11 gcc gcc-11
+#20 7.754   gcc-11-base libarchive13 libasan6 libatomic1 libbinutils libbrotli1
+#20 7.754   libc-dev-bin libc6-dev libcc1-0 libcrypt-dev libctf-nobfd0 libctf0 libcurl4
+#20 7.755   libexpat1 libgcc-11-dev libgomp1 libicu70 libisl23 libitm1 libjsoncpp25
+#20 7.755   libldap-2.5-0 liblsan0 libmpc3 libmpfr6 libnghttp2-14 libnsl-dev libpsl5
+#20 7.755   libquadmath0 librhash0 librtmp1 libsasl2-2 libsasl2-modules-db libssh-4
+#20 7.755   libstdc++-11-dev libtirpc-dev libtsan0 libubsan1 libuv1 libxml2
+#20 7.756   linux-libc-dev make openssl rpcsvc-proto
+#20 7.794 0 upgraded, 57 newly installed, 0 to remove and 0 not upgraded.
+#20 7.794 Need to get 84.7 MB of archives.
+#20 7.794 After this operation, 287 MB of additional disk space will be used.
+#20 7.794 Get:1 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 openssl amd64 3.0.2-0ubuntu1.26 [1184 kB]
+#20 7.852 Get:2 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 ca-certificates all 20260601~22.04.1 [141 kB]
+#20 8.033 Get:3 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libexpat1 amd64 2.4.7-1ubuntu0.7 [92.1 kB]
+#20 8.078 Get:4 http://archive.ubuntu.com/ubuntu jammy/main amd64 libicu70 amd64 70.1-2 [10.6 MB]
+#20 8.191 Get:5 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libxml2 amd64 2.9.13+dfsg-1ubuntu0.12 [765 kB]
+#20 8.233 Get:6 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libnghttp2-14 amd64 1.43.0-1ubuntu0.4 [76.9 kB]
+#20 8.235 Get:7 http://archive.ubuntu.com/ubuntu jammy/main amd64 libpsl5 amd64 0.21.0-1.2build2 [58.4 kB]
+#20 8.236 Get:8 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libuv1 amd64 1.43.0-1ubuntu0.1 [92.7 kB]
+#20 8.236 Get:9 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 binutils-common amd64 2.38-4ubuntu2.12 [223 kB]
+#20 8.284 Get:10 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libbinutils amd64 2.38-4ubuntu2.12 [663 kB]
+#20 8.329 Get:11 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libctf-nobfd0 amd64 2.38-4ubuntu2.12 [108 kB]
+#20 8.331 Get:12 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libctf0 amd64 2.38-4ubuntu2.12 [103 kB]
+#20 8.413 Get:13 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 binutils-x86-64-linux-gnu amd64 2.38-4ubuntu2.12 [2324 kB]
+#20 8.438 Get:14 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 binutils amd64 2.38-4ubuntu2.12 [3184 B]
+#20 8.441 Get:15 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libarchive13 amd64 3.6.0-1ubuntu1.8 [368 kB]
+#20 8.450 Get:16 http://archive.ubuntu.com/ubuntu jammy/main amd64 libbrotli1 amd64 1.0.9-2build6 [315 kB]
+#20 8.486 Get:17 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libsasl2-modules-db amd64 2.1.27+dfsg2-3ubuntu1.2 [20.5 kB]
+#20 8.487 Get:18 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libsasl2-2 amd64 2.1.27+dfsg2-3ubuntu1.2 [53.8 kB]
+#20 8.488 Get:19 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libldap-2.5-0 amd64 2.5.20+dfsg-0ubuntu0.22.04.1 [184 kB]
+#20 8.490 Get:20 http://archive.ubuntu.com/ubuntu jammy/main amd64 librtmp1 amd64 2.4+20151223.gitfa8646d.1-2build4 [58.2 kB]
+#20 8.491 Get:21 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libssh-4 amd64 0.9.6-2ubuntu0.22.04.7 [187 kB]
+#20 8.502 Get:22 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libcurl4 amd64 7.81.0-1ubuntu1.25 [291 kB]
+#20 8.510 Get:23 http://archive.ubuntu.com/ubuntu jammy/main amd64 libjsoncpp25 amd64 1.9.5-3 [80.0 kB]
+#20 8.532 Get:24 http://archive.ubuntu.com/ubuntu jammy/main amd64 librhash0 amd64 1.4.2-1ubuntu1 [125 kB]
+#20 8.534 Get:25 http://archive.ubuntu.com/ubuntu jammy/main amd64 dh-elpa-helper all 2.0.9ubuntu1 [7610 B]
+#20 8.535 Get:26 http://archive.ubuntu.com/ubuntu jammy/main amd64 emacsen-common all 3.0.4 [14.9 kB]
+#20 8.541 Get:27 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 cmake-data all 3.22.1-1ubuntu1.22.04.2 [1913 kB]
+#20 8.561 Get:28 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 cmake amd64 3.22.1-1ubuntu1.22.04.2 [5010 kB]
+#20 8.600 Get:29 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 gcc-11-base amd64 11.4.0-1ubuntu1~22.04.3 [216 kB]
+#20 8.628 Get:30 http://archive.ubuntu.com/ubuntu jammy/main amd64 libisl23 amd64 0.24-2build1 [727 kB]
+#20 8.633 Get:31 http://archive.ubuntu.com/ubuntu jammy/main amd64 libmpfr6 amd64 4.1.0-3build3 [1425 kB]
+#20 8.676 Get:32 http://archive.ubuntu.com/ubuntu jammy/main amd64 libmpc3 amd64 1.2.1-2build1 [46.9 kB]
+#20 8.677 Get:33 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 cpp-11 amd64 11.4.0-1ubuntu1~22.04.3 [10.0 MB]
+#20 8.747 Get:34 http://archive.ubuntu.com/ubuntu jammy/main amd64 cpp amd64 4:11.2.0-1ubuntu1 [27.7 kB]
+#20 8.788 Get:35 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libcc1-0 amd64 12.3.0-1ubuntu1~22.04.3 [48.3 kB]
+#20 8.788 Get:36 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libgomp1 amd64 12.3.0-1ubuntu1~22.04.3 [127 kB]
+#20 8.788 Get:37 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libitm1 amd64 12.3.0-1ubuntu1~22.04.3 [30.2 kB]
+#20 8.790 Get:38 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libatomic1 amd64 12.3.0-1ubuntu1~22.04.3 [10.5 kB]
+#20 8.790 Get:39 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libasan6 amd64 11.4.0-1ubuntu1~22.04.3 [2283 kB]
+#20 8.810 Get:40 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 liblsan0 amd64 12.3.0-1ubuntu1~22.04.3 [1069 kB]
+#20 8.837 Get:41 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libtsan0 amd64 11.4.0-1ubuntu1~22.04.3 [2260 kB]
+#20 8.853 Get:42 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libubsan1 amd64 12.3.0-1ubuntu1~22.04.3 [976 kB]
+#20 8.883 Get:43 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libquadmath0 amd64 12.3.0-1ubuntu1~22.04.3 [154 kB]
+#20 8.885 Get:44 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libgcc-11-dev amd64 11.4.0-1ubuntu1~22.04.3 [2517 kB]
+#20 8.913 Get:45 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 gcc-11 amd64 11.4.0-1ubuntu1~22.04.3 [20.1 MB]
+#20 9.051 Get:46 http://archive.ubuntu.com/ubuntu jammy/main amd64 gcc amd64 4:11.2.0-1ubuntu1 [5112 B]
+#20 9.063 Get:47 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libc-dev-bin amd64 2.35-0ubuntu3.14 [20.3 kB]
+#20 9.074 Get:48 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 linux-libc-dev amd64 5.15.0-190.200 [1343 kB]
+#20 9.092 Get:49 http://archive.ubuntu.com/ubuntu jammy/main amd64 libcrypt-dev amd64 1:4.4.27-1 [112 kB]
+#20 9.101 Get:50 http://archive.ubuntu.com/ubuntu jammy/main amd64 rpcsvc-proto amd64 1.4.2-0ubuntu6 [68.5 kB]
+#20 9.110 Get:51 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libtirpc-dev amd64 1.3.2-2ubuntu0.1 [192 kB]
+#20 9.124 Get:52 http://archive.ubuntu.com/ubuntu jammy/main amd64 libnsl-dev amd64 1.3.0-2build2 [71.3 kB]
+#20 9.136 Get:53 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libc6-dev amd64 2.35-0ubuntu3.14 [2100 kB]
+#20 9.157 Get:54 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libstdc++-11-dev amd64 11.4.0-1ubuntu1~22.04.3 [2101 kB]
+#20 ...
+
+#14 [go-control-plane build 1/6] FROM docker.io/library/golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253
+#14 extracting sha256:afa154b433c7f72db064d19e1bcfa84ee196ad29120328f6bdb2c5fbd7b8eeac 3.6s done
+#14 extracting sha256:1451027d3c0ee892b96310c034788bbe22b30b8ea2d075edbd09acfeaaaa439f done
+#14 extracting sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1 done
+#14 DONE 10.8s
+
+#22 [go-control-plane build 2/6] WORKDIR /app
+#22 DONE 0.0s
+
+#23 [go-control-plane build 3/6] COPY go.mod go.sum ./
+#23 DONE 0.0s
+
+#20 [cpp-gateway build 2/7] RUN apt-get update     && apt-get install -y --no-install-recommends cmake g++ make ca-certificates     && rm -rf /var/lib/apt/lists/*
+#20 9.178 Get:55 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 g++-11 amd64 11.4.0-1ubuntu1~22.04.3 [11.4 MB]
+#20 9.261 Get:56 http://archive.ubuntu.com/ubuntu jammy/main amd64 g++ amd64 4:11.2.0-1ubuntu1 [1412 B]
+#20 ...
+
+#24 [go-control-plane build 4/6] RUN go mod download
+#24 DONE 0.7s
+
+#25 [go-control-plane build 5/6] COPY . ./
+#25 DONE 0.0s
+
+#20 [cpp-gateway build 2/7] RUN apt-get update     && apt-get install -y --no-install-recommends cmake g++ make ca-certificates     && rm -rf /var/lib/apt/lists/*
+#20 9.269 Get:57 http://archive.ubuntu.com/ubuntu jammy/main amd64 make amd64 4.3-4.1build1 [180 kB]
+#20 9.392 debconf: delaying package configuration, since apt-utils is not installed
+#20 9.421 Fetched 84.7 MB in 2s (56.4 MB/s)
+#20 9.438 Selecting previously unselected package openssl.
+#20 9.438 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 4393 files and directories currently installed.)
+#20 9.446 Preparing to unpack .../00-openssl_3.0.2-0ubuntu1.26_amd64.deb ...
+#20 9.447 Unpacking openssl (3.0.2-0ubuntu1.26) ...
+#20 9.503 Selecting previously unselected package ca-certificates.
+#20 9.504 Preparing to unpack .../01-ca-certificates_20260601~22.04.1_all.deb ...
+#20 9.506 Unpacking ca-certificates (20260601~22.04.1) ...
+#20 9.551 Selecting previously unselected package libexpat1:amd64.
+#20 9.552 Preparing to unpack .../02-libexpat1_2.4.7-1ubuntu0.7_amd64.deb ...
+#20 9.554 Unpacking libexpat1:amd64 (2.4.7-1ubuntu0.7) ...
+#20 9.569 Selecting previously unselected package libicu70:amd64.
+#20 9.570 Preparing to unpack .../03-libicu70_70.1-2_amd64.deb ...
+#20 9.571 Unpacking libicu70:amd64 (70.1-2) ...
+#20 9.752 Selecting previously unselected package libxml2:amd64.
+#20 9.752 Preparing to unpack .../04-libxml2_2.9.13+dfsg-1ubuntu0.12_amd64.deb ...
+#20 9.759 Unpacking libxml2:amd64 (2.9.13+dfsg-1ubuntu0.12) ...
+#20 9.787 Selecting previously unselected package libnghttp2-14:amd64.
+#20 9.789 Preparing to unpack .../05-libnghttp2-14_1.43.0-1ubuntu0.4_amd64.deb ...
+#20 9.790 Unpacking libnghttp2-14:amd64 (1.43.0-1ubuntu0.4) ...
+#20 9.806 Selecting previously unselected package libpsl5:amd64.
+#20 9.808 Preparing to unpack .../06-libpsl5_0.21.0-1.2build2_amd64.deb ...
+#20 9.809 Unpacking libpsl5:amd64 (0.21.0-1.2build2) ...
+#20 9.823 Selecting previously unselected package libuv1:amd64.
+#20 9.825 Preparing to unpack .../07-libuv1_1.43.0-1ubuntu0.1_amd64.deb ...
+#20 9.826 Unpacking libuv1:amd64 (1.43.0-1ubuntu0.1) ...
+#20 9.840 Selecting previously unselected package binutils-common:amd64.
+#20 9.842 Preparing to unpack .../08-binutils-common_2.38-4ubuntu2.12_amd64.deb ...
+#20 9.843 Unpacking binutils-common:amd64 (2.38-4ubuntu2.12) ...
+#20 9.861 Selecting previously unselected package libbinutils:amd64.
+#20 9.861 Preparing to unpack .../09-libbinutils_2.38-4ubuntu2.12_amd64.deb ...
+#20 9.863 Unpacking libbinutils:amd64 (2.38-4ubuntu2.12) ...
+#20 9.898 Selecting previously unselected package libctf-nobfd0:amd64.
+#20 9.900 Preparing to unpack .../10-libctf-nobfd0_2.38-4ubuntu2.12_amd64.deb ...
+#20 9.901 Unpacking libctf-nobfd0:amd64 (2.38-4ubuntu2.12) ...
+#20 9.924 Selecting previously unselected package libctf0:amd64.
+#20 9.926 Preparing to unpack .../11-libctf0_2.38-4ubuntu2.12_amd64.deb ...
+#20 9.928 Unpacking libctf0:amd64 (2.38-4ubuntu2.12) ...
+#20 9.943 Selecting previously unselected package binutils-x86-64-linux-gnu.
+#20 9.944 Preparing to unpack .../12-binutils-x86-64-linux-gnu_2.38-4ubuntu2.12_amd64.deb ...
+#20 9.945 Unpacking binutils-x86-64-linux-gnu (2.38-4ubuntu2.12) ...
+#20 10.03 Selecting previously unselected package binutils.
+#20 10.03 Preparing to unpack .../13-binutils_2.38-4ubuntu2.12_amd64.deb ...
+#20 10.03 Unpacking binutils (2.38-4ubuntu2.12) ...
+#20 10.06 Selecting previously unselected package libarchive13:amd64.
+#20 10.06 Preparing to unpack .../14-libarchive13_3.6.0-1ubuntu1.8_amd64.deb ...
+#20 10.06 Unpacking libarchive13:amd64 (3.6.0-1ubuntu1.8) ...
+#20 10.09 Selecting previously unselected package libbrotli1:amd64.
+#20 10.09 Preparing to unpack .../15-libbrotli1_1.0.9-2build6_amd64.deb ...
+#20 10.09 Unpacking libbrotli1:amd64 (1.0.9-2build6) ...
+#20 10.12 Selecting previously unselected package libsasl2-modules-db:amd64.
+#20 10.12 Preparing to unpack .../16-libsasl2-modules-db_2.1.27+dfsg2-3ubuntu1.2_amd64.deb ...
+#20 10.12 Unpacking libsasl2-modules-db:amd64 (2.1.27+dfsg2-3ubuntu1.2) ...
+#20 10.15 Selecting previously unselected package libsasl2-2:amd64.
+#20 10.15 Preparing to unpack .../17-libsasl2-2_2.1.27+dfsg2-3ubuntu1.2_amd64.deb ...
+#20 10.15 Unpacking libsasl2-2:amd64 (2.1.27+dfsg2-3ubuntu1.2) ...
+#20 10.17 Selecting previously unselected package libldap-2.5-0:amd64.
+#20 10.17 Preparing to unpack .../18-libldap-2.5-0_2.5.20+dfsg-0ubuntu0.22.04.1_amd64.deb ...
+#20 10.17 Unpacking libldap-2.5-0:amd64 (2.5.20+dfsg-0ubuntu0.22.04.1) ...
+#20 10.21 Selecting previously unselected package librtmp1:amd64.
+#20 10.21 Preparing to unpack .../19-librtmp1_2.4+20151223.gitfa8646d.1-2build4_amd64.deb ...
+#20 10.21 Unpacking librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2build4) ...
+#20 10.23 Selecting previously unselected package libssh-4:amd64.
+#20 10.23 Preparing to unpack .../20-libssh-4_0.9.6-2ubuntu0.22.04.7_amd64.deb ...
+#20 10.23 Unpacking libssh-4:amd64 (0.9.6-2ubuntu0.22.04.7) ...
+#20 10.25 Selecting previously unselected package libcurl4:amd64.
+#20 10.25 Preparing to unpack .../21-libcurl4_7.81.0-1ubuntu1.25_amd64.deb ...
+#20 10.25 Unpacking libcurl4:amd64 (7.81.0-1ubuntu1.25) ...
+#20 10.27 Selecting previously unselected package libjsoncpp25:amd64.
+#20 10.28 Preparing to unpack .../22-libjsoncpp25_1.9.5-3_amd64.deb ...
+#20 10.28 Unpacking libjsoncpp25:amd64 (1.9.5-3) ...
+#20 10.30 Selecting previously unselected package librhash0:amd64.
+#20 10.30 Preparing to unpack .../23-librhash0_1.4.2-1ubuntu1_amd64.deb ...
+#20 10.30 Unpacking librhash0:amd64 (1.4.2-1ubuntu1) ...
+#20 10.33 Selecting previously unselected package dh-elpa-helper.
+#20 10.33 Preparing to unpack .../24-dh-elpa-helper_2.0.9ubuntu1_all.deb ...
+#20 10.33 Unpacking dh-elpa-helper (2.0.9ubuntu1) ...
+#20 10.36 Selecting previously unselected package emacsen-common.
+#20 10.36 Preparing to unpack .../25-emacsen-common_3.0.4_all.deb ...
+#20 10.38 Unpacking emacsen-common (3.0.4) ...
+#20 10.42 Selecting previously unselected package cmake-data.
+#20 10.42 Preparing to unpack .../26-cmake-data_3.22.1-1ubuntu1.22.04.2_all.deb ...
+#20 10.44 Unpacking cmake-data (3.22.1-1ubuntu1.22.04.2) ...
+#20 11.05 Selecting previously unselected package cmake.
+#20 11.05 Preparing to unpack .../27-cmake_3.22.1-1ubuntu1.22.04.2_amd64.deb ...
+#20 11.05 Unpacking cmake (3.22.1-1ubuntu1.22.04.2) ...
+#20 11.14 Selecting previously unselected package gcc-11-base:amd64.
+#20 11.14 Preparing to unpack .../28-gcc-11-base_11.4.0-1ubuntu1~22.04.3_amd64.deb ...
+#20 11.14 Unpacking gcc-11-base:amd64 (11.4.0-1ubuntu1~22.04.3) ...
+#20 11.16 Selecting previously unselected package libisl23:amd64.
+#20 11.16 Preparing to unpack .../29-libisl23_0.24-2build1_amd64.deb ...
+#20 11.16 Unpacking libisl23:amd64 (0.24-2build1) ...
+#20 11.19 Selecting previously unselected package libmpfr6:amd64.
+#20 11.19 Preparing to unpack .../30-libmpfr6_4.1.0-3build3_amd64.deb ...
+#20 11.19 Unpacking libmpfr6:amd64 (4.1.0-3build3) ...
+#20 11.22 Selecting previously unselected package libmpc3:amd64.
+#20 11.22 Preparing to unpack .../31-libmpc3_1.2.1-2build1_amd64.deb ...
+#20 11.22 Unpacking libmpc3:amd64 (1.2.1-2build1) ...
+#20 11.23 Selecting previously unselected package cpp-11.
+#20 11.24 Preparing to unpack .../32-cpp-11_11.4.0-1ubuntu1~22.04.3_amd64.deb ...
+#20 11.24 Unpacking cpp-11 (11.4.0-1ubuntu1~22.04.3) ...
+#20 11.38 Selecting previously unselected package cpp.
+#20 11.38 Preparing to unpack .../33-cpp_4%3a11.2.0-1ubuntu1_amd64.deb ...
+#20 11.38 Unpacking cpp (4:11.2.0-1ubuntu1) ...
+#20 11.40 Selecting previously unselected package libcc1-0:amd64.
+#20 11.40 Preparing to unpack .../34-libcc1-0_12.3.0-1ubuntu1~22.04.3_amd64.deb ...
+#20 11.40 Unpacking libcc1-0:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+#20 11.42 Selecting previously unselected package libgomp1:amd64.
+#20 11.42 Preparing to unpack .../35-libgomp1_12.3.0-1ubuntu1~22.04.3_amd64.deb ...
+#20 11.42 Unpacking libgomp1:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+#20 11.44 Selecting previously unselected package libitm1:amd64.
+#20 11.44 Preparing to unpack .../36-libitm1_12.3.0-1ubuntu1~22.04.3_amd64.deb ...
+#20 11.44 Unpacking libitm1:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+#20 11.45 Selecting previously unselected package libatomic1:amd64.
+#20 11.46 Preparing to unpack .../37-libatomic1_12.3.0-1ubuntu1~22.04.3_amd64.deb ...
+#20 11.46 Unpacking libatomic1:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+#20 11.47 Selecting previously unselected package libasan6:amd64.
+#20 11.47 Preparing to unpack .../38-libasan6_11.4.0-1ubuntu1~22.04.3_amd64.deb ...
+#20 11.47 Unpacking libasan6:amd64 (11.4.0-1ubuntu1~22.04.3) ...
+#20 11.52 Selecting previously unselected package liblsan0:amd64.
+#20 11.52 Preparing to unpack .../39-liblsan0_12.3.0-1ubuntu1~22.04.3_amd64.deb ...
+#20 11.52 Unpacking liblsan0:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+#20 11.54 Selecting previously unselected package libtsan0:amd64.
+#20 11.55 Preparing to unpack .../40-libtsan0_11.4.0-1ubuntu1~22.04.3_amd64.deb ...
+#20 11.55 Unpacking libtsan0:amd64 (11.4.0-1ubuntu1~22.04.3) ...
+#20 11.59 Selecting previously unselected package libubsan1:amd64.
+#20 11.59 Preparing to unpack .../41-libubsan1_12.3.0-1ubuntu1~22.04.3_amd64.deb ...
+#20 11.60 Unpacking libubsan1:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+#20 11.63 Selecting previously unselected package libquadmath0:amd64.
+#20 11.63 Preparing to unpack .../42-libquadmath0_12.3.0-1ubuntu1~22.04.3_amd64.deb ...
+#20 11.63 Unpacking libquadmath0:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+#20 11.65 Selecting previously unselected package libgcc-11-dev:amd64.
+#20 11.65 Preparing to unpack .../43-libgcc-11-dev_11.4.0-1ubuntu1~22.04.3_amd64.deb ...
+#20 11.65 Unpacking libgcc-11-dev:amd64 (11.4.0-1ubuntu1~22.04.3) ...
+#20 11.73 Selecting previously unselected package gcc-11.
+#20 11.73 Preparing to unpack .../44-gcc-11_11.4.0-1ubuntu1~22.04.3_amd64.deb ...
+#20 11.73 Unpacking gcc-11 (11.4.0-1ubuntu1~22.04.3) ...
+#20 12.05 Selecting previously unselected package gcc.
+#20 12.05 Preparing to unpack .../45-gcc_4%3a11.2.0-1ubuntu1_amd64.deb ...
+#20 12.06 Unpacking gcc (4:11.2.0-1ubuntu1) ...
+#20 12.09 Selecting previously unselected package libc-dev-bin.
+#20 12.09 Preparing to unpack .../46-libc-dev-bin_2.35-0ubuntu3.14_amd64.deb ...
+#20 12.09 Unpacking libc-dev-bin (2.35-0ubuntu3.14) ...
+#20 12.12 Selecting previously unselected package linux-libc-dev:amd64.
+#20 12.12 Preparing to unpack .../47-linux-libc-dev_5.15.0-190.200_amd64.deb ...
+#20 12.12 Unpacking linux-libc-dev:amd64 (5.15.0-190.200) ...
+#20 12.39 Selecting previously unselected package libcrypt-dev:amd64.
+#20 12.40 Preparing to unpack .../48-libcrypt-dev_1%3a4.4.27-1_amd64.deb ...
+#20 12.40 Unpacking libcrypt-dev:amd64 (1:4.4.27-1) ...
+#20 12.43 Selecting previously unselected package rpcsvc-proto.
+#20 12.43 Preparing to unpack .../49-rpcsvc-proto_1.4.2-0ubuntu6_amd64.deb ...
+#20 12.43 Unpacking rpcsvc-proto (1.4.2-0ubuntu6) ...
+#20 12.47 Selecting previously unselected package libtirpc-dev:amd64.
+#20 12.47 Preparing to unpack .../50-libtirpc-dev_1.3.2-2ubuntu0.1_amd64.deb ...
+#20 12.47 Unpacking libtirpc-dev:amd64 (1.3.2-2ubuntu0.1) ...
+#20 12.51 Selecting previously unselected package libnsl-dev:amd64.
+#20 12.51 Preparing to unpack .../51-libnsl-dev_1.3.0-2build2_amd64.deb ...
+#20 12.51 Unpacking libnsl-dev:amd64 (1.3.0-2build2) ...
+#20 12.55 Selecting previously unselected package libc6-dev:amd64.
+#20 12.55 Preparing to unpack .../52-libc6-dev_2.35-0ubuntu3.14_amd64.deb ...
+#20 12.55 Unpacking libc6-dev:amd64 (2.35-0ubuntu3.14) ...
+#20 12.75 Selecting previously unselected package libstdc++-11-dev:amd64.
+#20 12.75 Preparing to unpack .../53-libstdc++-11-dev_11.4.0-1ubuntu1~22.04.3_amd64.deb ...
+#20 12.75 Unpacking libstdc++-11-dev:amd64 (11.4.0-1ubuntu1~22.04.3) ...
+#20 12.99 Selecting previously unselected package g++-11.
+#20 12.99 Preparing to unpack .../54-g++-11_11.4.0-1ubuntu1~22.04.3_amd64.deb ...
+#20 12.99 Unpacking g++-11 (11.4.0-1ubuntu1~22.04.3) ...
+#20 13.13 Selecting previously unselected package g++.
+#20 13.13 Preparing to unpack .../55-g++_4%3a11.2.0-1ubuntu1_amd64.deb ...
+#20 13.14 Unpacking g++ (4:11.2.0-1ubuntu1) ...
+#20 13.16 Selecting previously unselected package make.
+#20 13.16 Preparing to unpack .../56-make_4.3-4.1build1_amd64.deb ...
+#20 13.16 Unpacking make (4.3-4.1build1) ...
+#20 13.20 Setting up libexpat1:amd64 (2.4.7-1ubuntu0.7) ...
+#20 13.20 Setting up gcc-11-base:amd64 (11.4.0-1ubuntu1~22.04.3) ...
+#20 13.21 Setting up libpsl5:amd64 (0.21.0-1.2build2) ...
+#20 13.21 Setting up libbrotli1:amd64 (1.0.9-2build6) ...
+#20 13.21 Setting up binutils-common:amd64 (2.38-4ubuntu2.12) ...
+#20 13.22 Setting up libnghttp2-14:amd64 (1.43.0-1ubuntu0.4) ...
+#20 13.22 Setting up linux-libc-dev:amd64 (5.15.0-190.200) ...
+#20 13.23 Setting up libctf-nobfd0:amd64 (2.38-4ubuntu2.12) ...
+#20 13.23 Setting up libgomp1:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+#20 13.23 Setting up libasan6:amd64 (11.4.0-1ubuntu1~22.04.3) ...
+#20 13.24 Setting up libsasl2-modules-db:amd64 (2.1.27+dfsg2-3ubuntu1.2) ...
+#20 13.25 Setting up libtirpc-dev:amd64 (1.3.2-2ubuntu0.1) ...
+#20 13.25 Setting up libuv1:amd64 (1.43.0-1ubuntu0.1) ...
+#20 13.25 Setting up rpcsvc-proto (1.4.2-0ubuntu6) ...
+#20 13.26 Setting up emacsen-common (3.0.4) ...
+#20 13.30 Setting up make (4.3-4.1build1) ...
+#20 13.30 Setting up libmpfr6:amd64 (4.1.0-3build3) ...
+#20 13.30 Setting up librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2build4) ...
+#20 13.31 Setting up dh-elpa-helper (2.0.9ubuntu1) ...
+#20 13.31 Setting up libquadmath0:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+#20 13.31 Setting up libmpc3:amd64 (1.2.1-2build1) ...
+#20 13.32 Setting up libatomic1:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+#20 13.32 Setting up libjsoncpp25:amd64 (1.9.5-3) ...
+#20 13.33 Setting up libsasl2-2:amd64 (2.1.27+dfsg2-3ubuntu1.2) ...
+#20 13.33 Setting up libssh-4:amd64 (0.9.6-2ubuntu0.22.04.7) ...
+#20 13.33 Setting up libubsan1:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+#20 13.34 Setting up libnsl-dev:amd64 (1.3.0-2build2) ...
+#20 13.34 Setting up librhash0:amd64 (1.4.2-1ubuntu1) ...
+#20 13.34 Setting up libcrypt-dev:amd64 (1:4.4.27-1) ...
+#20 13.35 Setting up cmake-data (3.22.1-1ubuntu1.22.04.2) ...
+#20 13.39 Setting up libbinutils:amd64 (2.38-4ubuntu2.12) ...
+#20 13.40 Setting up libisl23:amd64 (0.24-2build1) ...
+#20 13.40 Setting up libc-dev-bin (2.35-0ubuntu3.14) ...
+#20 13.40 Setting up openssl (3.0.2-0ubuntu1.26) ...
+#20 13.41 Setting up libcc1-0:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+#20 13.41 Setting up liblsan0:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+#20 13.42 Setting up libitm1:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+#20 13.42 Setting up libicu70:amd64 (70.1-2) ...
+#20 13.42 Setting up libtsan0:amd64 (11.4.0-1ubuntu1~22.04.3) ...
+#20 13.43 Setting up libctf0:amd64 (2.38-4ubuntu2.12) ...
+#20 13.43 Setting up cpp-11 (11.4.0-1ubuntu1~22.04.3) ...
+#20 13.43 Setting up libldap-2.5-0:amd64 (2.5.20+dfsg-0ubuntu0.22.04.1) ...
+#20 13.43 Setting up ca-certificates (20260601~22.04.1) ...
+#20 14.04 Updating certificates in /etc/ssl/certs...
+#20 14.79 121 added, 0 removed; done.
+#20 14.82 Setting up libgcc-11-dev:amd64 (11.4.0-1ubuntu1~22.04.3) ...
+#20 14.82 Setting up cpp (4:11.2.0-1ubuntu1) ...
+#20 14.85 Setting up libcurl4:amd64 (7.81.0-1ubuntu1.25) ...
+#20 14.86 Setting up libc6-dev:amd64 (2.35-0ubuntu3.14) ...
+#20 14.86 Setting up libxml2:amd64 (2.9.13+dfsg-1ubuntu0.12) ...
+#20 14.86 Setting up binutils-x86-64-linux-gnu (2.38-4ubuntu2.12) ...
+#20 14.87 Setting up libarchive13:amd64 (3.6.0-1ubuntu1.8) ...
+#20 14.87 Setting up binutils (2.38-4ubuntu2.12) ...
+#20 14.88 Setting up libstdc++-11-dev:amd64 (11.4.0-1ubuntu1~22.04.3) ...
+#20 14.89 Setting up gcc-11 (11.4.0-1ubuntu1~22.04.3) ...
+#20 14.89 Setting up cmake (3.22.1-1ubuntu1.22.04.2) ...
+#20 14.90 Setting up g++-11 (11.4.0-1ubuntu1~22.04.3) ...
+#20 14.90 Setting up gcc (4:11.2.0-1ubuntu1) ...
+#20 14.92 Setting up g++ (4:11.2.0-1ubuntu1) ...
+#20 14.95 update-alternatives: using /usr/bin/g++ to provide /usr/bin/c++ (c++) in auto mode
+#20 14.95 update-alternatives: warning: skip creation of /usr/share/man/man1/c++.1.gz because associated file /usr/share/man/man1/g++.1.gz (of link group c++) doesn't exist
+#20 14.95 Processing triggers for libc-bin (2.35-0ubuntu3.14) ...
+#20 14.97 Processing triggers for ca-certificates (20260601~22.04.1) ...
+#20 14.98 Updating certificates in /etc/ssl/certs...
+#20 15.64 0 added, 0 removed; done.
+#20 15.64 Running hooks in /etc/ca-certificates/update.d...
+#20 15.65 done.
+#20 DONE 16.2s
+
+#26 [go-control-plane build 6/6] RUN go test ./... && go build -o /out/control-plane ./cmd/control-plane
+#26 ...
+
+#27 [cpp-gateway build 3/7] WORKDIR /app
+#27 DONE 0.1s
+
+#28 [cpp-gateway build 4/7] COPY CMakeLists.txt ./
+#28 DONE 0.0s
+
+#29 [cpp-gateway build 5/7] COPY include ./include
+#29 DONE 0.0s
+
+#30 [cpp-gateway build 6/7] COPY src ./src
+#30 DONE 0.0s
+
+#31 [cpp-gateway build 7/7] RUN cmake -S . -B build         -DCMAKE_BUILD_TYPE=Release         -DBUILD_TESTING=OFF         -DGATEWAY_WARNINGS_AS_ERRORS=ON     && cmake --build build --parallel
+#31 0.308 -- The CXX compiler identification is GNU 11.4.0
+#31 0.323 -- Detecting CXX compiler ABI info
+#31 0.470 -- Detecting CXX compiler ABI info - done
+#31 0.487 -- Check for working CXX compiler: /usr/bin/c++ - skipped
+#31 0.489 -- Detecting CXX compile features
+#31 0.491 -- Detecting CXX compile features - done
+#31 0.495 -- Looking for C++ include pthread.h
+#31 0.626 -- Looking for C++ include pthread.h - found
+#31 0.628 -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+#31 0.834 -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+#31 0.835 -- Found Threads: TRUE
+#31 0.836 -- Configuring done
+#31 0.844 -- Generating done
+#31 0.845 -- Build files have been written to: /app/build
+#31 0.935 [  6%] Building CXX object CMakeFiles/gateway_core.dir/src/common/Logger.cpp.o
+#31 0.936 [ 12%] Building CXX object CMakeFiles/gateway_core.dir/src/net/ReactorNotifier.cpp.o
+#31 0.945 [ 25%] Building CXX object CMakeFiles/gateway_core.dir/src/control/StartupConfig.cpp.o
+#31 0.946 [ 31%] Building CXX object CMakeFiles/gateway_core.dir/src/protocol/ProtocolCodec.cpp.o
+#31 0.950 [ 31%] Building CXX object CMakeFiles/gateway_core.dir/src/control/HttpResponseParser.cpp.o
+#31 0.953 [ 37%] Building CXX object CMakeFiles/gateway_core.dir/src/business/Dispatcher.cpp.o
+#31 0.963 [ 50%] Building CXX object CMakeFiles/gateway_core.dir/src/control/SocketDeadline.cpp.o
+#31 0.964 [ 56%] Building CXX object CMakeFiles/gateway_core.dir/src/control/ControlPlaneClient.cpp.o
+#31 0.967 [ 43%] Building CXX object CMakeFiles/gateway_core.dir/src/net/TcpServer.cpp.o
+#31 0.971 [ 62%] Building CXX object CMakeFiles/gateway_core.dir/src/control/RuntimeConfig.cpp.o
+#31 0.980 [ 75%] Building CXX object CMakeFiles/gateway_core.dir/src/business/Handlers.cpp.o
+#31 0.981 [ 81%] Building CXX object CMakeFiles/gateway_core.dir/src/business/LogStorage.cpp.o
+#31 0.981 [ 81%] Building CXX object CMakeFiles/gateway_core.dir/src/business/StatsManager.cpp.o
+#31 16.99 [ 87%] Linking CXX static library libgateway_core.a
+#31 17.07 [ 87%] Built target gateway_core
+#31 17.11 [ 93%] Building CXX object CMakeFiles/message_server.dir/src/main.cpp.o
+#31 17.94 [100%] Linking CXX executable message_server
+#31 18.04 [100%] Built target message_server
+#31 DONE 18.2s
+
+#26 [go-control-plane build 6/6] RUN go test ./... && go build -o /out/control-plane ./cmd/control-plane
+#26 ...
+
+#32 [cpp-gateway stage-1 4/4] COPY --from=build --chown=gateway:gateway /app/build/message_server /app/message_server
+#32 DONE 0.0s
+
+#33 [cpp-gateway] exporting to docker image format
+#33 exporting layers 0.1s done
+#33 exporting manifest sha256:ec5d21d61d1ccc0e3c7f202907f6b6f4de09b3d1d377c34bb33552a9d22d1a3d done
+#33 exporting config sha256:6366905c95d0de35038ae7dbbbe6596faf1aa93f480b3b072467e88542e319c7 done
+#33 sending tarball
+#33 sending tarball 2.0s done
+#33 DONE 2.1s
+
+#34 importing to docker
+#34 loading layer c0359c5b6ede 29.74MB / 29.74MB 1.6s done
+#34 loading layer 5c421a76378d 4.58kB / 4.58kB 0.2s done
+#34 loading layer cdca15af2374 93B / 93B 0.0s done
+#34 loading layer dd039deddeb8 167.47kB / 167.47kB 0.0s done
+#34 DONE 1.6s
+
+#35 [cpp-gateway] resolving provenance for metadata file
+#35 DONE 0.0s
+
+#26 [go-control-plane build 6/6] RUN go test ./... && go build -o /out/control-plane ./cmd/control-plane
+#26 27.81 ?   	gateway-system/go-control-plane/cmd/control-plane	[no test files]
+#26 28.49 ok  	gateway-system/go-control-plane/internal/app	0.076s
+#26 DONE 29.1s
+
+#36 [go-control-plane stage-1 4/4] COPY --from=build --chown=control-plane:control-plane /out/control-plane /app/control-plane
+#36 DONE 0.0s
+
+#37 [go-control-plane] exporting to docker image format
+#37 exporting layers 0.5s done
+#37 exporting manifest sha256:b1b6f93815742c3e0d93e13c4f489503bd4c914ee0c7fd364d2e7fadaa9f7269 done
+#37 exporting config sha256:af6743c5f3fd46ee0e46ec012a2bd9fe12be738e64063023f54821dd60b001d6 done
+#37 sending tarball 1.7s done
+#37 DONE 2.3s
+
+#38 importing to docker
+#38 loading layer 66462cc862fe 28.23MB / 28.23MB 1.5s done
+#38 loading layer d701cab4f899 5.74MB / 5.74MB 0.4s done
+#38 loading layer 9879247b7032 93B / 93B 0.1s done
+#38 loading layer f27536eb9068 6.69MB / 6.69MB 0.1s done
+#38 DONE 1.5s
+
+#39 [go-control-plane] resolving provenance for metadata file
+#39 DONE 0.0s
+ go-control-plane  Built
+ cpp-gateway  Built
+ Network gateway-system_default  Creating
+ Network gateway-system_default  Created
+ Container gateway-system-redis-1  Creating
+ Container gateway-system-redis-1  Created
+ Container gateway-system-go-control-plane-1  Creating
+ Container gateway-system-go-control-plane-1  Created
+ Container gateway-system-cpp-gateway-1  Creating
+ Container gateway-system-cpp-gateway-1  Created
+ Container gateway-system-redis-1  Starting
+ Container gateway-system-redis-1  Started
+ Container gateway-system-redis-1  Waiting
+ Container gateway-system-redis-1  Healthy
+ Container gateway-system-go-control-plane-1  Starting
+ Container gateway-system-go-control-plane-1  Started
+ Container gateway-system-go-control-plane-1  Waiting
+ Container gateway-system-go-control-plane-1  Healthy
+ Container gateway-system-cpp-gateway-1  Starting
+ Container gateway-system-cpp-gateway-1  Started
+[smoke] Waiting for Go control plane liveness and readiness...
+[smoke] Checking liveness: http://localhost:8080/health/live
+{"status":"ok"}
+[smoke] Checking readiness: http://localhost:8080/health/ready
+{"status":"ready"}
+[smoke] Checking non-root, read-only application containers...
+[smoke] Checking Redis connectivity...
+PONG
+[smoke] Waiting for gateway metrics report...
+{"control_plane_requests_auth":0,"control_plane_requests_config":0,"control_plane_requests_metrics_report":0,"control_plane_requests_clients_report":0,"control_plane_duration_total_us":0,"control_plane_errors_resolve":0,"control_plane_errors_deadline":0,"control_plane_errors_connect":0,"control_plane_errors_send":0,"control_plane_errors_receive":0,"control_plane_errors_protocol":0,"control_plane_errors_status":0,"control_plane_errors_json":0,"control_plane_errors_oversize":0,"gateway_id":"gateway-001","gateway_boot_id":"34d582ce-4c5d-4a63-90bb-385f3fd7d393","process_start_time":1787070986,"active_connections":0,"total_requests":0,"bytes_in":0,"bytes_out":0,"errors":0,"request_queue_capacity":4096,"request_queue_backlog":0,"request_queue_peak":0,"request_queue_rejected":0,"auth_queue_capacity":32,"auth_queue_backlog":0,"auth_queue_peak":0,"auth_queue_rejected":0,"auth_in_flight":0,"auth_tasks_cancelled_before_start":0,"response_queue_capacity":4096,"response_queue_backlog":0,"response_queue_peak":0,"response_queue_rejected":0,"response_queue_rejected_normal":0,"response_queue_rejected_auth":0,"slow_client_closed":0,"stale_response_dropped":0,"auth_success":0,"auth_failure":0,"auth_allowed":0,"auth_denied":0,"auth_unavailable":0,"auth_duration_count":0,"auth_duration_total_us":0,"runtime_config_version":1,"server_state":"RUNNING","reported_at":"2026-08-18T16:36:26Z","online":true,"status":"online","seconds_since_last_report":1}
+[smoke] Checking gateways: http://localhost:8080/gateways
+[{"control_plane_requests_auth":0,"control_plane_requests_config":0,"control_plane_requests_metrics_report":0,"control_plane_requests_clients_report":0,"control_plane_duration_total_us":0,"control_plane_errors_resolve":0,"control_plane_errors_deadline":0,"control_plane_errors_connect":0,"control_plane_errors_send":0,"control_plane_errors_receive":0,"control_plane_errors_protocol":0,"control_plane_errors_status":0,"control_plane_errors_json":0,"control_plane_errors_oversize":0,"gateway_id":"gateway-001","gateway_boot_id":"34d582ce-4c5d-4a63-90bb-385f3fd7d393","process_start_time":1787070986,"active_connections":0,"total_requests":0,"bytes_in":0,"bytes_out":0,"errors":0,"request_queue_capacity":4096,"request_queue_backlog":0,"request_queue_peak":0,"request_queue_rejected":0,"auth_queue_capacity":32,"auth_queue_backlog":0,"auth_queue_peak":0,"auth_queue_rejected":0,"auth_in_flight":0,"auth_tasks_cancelled_before_start":0,"response_queue_capacity":4096,"response_queue_backlog":0,"response_queue_peak":0,"response_queue_rejected":0,"response_queue_rejected_normal":0,"response_queue_rejected_auth":0,"slow_client_closed":0,"stale_response_dropped":0,"auth_success":0,"auth_failure":0,"auth_allowed":0,"auth_denied":0,"auth_unavailable":0,"auth_duration_count":0,"auth_duration_total_us":0,"runtime_config_version":1,"server_state":"RUNNING","reported_at":"2026-08-18T16:36:26Z","online":true,"status":"online","seconds_since_last_report":1}]
+[smoke] Checking gateway status by id: http://localhost:8080/gateways/gateway-001/status
+{"control_plane_requests_auth":0,"control_plane_requests_config":0,"control_plane_requests_metrics_report":0,"control_plane_requests_clients_report":0,"control_plane_duration_total_us":0,"control_plane_errors_resolve":0,"control_plane_errors_deadline":0,"control_plane_errors_connect":0,"control_plane_errors_send":0,"control_plane_errors_receive":0,"control_plane_errors_protocol":0,"control_plane_errors_status":0,"control_plane_errors_json":0,"control_plane_errors_oversize":0,"gateway_id":"gateway-001","gateway_boot_id":"34d582ce-4c5d-4a63-90bb-385f3fd7d393","process_start_time":1787070986,"active_connections":0,"total_requests":0,"bytes_in":0,"bytes_out":0,"errors":0,"request_queue_capacity":4096,"request_queue_backlog":0,"request_queue_peak":0,"request_queue_rejected":0,"auth_queue_capacity":32,"auth_queue_backlog":0,"auth_queue_peak":0,"auth_queue_rejected":0,"auth_in_flight":0,"auth_tasks_cancelled_before_start":0,"response_queue_capacity":4096,"response_queue_backlog":0,"response_queue_peak":0,"response_queue_rejected":0,"response_queue_rejected_normal":0,"response_queue_rejected_auth":0,"slow_client_closed":0,"stale_response_dropped":0,"auth_success":0,"auth_failure":0,"auth_allowed":0,"auth_denied":0,"auth_unavailable":0,"auth_duration_count":0,"auth_duration_total_us":0,"runtime_config_version":1,"server_state":"RUNNING","reported_at":"2026-08-18T16:36:26Z","online":true,"status":"online","seconds_since_last_report":1}
+[smoke] Checking liveness fields on /gateway/status
+[smoke] Checking liveness fields on /gateways/gateway-001/status
+[smoke] Checking clients: http://localhost:8080/clients
+[]
+[smoke] Waiting for gateway clients by id...
+[]
+[smoke] Checking Prometheus exposition...
+[smoke] Checking Redis snapshot TTLs...
+[smoke] Checking one-time token create, rotate, and disable...
+[smoke] Checking config ETag compare-and-set...
+[smoke] Running TCP protocol checks against localhost:9000...
+[tcp] PASS ping
+[tcp] PASS echo
+[tcp] PASS stats
+[tcp] PASS log_push
+[tcp] PASS half_packet
+[tcp] PASS sticky_packet
+[tcp] PASS invalid_length
+[tcp] PASS auth_required
+[tcp] PASS auth_invalid_json
+[tcp] PASS auth_missing_fields
+[tcp] PASS auth_invalid_field_types
+[tcp] PASS auth_duplicate
+[tcp] PASS clients_reports_authenticated_id
+[tcp] PASS clients_excludes_unauthenticated
+[tcp] PASS repeated_auth_ping_close
+[tcp] PASS concurrent_auth_echo
+[tcp] PASS auth_pending_second_request_closes
+[tcp] PASS clients_remove_disconnected_client
+[tcp] PASS max_connections_per_client
+[tcp] PASS max_requests_per_client_per_second
+[tcp] PASS all protocol checks
+[smoke] PASS
+
+[smoke] docker compose ps
+NAME                                IMAGE                             COMMAND                  SERVICE            CREATED          STATUS                    PORTS
+gateway-system-cpp-gateway-1        gateway-system-cpp-gateway        "/app/message_server"    cpp-gateway        57 seconds ago   Up 45 seconds (healthy)   0.0.0.0:9000->9000/tcp, [::]:9000->9000/tcp
+gateway-system-go-control-plane-1   gateway-system-go-control-plane   "/app/control-plane"     go-control-plane   57 seconds ago   Up 51 seconds (healthy)   0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+gateway-system-redis-1              redis:7-alpine                    "docker-entrypoint.s…"   redis              57 seconds ago   Up 57 seconds (healthy)   0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+
+[smoke] Recent service logs
+go-control-plane-1  | 2026/08/18 16:36:41 {"duration_ms":0,"method":"GET","path":"/gateways","request_id":"req-e17913d9303f7f1f9a05e7f9","status":200}
+go-control-plane-1  | 2026/08/18 16:36:41 {"duration_ms":0,"method":"GET","path":"/gateways/gateway-001/clients","request_id":"req-6d7f083353aedbfbf209a00c","status":200}
+go-control-plane-1  | 2026/08/18 16:36:41 {"duration_ms":0,"method":"GET","path":"/config","request_id":"req-0f0f8089f86574efd1773757","status":200}
+go-control-plane-1  | 2026/08/18 16:36:41 {"duration_ms":0,"method":"POST","path":"/metrics/report","request_id":"req-117f1c12be604cd25629c1f8","status":200}
+go-control-plane-1  | 2026/08/18 16:36:41 {"duration_ms":0,"method":"POST","path":"/clients/report","request_id":"req-e72c2a7050ad73277569b865","status":200}
+go-control-plane-1  | 2026/08/18 16:36:42 {"duration_ms":0,"method":"GET","path":"/gateways","request_id":"req-7642680f17e78fde7263cf7e","status":200}
+go-control-plane-1  | 2026/08/18 16:36:42 {"duration_ms":0,"method":"GET","path":"/gateways/gateway-001/clients","request_id":"req-a03e1165046beee840da4a7a","status":200}
+go-control-plane-1  | 2026/08/18 16:36:42 {"duration_ms":0,"method":"GET","path":"/gateways","request_id":"req-fb453cf486939e47fc56e3d6","status":200}
+go-control-plane-1  | 2026/08/18 16:36:42 {"duration_ms":0,"method":"GET","path":"/gateways/gateway-001/clients","request_id":"req-66abd25adbb5e24fae7bdfdf","status":200}
+go-control-plane-1  | 2026/08/18 16:36:42 {"duration_ms":0,"method":"GET","path":"/gateways","request_id":"req-ed930c55aa23c33ff5f838ee","status":200}
+go-control-plane-1  | 2026/08/18 16:36:42 {"duration_ms":0,"method":"GET","path":"/gateways/gateway-001/clients","request_id":"req-292f19f77a8557a938e88476","status":200}
+go-control-plane-1  | 2026/08/18 16:36:43 {"duration_ms":0,"method":"GET","path":"/gateways","request_id":"req-5d56c7e3738e15a194969ee3","status":200}
+go-control-plane-1  | 2026/08/18 16:36:43 {"duration_ms":0,"method":"GET","path":"/gateways/gateway-001/clients","request_id":"req-b47fbefec29f83036d0baafa","status":200}
+go-control-plane-1  | 2026/08/18 16:36:43 {"duration_ms":0,"method":"GET","path":"/gateways","request_id":"req-d7f6a1c79aa8ad1d3a495889","status":200}
+go-control-plane-1  | 2026/08/18 16:36:43 {"duration_ms":0,"method":"GET","path":"/gateways/gateway-001/clients","request_id":"req-5ec2ed576441461bd6cde6ee","status":200}
+cpp-gateway-1       | [INFO] [Thread 13909152895936025591] gateway started: port=9000 workers=4 auth_workers=2 request_capacity=4096 auth_capacity=32 response_capacity=4096
+cpp-gateway-1       | [2026-08-18 16:36:28] fd=6 request_id=1004 payload={"level": "INFO", "service": "tcp-protocol-test", "message": "log push smoke test"}
+go-control-plane-1  | 2026/08/18 16:36:44 {"duration_ms":0,"method":"GET","path":"/gateways","request_id":"req-069de3d586f3dd00597eec57","status":200}
+go-control-plane-1  | 2026/08/18 16:36:44 {"duration_ms":0,"method":"GET","path":"/gateways/gateway-001/clients","request_id":"req-3fd5737f8bf2700825d44bf0","status":200}
+go-control-plane-1  | 2026/08/18 16:36:44 {"duration_ms":0,"method":"GET","path":"/health/live","request_id":"req-cec438856a3c169835f0b418","status":200}
+go-control-plane-1  | 2026/08/18 16:36:44 {"duration_ms":0,"method":"GET","path":"/health/ready","request_id":"req-430f616b4cba69c9c15e6de9","status":200}
+go-control-plane-1  | 2026/08/18 16:36:44 {"duration_ms":0,"method":"GET","path":"/gateways","request_id":"req-10b07dd4888384cef43b5d86","status":200}
+go-control-plane-1  | 2026/08/18 16:36:44 {"duration_ms":0,"method":"GET","path":"/gateways/gateway-001/clients","request_id":"req-8aad0c2fc64174b7c1b57390","status":200}
+go-control-plane-1  | 2026/08/18 16:36:45 {"duration_ms":0,"method":"GET","path":"/gateways","request_id":"req-e34495cd2fffeec27be242f8","status":200}
+go-control-plane-1  | 2026/08/18 16:36:45 {"duration_ms":0,"method":"GET","path":"/gateways/gateway-001/clients","request_id":"req-a768807b8616e56356356c78","status":200}
+go-control-plane-1  | 2026/08/18 16:36:45 {"duration_ms":0,"method":"GET","path":"/gateways","request_id":"req-35b525318261bda2aeaa306e","status":200}
+go-control-plane-1  | 2026/08/18 16:36:45 {"duration_ms":0,"method":"GET","path":"/gateways/gateway-001/clients","request_id":"req-84476c60f317c6172601bd12","status":200}
+go-control-plane-1  | 2026/08/18 16:36:46 {"duration_ms":0,"method":"GET","path":"/gateways","request_id":"req-dcdd70e991f4b3dc707e896e","status":200}
+go-control-plane-1  | 2026/08/18 16:36:46 {"duration_ms":0,"method":"GET","path":"/gateways/gateway-001/clients","request_id":"req-4b80d496389a54eb41348290","status":200}
+go-control-plane-1  | 2026/08/18 16:36:46 {"duration_ms":0,"method":"GET","path":"/gateways","request_id":"req-bc7e2d0b7b86e3fad0a42a8f","status":200}
+go-control-plane-1  | 2026/08/18 16:36:46 {"duration_ms":0,"method":"GET","path":"/gateways/gateway-001/clients","request_id":"req-a9c778b3ca166a4be8fa1cf0","status":200}
+go-control-plane-1  | 2026/08/18 16:36:46 {"duration_ms":0,"method":"GET","path":"/config","request_id":"req-3e51e56ecd7de4db3cf601a2","status":200}
+go-control-plane-1  | 2026/08/18 16:36:46 {"duration_ms":0,"method":"POST","path":"/metrics/report","request_id":"req-59391e7a8e904ce5e7fe4c5e","status":200}
+go-control-plane-1  | 2026/08/18 16:36:46 {"duration_ms":0,"method":"POST","path":"/clients/report","request_id":"req-cb61a4610ad3d62ede4a44b2","status":200}
+go-control-plane-1  | 2026/08/18 16:36:47 {"duration_ms":0,"method":"GET","path":"/gateways","request_id":"req-77ca16c0895c0ad89fedb73d","status":200}
+go-control-plane-1  | 2026/08/18 16:36:47 {"duration_ms":0,"method":"GET","path":"/gateways/gateway-001/clients","request_id":"req-9eb3b84624c89acd38143e89","status":200}
+go-control-plane-1  | 2026/08/18 16:36:47 {"duration_ms":0,"method":"GET","path":"/config","request_id":"req-f293828fb640d14d87eb5600","status":200}
+go-control-plane-1  | 2026/08/18 16:36:47 {"duration_ms":0,"method":"PUT","path":"/config","request_id":"req-21977c0fd1463c540e08660d","status":200}
+go-control-plane-1  | 2026/08/18 16:36:47 {"duration_ms":0,"method":"GET","path":"/health/live","request_id":"req-30fe18ffcf752980dde72b11","status":200}
+go-control-plane-1  | 2026/08/18 16:36:47 {"duration_ms":0,"method":"GET","path":"/health/ready","request_id":"req-fe7cb4230664a4150e317084","status":200}
+go-control-plane-1  | 2026/08/18 16:36:50 {"duration_ms":0,"method":"GET","path":"/health/live","request_id":"req-929f1f0330088c28017ca003","status":200}
+go-control-plane-1  | 2026/08/18 16:36:50 {"duration_ms":0,"method":"GET","path":"/health/ready","request_id":"req-63bff0d55048580c7cb503ca","status":200}
+go-control-plane-1  | 2026/08/18 16:36:51 {"duration_ms":0,"method":"GET","path":"/config","request_id":"req-1d8cb8ded2253322b3219a3f","status":200}
+go-control-plane-1  | 2026/08/18 16:36:51 {"duration_ms":0,"method":"POST","path":"/metrics/report","request_id":"req-05019fd35d3ac88ea1d2569e","status":200}
+go-control-plane-1  | 2026/08/18 16:36:51 {"duration_ms":0,"method":"POST","path":"/clients/report","request_id":"req-29957cef53e23043e3788947","status":200}
+go-control-plane-1  | 2026/08/18 16:36:53 {"duration_ms":0,"method":"POST","path":"/tokens","request_id":"req-97a34dc582138d41a97cd3ee","status":201}
+go-control-plane-1  | 2026/08/18 16:36:53 {"duration_ms":0,"method":"POST","path":"/auth/check","request_id":"req-f5d6a98b30d67716070ad2bf","status":200}
+go-control-plane-1  | 2026/08/18 16:36:53 {"duration_ms":0,"method":"POST","path":"/auth/check","request_id":"req-b3675b1a2b9950520fee074c","status":200}
+go-control-plane-1  | 2026/08/18 16:36:53 {"duration_ms":0,"method":"GET","path":"/config","request_id":"req-5962e80e70cee4c112185081","status":200}
+go-control-plane-1  | 2026/08/18 16:36:53 {"duration_ms":0,"method":"PUT","path":"/config","request_id":"req-47d5bc6201e42c7872a03d91","status":200}
+go-control-plane-1  | 2026/08/18 16:36:53 {"duration_ms":0,"method":"GET","path":"/health/live","request_id":"req-31836da3d7744093e8154713","status":200}
+go-control-plane-1  | 2026/08/18 16:36:53 {"duration_ms":0,"method":"GET","path":"/health/ready","request_id":"req-a5a6c0ea40fc4dd577acc06e","status":200}
+go-control-plane-1  | 2026/08/18 16:36:56 {"duration_ms":0,"method":"GET","path":"/health/live","request_id":"req-89740a1f6cd5bc15760f5223","status":200}
+go-control-plane-1  | 2026/08/18 16:36:56 {"duration_ms":0,"method":"GET","path":"/health/ready","request_id":"req-2da054f508067a26446e6def","status":200}
+go-control-plane-1  | 2026/08/18 16:36:56 {"duration_ms":0,"method":"GET","path":"/config","request_id":"req-1f9d47c0d0d94a223af8de0e","status":200}
+go-control-plane-1  | 2026/08/18 16:36:56 {"duration_ms":0,"method":"POST","path":"/metrics/report","request_id":"req-130e3af41de8c585c7b88852","status":200}
+go-control-plane-1  | 2026/08/18 16:36:56 {"duration_ms":0,"method":"POST","path":"/clients/report","request_id":"req-ff938fd4f3e37283fddea261","status":200}
+go-control-plane-1  | 2026/08/18 16:36:59 {"duration_ms":0,"method":"GET","path":"/config","request_id":"req-dcb8c755f1990eb8534294fd","status":200}
+go-control-plane-1  | 2026/08/18 16:36:59 {"duration_ms":0,"method":"PUT","path":"/config","request_id":"req-4b9602788ad9806ccf44ca0f","status":200}
+go-control-plane-1  | 2026/08/18 16:36:59 {"duration_ms":0,"method":"GET","path":"/health/live","request_id":"req-70f85c1cb9d4e4dde247608f","status":200}
+go-control-plane-1  | 2026/08/18 16:36:59 {"duration_ms":0,"method":"GET","path":"/health/ready","request_id":"req-d247ad9280836f1774c9c30f","status":200}
+go-control-plane-1  | 2026/08/18 16:37:01 {"duration_ms":0,"method":"GET","path":"/config","request_id":"req-edeeac1b446ea0ea0790ce87","status":200}
+go-control-plane-1  | 2026/08/18 16:37:01 {"duration_ms":0,"method":"POST","path":"/metrics/report","request_id":"req-c719959baea2aa050d84e6a3","status":200}
+go-control-plane-1  | 2026/08/18 16:37:01 {"duration_ms":0,"method":"POST","path":"/clients/report","request_id":"req-e1039ee087aa6c57440476b5","status":200}
+go-control-plane-1  | 2026/08/18 16:37:03 {"duration_ms":0,"method":"GET","path":"/health/live","request_id":"req-e4092eba70cc9cc8181081ea","status":200}
+go-control-plane-1  | 2026/08/18 16:37:03 {"duration_ms":0,"method":"GET","path":"/health/ready","request_id":"req-2857bcab46b4f3b9612b8309","status":200}
+go-control-plane-1  | 2026/08/18 16:37:05 {"duration_ms":0,"method":"POST","path":"/tokens","request_id":"req-1b79de57550dd81bb5d17ff8","status":201}
+go-control-plane-1  | 2026/08/18 16:37:05 {"duration_ms":0,"method":"POST","path":"/auth/check","request_id":"req-4591cb54ee2ceeb308e6d21d","status":200}
+go-control-plane-1  | 2026/08/18 16:37:06 {"duration_ms":0,"method":"GET","path":"/health/live","request_id":"req-2de056e745a0692381c47c9a","status":200}
+go-control-plane-1  | 2026/08/18 16:37:06 {"duration_ms":0,"method":"GET","path":"/health/ready","request_id":"req-fa517d93650fb1d1f0162f45","status":200}
+go-control-plane-1  | 2026/08/18 16:37:06 {"duration_ms":0,"method":"GET","path":"/config","request_id":"req-655e712a3f6100ccb8e9b730","status":200}
+go-control-plane-1  | 2026/08/18 16:37:06 {"duration_ms":0,"method":"PUT","path":"/config","request_id":"req-bbe2dc23f106d2b756653b79","status":200}
+go-control-plane-1  | 2026/08/18 16:37:06 {"duration_ms":0,"method":"GET","path":"/config","request_id":"req-7c1a82156b174fefdaf336fc","status":200}
+go-control-plane-1  | 2026/08/18 16:37:06 {"duration_ms":0,"method":"POST","path":"/metrics/report","request_id":"req-383c4dd36b010e98215b8f89","status":200}
+go-control-plane-1  | 2026/08/18 16:37:06 {"duration_ms":0,"method":"POST","path":"/clients/report","request_id":"req-6836e47347380d76fdedacf6","status":200}
+go-control-plane-1  | 2026/08/18 16:37:09 {"duration_ms":0,"method":"GET","path":"/health/live","request_id":"req-89e0cb4b607997626380171a","status":200}
+go-control-plane-1  | 2026/08/18 16:37:09 {"duration_ms":0,"method":"GET","path":"/health/ready","request_id":"req-a84fbd815324f41a29ace31c","status":200}
+go-control-plane-1  | 2026/08/18 16:37:11 {"duration_ms":0,"method":"GET","path":"/config","request_id":"req-79aba01df475377780c82a67","status":200}
+go-control-plane-1  | 2026/08/18 16:37:11 {"duration_ms":0,"method":"POST","path":"/metrics/report","request_id":"req-c56da32ef2205d20f68a9f89","status":200}
+go-control-plane-1  | 2026/08/18 16:37:11 {"duration_ms":0,"method":"POST","path":"/clients/report","request_id":"req-3b09eef7314f89f21f13c0a3","status":200}
+go-control-plane-1  | 2026/08/18 16:37:12 {"duration_ms":0,"method":"GET","path":"/health/live","request_id":"req-ea72b8e833daed5472b7b1f9","status":200}
+go-control-plane-1  | 2026/08/18 16:37:12 {"duration_ms":0,"method":"GET","path":"/health/ready","request_id":"req-d78f3f8993a1e68e4db332fc","status":200}
+redis-1             | 1:C 18 Aug 2026 16:36:15.706 # WARNING Memory overcommit must be enabled! Without it, a background save or replication may fail under low memory condition. Being disabled, it can also cause failures without low memory condition, see https://github.com/jemalloc/jemalloc/issues/1328. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
+redis-1             | 1:C 18 Aug 2026 16:36:15.706 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+redis-1             | 1:C 18 Aug 2026 16:36:15.706 * Redis version=7.4.10, bits=64, commit=00000000, modified=0, pid=1, just started
+redis-1             | 1:C 18 Aug 2026 16:36:15.706 # Warning: no config file specified, using the default config. In order to specify a config file use redis-server /path/to/redis.conf
+redis-1             | 1:M 18 Aug 2026 16:36:15.706 * monotonic clock: POSIX clock_gettime
+redis-1             | 1:M 18 Aug 2026 16:36:15.706 * Running mode=standalone, port=6379.
+redis-1             | 1:M 18 Aug 2026 16:36:15.707 * Server initialized
+redis-1             | 1:M 18 Aug 2026 16:36:15.707 * Ready to accept connections tcp
+ Container gateway-system-cpp-gateway-1  Stopping
+ Container gateway-system-cpp-gateway-1  Stopped
+ Container gateway-system-cpp-gateway-1  Removing
+ Container gateway-system-cpp-gateway-1  Removed
+ Container gateway-system-go-control-plane-1  Stopping
+ Container gateway-system-go-control-plane-1  Stopped
+ Container gateway-system-go-control-plane-1  Removing
+ Container gateway-system-go-control-plane-1  Removed
+ Container gateway-system-redis-1  Stopping
+ Container gateway-system-redis-1  Stopped
+ Container gateway-system-redis-1  Removing
+ Container gateway-system-redis-1  Removed
+ Network gateway-system_default  Removing
+ Network gateway-system_default  Removed

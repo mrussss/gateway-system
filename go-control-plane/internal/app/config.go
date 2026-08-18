@@ -29,6 +29,7 @@ func defaultRuntimeConfig() runtimeConfig {
 		MaxRequestsPerClientPerSecond: 100,
 		SlowClientOutputLimit:         8388608,
 		LogLevel:                      "INFO",
+		RequestQueueCapacityDisplay:   4096,
 	}
 }
 

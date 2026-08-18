@@ -3,6 +3,12 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+      start_period: 2s
 
   go-control-plane:
     build:
@@ -11,15 +17,29 @@ services:
       APP_ENV: production
       STORE_BACKEND: redis
       REDIS_ADDR: redis:6379
-      CONTROL_PLANE_ADMIN_TOKEN: "compose-admin-secret"
-      GATEWAY_SHARED_TOKEN: "compose-gateway-secret"
-      TOKEN_PEPPER: "compose-token-pepper"
+      CONTROL_PLANE_ADMIN_TOKEN: "${CONTROL_PLANE_ADMIN_TOKEN:-local-admin-change-me}"
+      GATEWAY_SHARED_TOKEN: "${GATEWAY_SHARED_TOKEN:-local-gateway-change-me}"
+      TOKEN_PEPPER: "${TOKEN_PEPPER:-local-pepper-change-me}"
       AUTH_FAILURE_LIMIT: "5"
       AUTH_FAILURE_WINDOW_SECONDS: "60"
     ports:
       - "8080:8080"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health/live >/dev/null && curl -fsS http://127.0.0.1:8080/health/ready >/dev/null"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+      start_period: 3s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   cpp-gateway:
     build:
@@ -31,14 +51,29 @@ services:
       CONTROL_PLANE_HOST: go-control-plane
       CONTROL_PLANE_PORT: "8080"
       CONTROL_PLANE_TIMEOUT_MS: "1000"
-      GATEWAY_SHARED_TOKEN: "compose-gateway-secret"
+      GATEWAY_SHARED_TOKEN: "${GATEWAY_SHARED_TOKEN:-local-gateway-change-me}"
+      WORKER_COUNT: "${WORKER_COUNT:-0}"
       AUTH_WORKER_COUNT: "2"
       AUTH_QUEUE_CAPACITY: "32"
-      REQUEST_QUEUE_CAPACITY: "4096"
-      RESPONSE_QUEUE_CAPACITY: "4096"
+      REQUEST_QUEUE_CAPACITY: "${REQUEST_QUEUE_CAPACITY:-4096}"
+      RESPONSE_QUEUE_CAPACITY: "${RESPONSE_QUEUE_CAPACITY:-4096}"
       SHUTDOWN_TIMEOUT_MS: "5000"
     ports:
       - "9000:9000"
     depends_on:
-      - go-control-plane
+      go-control-plane:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/127.0.0.1/9000'"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     stop_grace_period: 8s

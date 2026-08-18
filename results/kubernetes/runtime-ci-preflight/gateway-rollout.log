@@ -1,0 +1,17 @@
+[pod/gateway-c77589c56-949gw/gateway] [ERROR] [Thread 7456344544006930274] control plane request failed: operation=config category=connect status=0
+[pod/gateway-c77589c56-949gw/gateway] [ERROR] [Thread 7456344544006930274] runtime config fetch failed; retaining current snapshot
+[pod/gateway-c77589c56-949gw/gateway] [ERROR] [Thread 8437065641438234922] control plane request failed: operation=metrics_report category=connect status=0
+[pod/gateway-c77589c56-949gw/gateway] [ERROR] [Thread 8437065641438234922] control plane request failed: operation=clients_report category=connect status=0
+[pod/gateway-c77589c56-2w8nz/gateway] [ERROR] [Thread 8607507044889692841] control plane request failed: operation=metrics_report category=connect status=0
+[pod/gateway-c77589c56-2w8nz/gateway] [ERROR] [Thread 9733873736152131006] control plane request failed: operation=config category=connect status=0
+[pod/gateway-c77589c56-2w8nz/gateway] [ERROR] [Thread 9733873736152131006] runtime config fetch failed; retaining current snapshot
+[pod/gateway-c77589c56-2w8nz/gateway] [ERROR] [Thread 8607507044889692841] control plane request failed: operation=clients_report category=connect status=0
+[pod/gateway-c77589c56-2w8nz/gateway] [INFO] [Thread 4095892169406919828] gateway started: port=9000 workers=4 auth_workers=2 request_capacity=4096 auth_capacity=32 response_capacity=4096
+[pod/gateway-c77589c56-2w8nz/gateway] [2026-08-18 16:32:11] fd=9 request_id=1004 payload={"level": "INFO", "service": "tcp-protocol-test", "message": "log push smoke test"}
+[pod/gateway-c77589c56-949gw/gateway] [INFO] [Thread 1152445225008434544] gateway started: port=9000 workers=4 auth_workers=2 request_capacity=4096 auth_capacity=32 response_capacity=4096
+[pod/gateway-c77589c56-949gw/gateway] [INFO] [Thread 1152445225008434544] graceful shutdown started: deadline_ms=20000 queued_requests=0 queued_auth=0
+[pod/gateway-c77589c56-949gw/gateway] [INFO] [Thread 1152445225008434544] graceful shutdown drain completed
+[pod/gateway-c77589c56-949gw/gateway] [INFO] [Thread 1152445225008434544] gateway shutdown complete
+[pod/gateway-c77589c56-2w8nz/gateway] [INFO] [Thread 4095892169406919828] graceful shutdown started: deadline_ms=20000 queued_requests=0 queued_auth=0
+[pod/gateway-c77589c56-2w8nz/gateway] [INFO] [Thread 4095892169406919828] graceful shutdown drain completed
+[pod/gateway-c77589c56-2w8nz/gateway] [INFO] [Thread 4095892169406919828] gateway shutdown complete

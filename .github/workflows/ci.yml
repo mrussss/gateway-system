@@ -65,6 +65,33 @@ jobs:
         working-directory: go-control-plane
         run: go vet ./...
 
+  redis-integration:
+    name: Redis integration tests
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go-control-plane/go.mod
+          cache-dependency-path: go-control-plane/go.sum
+      - name: Run real Redis contracts
+        working-directory: go-control-plane
+        env:
+          REDIS_TEST_ADDR: 127.0.0.1:6379
+        run: go test -count=1 -run '^TestRedis' ./internal/app
+
   config-and-scripts:
     name: Compose and script checks
     runs-on: ubuntu-latest
@@ -77,3 +104,7 @@ jobs:
         run: bash -n scripts/*.sh
       - name: Check Python syntax
         run: python3 -m compileall -q scripts cpp-gateway/scripts cpp-gateway/tests
+      - name: Install manifest test dependency
+        run: python3 -m pip install PyYAML==6.0.2
+      - name: Check Kubernetes invariants
+        run: python3 scripts/k8s_manifest_test.py
