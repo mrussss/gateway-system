@@ -93,7 +93,11 @@ class ControlPlaneHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Connection", "close")
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            # Shutdown/deadline cases intentionally close in-flight fake HTTP calls.
+            pass
 
     def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         self.server.path_requests[self.path] = self.server.path_requests.get(self.path, 0) + 1
@@ -314,7 +318,7 @@ def test_slow_client_is_bounded_by_deadline(executable: Path, control_port: int)
     # Stay below the local fail-safe config while the asynchronous config puller
     # initializes; this is still far larger than the test socket receive window.
     large_payload = b"x" * 900_000
-    slow.sendall(packet(ECHO, 2, large_payload) + packet(ECHO, 3, large_payload))
+    slow.sendall(b"".join(packet(ECHO, request_id, large_payload) for request_id in range(2, 10)))
 
     # A second connection's later STATS response proves the single worker has
     # already produced both large responses for the slow connection.

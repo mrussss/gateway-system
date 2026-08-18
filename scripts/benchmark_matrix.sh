@@ -62,6 +62,7 @@ for profile in "workers1-q64:1:64:64" "workers4-q4096:4:4096:4096"; do
         --worker-count "$worker_count" \
         --request-queue-capacity "$request_capacity" \
         --response-queue-capacity "$response_capacity" \
+        --allow-request-failures \
         --run-id "$run_id-$profile_name-$clients-$payload_size" \
         --output "$output_dir/$profile_name-clients$clients-payload$payload_size.json"
     done
@@ -79,8 +80,29 @@ for profile in "workers1-q64:1:64:64" "workers4-q4096:4:4096:4096"; do
     --worker-count "$worker_count" \
     --request-queue-capacity "$request_capacity" \
     --response-queue-capacity "$response_capacity" \
+    --allow-request-failures \
     --run-id "$run_id-$profile_name-slow" \
     --output "$output_dir/$profile_name-slow10pct.json"
 done
+
+python3 - "$output_dir" <<'PY'
+import glob
+import json
+import pathlib
+import sys
+
+directory = pathlib.Path(sys.argv[1])
+files = sorted(glob.glob(str(directory / "*.json")))
+if len(files) != 18:
+    raise SystemExit(f"expected 18 benchmark JSON files, found {len(files)}")
+for path in files:
+    result = json.load(open(path, encoding="utf-8"))
+    requests = result["requests"]
+    if requests["attempted"] != requests["success"] + requests["failed"]:
+        raise SystemExit(f"request accounting mismatch: {path}")
+    if requests["success"] == 0:
+        raise SystemExit(f"no successful requests: {path}")
+print(f"[benchmark] validated {len(files)} raw result files")
+PY
 
 echo "[benchmark] PASS results=$output_dir"

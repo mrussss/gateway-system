@@ -278,6 +278,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--request-queue-capacity", type=int, help="record startup Request Queue capacity")
     parser.add_argument("--response-queue-capacity", type=int, help="record startup Response Queue capacity")
     parser.add_argument("--output", help="write the complete JSON result to this path")
+    parser.add_argument(
+        "--allow-request-failures",
+        action="store_true",
+        help="return success after recording request failures (for deliberate overload matrices)",
+    )
     return parser.parse_args()
 
 
@@ -421,7 +426,7 @@ def main() -> int:
         f"p95:{result['auth_latency_ms']['p95']:.2f} "
         f"p99:{result['auth_latency_ms']['p99']:.2f}"
     )
-    return 0 if failed == 0 else 1
+    return 0 if failed == 0 or args.allow_request_failures else 1
 
 
 if __name__ == "__main__":
