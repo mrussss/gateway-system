@@ -63,6 +63,11 @@ runs on every push. It is not a substitute for the cluster tests.
 ## Failure evidence
 
 - Go `errorStore` tests model Redis/store failures.
+- routing tests require the common JSON envelope for 404/405, and dependency
+  classification tests distinguish Redis connection/deadline 503 from internal
+  Store 500 responses.
+- middleware rejection tests prove 4xx requests still reach the bounded-label
+  HTTP metrics and structured access log path.
 - `runtime_config_test` proves a failed fetch cannot mutate the active config object.
 - graceful shutdown integration uses delayed auth to create a real queue backlog.
 - overload integration saturates a one-worker/one-slot AUTH Executor, verifies local rejection, and proves ordinary ECHO remains responsive.

@@ -10,6 +10,11 @@ value without an encoder-added newline. Errors have the stable shape:
 
 Every response includes `X-Request-ID`. Store unavailability is a service
 failure and never becomes a successful authentication denial.
+Unknown routes return JSON `NOT_FOUND` with HTTP 404. A known route used with
+an unsupported method returns JSON `METHOD_NOT_ALLOWED` with HTTP 405 and an
+`Allow` header. Redis connection/deadline failures return JSON `UNAVAILABLE`
+with HTTP 503; malformed retained data and other internal Store faults remain
+HTTP 500.
 
 ## Route groups
 

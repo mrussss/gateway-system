@@ -63,6 +63,22 @@ func TestHTTPMetricsUseRegisteredRouteNotRawPath(t *testing.T) {
 	}
 }
 
+func TestHTTPMetricsCountMiddlewareRejections(t *testing.T) {
+	router := routesWithStore(newMemoryStore())
+	request := httptest.NewRequest(http.MethodPost, "/auth/check", strings.NewReader(`{}`))
+	request.Header.Set("Content-Type", "text/plain")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("unexpected response status %d", response.Code)
+	}
+
+	body, _ := scrapeMetrics(t, router)
+	if !strings.Contains(body, `control_plane_http_requests_total{method="POST",route="/auth/check",status="415"} 1`) {
+		t.Fatalf("middleware rejection was not counted:\n%s", body)
+	}
+}
+
 func TestMetricsReportRejectsUnboundedGatewayLabelValue(t *testing.T) {
 	router := routesWithStore(newMemoryStore())
 	response := httptest.NewRecorder()

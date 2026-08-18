@@ -57,18 +57,6 @@ func middleware(next http.Handler, metrics *metricsRegistry) http.Handler {
 		w.Header().Set("X-Request-ID", requestID)
 		r = r.WithContext(context.WithValue(r.Context(), requestIDKey{}, requestID))
 
-		if r.Body != nil {
-			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
-		}
-		if (r.Method == http.MethodPost || r.Method == http.MethodPut) && r.ContentLength != 0 {
-			contentType := r.Header.Get("Content-Type")
-			mediaType, _, err := mime.ParseMediaType(contentType)
-			if err != nil || mediaType != "application/json" {
-				writeAPIError(w, r, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", "Content-Type must be application/json")
-				return
-			}
-		}
-
 		response := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		defer func() {
 			if recovered := recover(); recovered != nil {
@@ -84,6 +72,18 @@ func middleware(next http.Handler, metrics *metricsRegistry) http.Handler {
 			})
 			log.Print(string(entry))
 		}()
+
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(response, r.Body, maxRequestBodyBytes)
+		}
+		if (r.Method == http.MethodPost || r.Method == http.MethodPut) && r.ContentLength != 0 {
+			contentType := r.Header.Get("Content-Type")
+			mediaType, _, err := mime.ParseMediaType(contentType)
+			if err != nil || mediaType != "application/json" {
+				writeAPIError(response, r, http.StatusUnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", "Content-Type must be application/json")
+				return
+			}
+		}
 
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()

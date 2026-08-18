@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.0.1 - Unreleased
+
+- Return the stable JSON error envelope, Request ID, and explicit `Allow`
+  header for unmatched routes and unsupported methods instead of the default
+  `net/http` text responses.
+- Distinguish Redis/network/deadline unavailability as HTTP 503 while retaining
+  HTTP 500 for internal Store failures.
+- Count middleware-level request rejections in HTTP metrics and structured
+  access logs.
+
 ## v2.0.0 - 2026-08-19
 
 - Continue from the verified v1 Phase 0–5 implementation rather than replacing

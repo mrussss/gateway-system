@@ -2,8 +2,10 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -680,7 +682,45 @@ func TestHandlersReturnStoreError(t *testing.T) {
 	}
 }
 
+func TestConfigDependencyUnavailableReturnsServiceUnavailable(t *testing.T) {
+	store = &unavailableConfigStore{errorStore: &errorStore{}}
+	request := newTestRequest(http.MethodPut, "/config", bytes.NewBufferString(`{"max_payload_size":1048576,"max_connections_per_client":2,"max_requests_per_client_per_second":100,"slow_client_output_limit":8388608,"log_level":"INFO"}`))
+	request.Header.Set("If-Match", `"1"`)
+	response := httptest.NewRecorder()
+
+	routesWithStore(store).ServeHTTP(response, request)
+
+	assertErrorResponse(t, response, http.StatusServiceUnavailable, "store unavailable")
+}
+
+func TestRedisConnectionFailureReturnsServiceUnavailable(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	redisStorage := newRedisStore(address)
+	defer redisStorage.Close()
+	store = redisStorage
+	request := newTestRequest(http.MethodPut, "/config", bytes.NewBufferString(`{"max_payload_size":1048576,"max_connections_per_client":2,"max_requests_per_client_per_second":100,"slow_client_output_limit":8388608,"log_level":"INFO"}`))
+	request.Header.Set("If-Match", `"1"`)
+	response := httptest.NewRecorder()
+
+	routesWithStore(store).ServeHTTP(response, request)
+
+	assertErrorResponse(t, response, http.StatusServiceUnavailable, "store unavailable")
+}
+
 type errorStore struct{}
+
+type unavailableConfigStore struct{ *errorStore }
+
+func (s *unavailableConfigStore) updateConfig(int64, configUpdateRequest) (runtimeConfig, error) {
+	return runtimeConfig{}, context.DeadlineExceeded
+}
 
 func (s *errorStore) saveMetrics(req metricsReportRequest) (gatewayStatusResponse, error) {
 	return gatewayStatusResponse{}, errors.New(storeErrorMessage)
