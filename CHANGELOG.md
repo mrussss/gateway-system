@@ -1,6 +1,6 @@
 # Changelog
 
-## v2.0.1 - Unreleased
+## v2.0.1 - 2026-08-19
 
 - Return the stable JSON error envelope, Request ID, and explicit `Allow`
   header for unmatched routes and unsupported methods instead of the default
