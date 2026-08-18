@@ -8,6 +8,9 @@
   drain are required v2 deliverables.
 - Freeze the v2 API, Redis, metrics, and shutdown contracts before incremental
   Phase 6–9 implementation.
+- Replace hand-written AUTH exposition with a private Prometheus registry,
+  runtime/process collectors, HTTP/Redis/AUTH/config instrumentation, and an
+  expiry-aware gateway snapshot collector with parser/cardinality tests.
 
 ## v1.0.0 - 2026-07-28
 

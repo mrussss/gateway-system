@@ -61,7 +61,7 @@ func authFailurePolicyFromEnv() authFailurePolicy {
 	}
 }
 
-func newStoreFromEnv() Store {
+func newStoreFromEnv(registries ...*metricsRegistry) Store {
 	backend := os.Getenv("STORE_BACKEND")
 	if backend == "" {
 		backend = defaultStoreBackend
@@ -71,7 +71,7 @@ func newStoreFromEnv() Store {
 		if addr == "" {
 			addr = defaultRedisAddr
 		}
-		return newRedisStore(addr)
+		return newRedisStore(addr, registries...)
 	}
 	return newMemoryStore()
 }
