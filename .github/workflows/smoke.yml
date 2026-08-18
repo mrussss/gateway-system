@@ -27,10 +27,14 @@ jobs:
         run: scripts/capture_environment.sh "$SMOKE_RESULTS_DIR/environment.txt"
 
       - name: Run smoke test
-        run: bash scripts/smoke_test.sh 2>&1 | tee "$SMOKE_RESULTS_DIR/smoke.log"
+        run: |
+          set -o pipefail
+          bash scripts/smoke_test.sh 2>&1 | tee "$SMOKE_RESULTS_DIR/smoke.log"
 
       - name: Run Redis outage and recovery test
-        run: bash scripts/redis_recovery_test.sh 2>&1 | tee "$SMOKE_RESULTS_DIR/redis-recovery.log"
+        run: |
+          set -o pipefail
+          bash scripts/redis_recovery_test.sh 2>&1 | tee "$SMOKE_RESULTS_DIR/redis-recovery.log"
 
       - name: Dump docker compose state on failure
         if: failure()

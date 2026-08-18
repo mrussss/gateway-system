@@ -2,6 +2,9 @@ name: Kubernetes rolling update
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/p9-release
 
 permissions:
   contents: read
@@ -41,13 +44,19 @@ jobs:
         run: scripts/capture_environment.sh results/kubernetes/runtime/environment.txt
 
       - name: Deploy
-        run: bash scripts/k8s_deploy.sh 2>&1 | tee results/kubernetes/runtime/deploy.log
+        run: |
+          set -o pipefail
+          bash scripts/k8s_deploy.sh 2>&1 | tee results/kubernetes/runtime/deploy.log
 
       - name: Smoke
-        run: bash scripts/k8s_smoke.sh 2>&1 | tee results/kubernetes/runtime/smoke.log
+        run: |
+          set -o pipefail
+          bash scripts/k8s_smoke.sh 2>&1 | tee results/kubernetes/runtime/smoke.log
 
       - name: Rolling-update and drain proof
-        run: bash scripts/k8s_rolling_update_test.sh 2>&1 | tee results/kubernetes/runtime/rolling-update.log
+        run: |
+          set -o pipefail
+          bash scripts/k8s_rolling_update_test.sh 2>&1 | tee results/kubernetes/runtime/rolling-update.log
 
       - name: Dump cluster state on failure
         if: failure()

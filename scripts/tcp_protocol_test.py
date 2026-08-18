@@ -9,6 +9,7 @@ import struct
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 
@@ -141,6 +142,29 @@ def expect_auth_rejection_then_close(
 
 
 def fetch_clients(control_plane_url: str) -> list[dict]:
+    gateways_request = urllib.request.Request(
+        f"{control_plane_url}/gateways", headers=admin_headers()
+    )
+    with urllib.request.urlopen(gateways_request, timeout=2.0) as resp:
+        gateways = json.loads(resp.read().decode("utf-8"))
+    if gateways:
+        clients: list[dict] = []
+        for gateway in gateways:
+            gateway_id = urllib.parse.quote(str(gateway["gateway_id"]), safe="")
+            request = urllib.request.Request(
+                f"{control_plane_url}/gateways/{gateway_id}/clients",
+                headers=admin_headers(),
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=2.0) as resp:
+                    clients.extend(json.loads(resp.read().decode("utf-8")))
+            except urllib.error.HTTPError as error:
+                if error.code != 404:
+                    raise
+        return clients
+
+    # The legacy route remains a startup fallback before any Gateway status
+    # report exists. Multi-Gateway checks always use the per-Gateway contract.
     request = urllib.request.Request(
         f"{control_plane_url}/clients", headers=admin_headers()
     )
