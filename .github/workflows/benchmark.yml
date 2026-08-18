@@ -1,0 +1,43 @@
+name: Benchmark matrix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docker-redis-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CONTROL_PLANE_ADMIN_TOKEN: ci-admin-not-a-production-secret
+      GATEWAY_SHARED_TOKEN: ci-gateway-not-a-production-secret
+      TOKEN_PEPPER: ci-pepper-not-a-production-secret
+      BENCHMARK_RUN_ID: github-${{ github.run_id }}-${{ github.run_attempt }}
+      BENCHMARK_OUTPUT_DIR: results/benchmark/container-ci
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Worker, Queue, client, payload, and slow-reader matrix
+        run: scripts/benchmark_matrix.sh
+
+      - name: Dump Compose state on failure
+        if: failure()
+        run: |
+          docker compose ps || true
+          docker compose logs --tail=100 || true
+
+      - name: Upload raw benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-runtime-evidence
+          path: results/benchmark/container-ci
+          if-no-files-found: error
+
+      - name: Clean up
+        if: always()
+        run: docker compose down --volumes --remove-orphans

@@ -111,7 +111,7 @@ one-slot Request/Response Queue faults, Control Plane outage, SIGTERM drain,
 slow-client deadline, Prometheus parsing/cardinality, and structured benchmark
 JSON through 500 clients. Docker smoke/recovery and real Kubernetes rolling
 update are mandatory release gates; they are not claimed passed in an
-environment without Docker or `kubectl`.
+environment without a Docker daemon or reachable Kubernetes cluster.
 
 The project does not guarantee TLS, global distributed limits, zero rollout
 disconnects, delivery beyond the drain deadline, Redis HA, multi-region

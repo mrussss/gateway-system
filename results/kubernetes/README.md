@@ -8,9 +8,10 @@ On 2026-08-19 the manifest contract passed with:
 python3 scripts/k8s_manifest_test.py
 ```
 
-This is static validation only. The local environment reported `kubectl:
-unavailable`; Kind v0.32.0 was installed, but Docker Desktop WSL integration was
-disabled, so no cluster could be created and no rolling update was claimed.
+This is static validation only. At final local verification the `kubectl`
+v1.36.1 client and Kind v0.32.0 were installed, but no kubectl context was
+configured and the Docker API socket was absent. No cluster could be created
+and no rolling update was claimed.
 
 Before `v2.0.0`, run the following in a Docker- and Kubernetes-enabled
 environment and add the environment capture plus raw command logs here:

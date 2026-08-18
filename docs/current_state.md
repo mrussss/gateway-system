@@ -51,9 +51,10 @@ shutdown/Store Close case. The manifest validator passed all 11 resource
 contracts, and the local Release/MemoryStore benchmark completed seven raw
 scenarios through 500 clients without a request failure.
 
-The evidence and its limits are under `results/`. Docker Desktop WSL integration
-and `kubectl` were unavailable locally, so Docker smoke/Redis recovery and real
-Kubernetes rolling-update results remain honest release blockers. The manual
+The evidence and its limits are under `results/`. The final local environment
+had Docker and kubectl clients but no Docker daemon socket or Kubernetes
+context, so Docker smoke/Redis recovery and real Kubernetes rolling-update
+results remain honest release blockers. The manual
 workflows and `scripts/release_gate.sh --full` execute those gates elsewhere;
 the repository must not be tagged until successful raw artifacts are committed.
 
