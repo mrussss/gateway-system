@@ -31,7 +31,7 @@ STOPPED
 - Requests successfully admitted before DRAINING are dispatched while the drain remains inside its deadline.
 - Responses are attempted until written to the kernel or the deadline expires.
 - A slow or non-reading client cannot hold the process beyond the configured deadline.
-- Startup requires `SHUTDOWN_TIMEOUT_MS >= 2 * CONTROL_PLANE_TIMEOUT_MS + 100`, covering calls already in flight when DRAINING begins. The metrics reporter rechecks state between its two possible HTTP calls.
+- Startup requires `SHUTDOWN_TIMEOUT_MS >= 2 * CONTROL_PLANE_TIMEOUT_MS + 100`, covering calls already in flight when DRAINING begins.
 - Repeated `stop()` calls and repeated SIGTERM do not double-close queues or descriptors.
 
 ## Non-guarantees

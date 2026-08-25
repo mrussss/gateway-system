@@ -4,7 +4,8 @@ The job-search version has completed CTest coverage, strict/sanitizer CI, eventf
 
 The C++ networking architecture remains intentionally frozen against speculative
 additions such as multi-Reactor sharding, lock-free queues, coroutines, Kafka,
-TLS, or a replacement HTTP stack. Kubernetes deployment and graceful drain are
-required integration work for v2 and build on the existing process lifecycle.
+TLS, or a replacement HTTP stack. Graceful drain is already part of the final
+scope; there is no deployment-platform roadmap.
 
-Future changes require a reproducible correctness or performance problem, an acceptance test, and updated design evidence. The most plausible measured follow-ups are batching LOG_PUSH disk writes or replacing synchronous Worker AUTH only if profiling shows either path is a real bottleneck.
+Future changes are limited to bugs, security issues, test fixes and interview
+feedback. No new product surface is planned.

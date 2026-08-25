@@ -1,5 +1,18 @@
 # Changelog
 
+## v3.0.0-final - Final Scope Freeze
+
+This is a deliberate project-boundary reduction for the long-term job-search
+version, not an accidental feature regression.
+
+- Removed the Prometheus product surface and C++ remote metrics reporting.
+- Removed multi-gateway registry/status and online-client aggregation.
+- Removed Kubernetes deployment, Kind, rolling-update and platform-specific CI.
+- Retained the C++ networking core, AUTH worker isolation, Token/Redis AUTH,
+  failure TTL, Runtime Config/Lua CAS, tests, sanitizer gates and benchmarks.
+- Archived the complete pre-reduction v2 implementation as
+  `archive/v2-full` / `v2-full-archive`.
+
 ## v2.0.1 - 2026-08-19
 
 - Return the stable JSON error envelope, Request ID, and explicit `Allow`

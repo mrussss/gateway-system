@@ -125,7 +125,6 @@ After auth succeeds:
 
 - business messages are allowed
 - a repeated `AUTH` request returns `ERROR_RESP` with `{"status":400,"message":"already authenticated"}`
-- `/clients` reports the authenticated `client_id`
 
 Connection limit behavior:
 
@@ -166,7 +165,6 @@ Current repo-level protocol tests cover:
 - duplicate auth rejection
 - per-process max connection rejection
 - per-process rate limiting
-- `/clients` visibility for authenticated clients only
 - queue capacity/peak/rejection telemetry
 - Request Queue overload response and close policy
 - bounded graceful shutdown and slow-client deadline (CTest integration)

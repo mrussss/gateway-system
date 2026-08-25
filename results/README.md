@@ -1,30 +1,12 @@
-# Reproducible evidence
+# Evidence
 
-This tree contains raw evidence and the environment needed to interpret it. A
-report is evidence only when it identifies the exact command, build mode,
-backend, workload, and limitations. Missing runtime access is recorded as a
-pending gate; a static manifest check is never presented as a cluster run.
+Results are reserved for reproducible evidence of the permanent Final Scope:
+C++ build/sanitizer/benchmark/failure cases, Go tests, real Redis contracts,
+Compose smoke and recovery.
 
-## Layout
+The repository does not retain evidence for removed Prometheus, multi-gateway,
+online-client aggregation or Kubernetes functionality. Run the current gate to
+create fresh local artifacts:
 
-- `environment/`: machine, kernel, CPU, memory, toolchain, container, and
-  cluster capture.
-- `benchmark/`: raw benchmark JSON plus a human-readable run report.
-- `failures/`: fault-injection matrix mapped to executable tests and evidence.
-- `kubernetes/`: the local environment limitation, a retained failed preflight,
-  and the final passing pinned Kind smoke/rolling-update artifact.
-- `release/`: complete gate commands, raw outcome summaries, blockers, and the
-  explicit tag decision. The final
-  [requirement-by-requirement completion audit](release/20260819-completion-audit.md)
-  maps every Phase and all 30 acceptance criteria to direct evidence.
-
-Capture a new environment and run the complete container benchmark matrix:
-
-```bash
-scripts/capture_environment.sh
-scripts/benchmark_matrix.sh
-```
-
-Run `scripts/release_gate.sh --help` for the staged release checks. Raw JSON and
-logs should be committed together with the report that references them; secrets
-and generated `.env` files must never be committed.
+    scripts/release_gate.sh --fast
+    scripts/release_gate.sh --full
