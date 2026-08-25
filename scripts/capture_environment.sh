@@ -36,10 +36,8 @@ command_version() {
   command_version go go version
   command_version python3 python3 --version
   echo
-  echo "[containers_and_cluster]"
+  echo "[containers]"
   command_version docker docker version
-  command_version kubectl kubectl version --client
-  command_version kind kind version
 } >"$output"
 
 echo "$output"

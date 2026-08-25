@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Authenticated TCP benchmark with reproducible JSON and telemetry evidence."""
+"""Authenticated TCP benchmark with reproducible JSON evidence."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import json
 import math
 import os
 import pathlib
-import re
 import socket
 import struct
 import threading
@@ -209,52 +208,6 @@ def run_client(
                 ready_condition.notify_all()
 
 
-def fetch_gateway_stats(args: argparse.Namespace) -> dict:
-    client_id = f"{args.client_id_prefix}-{args.run_id}-stats-{time.time_ns()}"
-    token = register_token(args, client_id)
-    with socket.create_connection((args.host, args.port), timeout=5.0) as sock:
-        sock.settimeout(5.0)
-        authenticate(sock, client_id, token)
-        sock.sendall(packet(STATS, 2))
-        response = recv_response(sock)
-        if response.msg_type != STATS_RESP:
-            raise RuntimeError(f"unexpected STATS response: {response}")
-        return json.loads(response.payload.decode("utf-8"))
-
-
-def fetch_redis_latency(args: argparse.Namespace) -> dict[str, float | int | str]:
-    request = urllib.request.Request(f"{args.control_plane}/metrics")
-    try:
-        with urllib.request.urlopen(request, timeout=5.0) as response:
-            text = response.read().decode("utf-8")
-    except (OSError, urllib.error.URLError) as error:
-        return {"error": str(error)}
-    sums = [float(value) for value in re.findall(r"^control_plane_redis_operation_duration_seconds_sum(?:\{[^}]*\})? ([0-9.eE+-]+)$", text, re.MULTILINE)]
-    counts = [float(value) for value in re.findall(r"^control_plane_redis_operation_duration_seconds_count(?:\{[^}]*\})? ([0-9.eE+-]+)$", text, re.MULTILINE)]
-    total_count = int(sum(counts))
-    return {
-        "observations": total_count,
-        "total_seconds": sum(sums),
-        "average_ms": (sum(sums) / total_count * 1000.0) if total_count else 0.0,
-    }
-
-
-def redis_latency_delta(before: dict, after: dict) -> dict[str, float | int | str]:
-    if "error" in before:
-        return {"error": f"before benchmark: {before['error']}"}
-    if "error" in after:
-        return {"error": f"after benchmark: {after['error']}"}
-    count = int(after.get("observations", 0)) - int(before.get("observations", 0))
-    total = float(after.get("total_seconds", 0.0)) - float(before.get("total_seconds", 0.0))
-    if count < 0 or total < 0:
-        return {"error": "Prometheus Redis counters reset during benchmark"}
-    return {
-        "observations": count,
-        "total_seconds": total,
-        "average_ms": (total / count * 1000.0) if count else 0.0,
-    }
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
@@ -298,13 +251,6 @@ def validate_args(args: argparse.Namespace) -> None:
 def main() -> int:
     args = parse_args()
     validate_args(args)
-    before_stats: dict = {}
-    try:
-        before_stats = fetch_gateway_stats(args)
-    except Exception as error:  # noqa: BLE001 - reported as benchmark evidence
-        before_stats = {"error": str(error)}
-    redis_before = fetch_redis_latency(args)
-
     results: list[ClientResult | None] = [None] * args.clients
     ready_condition = threading.Condition()
     ready_count = [0]
@@ -342,12 +288,6 @@ def main() -> int:
     setup_latencies = [value.setup_latency_ms for value in completed if value.setup_latency_ms is not None]
     success = sum(value.success for value in completed)
     failed = sum(value.failed for value in completed) + (args.clients - len(completed)) * args.requests_per_client
-
-    after_stats: dict = {}
-    try:
-        after_stats = fetch_gateway_stats(args)
-    except Exception as error:  # noqa: BLE001 - reported as benchmark evidence
-        after_stats = {"error": str(error)}
 
     process = {"before": process_before, "after": process_after}
     if process_before and process_after:
@@ -401,9 +341,6 @@ def main() -> int:
             "average": sum(setup_latencies) / len(setup_latencies) if setup_latencies else 0.0,
         },
         "process": process,
-        "gateway_stats_before": before_stats,
-        "gateway_stats_after": after_stats,
-        "redis_operation_latency": redis_latency_delta(redis_before, fetch_redis_latency(args)),
         "clients": [asdict(value) for value in completed],
     }
 

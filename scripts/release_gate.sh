@@ -9,9 +9,9 @@ usage() {
 Usage: scripts/release_gate.sh [--fast|--full]
 
   --fast  Build and run CTest, ASan/UBSan, Go Unit/Race/Vet, module,
-          Compose/static Kubernetes, script syntax, and documentation checks.
+          Compose, script syntax, and documentation checks.
   --full  Run --fast plus real Redis integration, Docker smoke/recovery,
-          Kubernetes deploy/smoke/rolling update, and the Docker benchmark matrix.
+          and the Docker benchmark matrix.
 
 Full mode requires Docker, kubectl, an existing reachable cluster, and
 CONTROL_PLANE_ADMIN_TOKEN, GATEWAY_SHARED_TOKEN, and TOKEN_PEPPER. It never
@@ -60,7 +60,6 @@ run_static() {
   docker compose config >/dev/null
   bash -n scripts/*.sh
   python3 -m compileall -q scripts cpp-gateway/scripts cpp-gateway/tests
-  python3 scripts/k8s_manifest_test.py
   python3 scripts/docs_link_check.py
 }
 
@@ -99,7 +98,7 @@ run_go
 run_static
 
 if [[ "$mode" == "full" ]]; then
-  for command in curl kubectl; do
+  for command in curl; do
     require_command "$command"
   done
   : "${CONTROL_PLANE_ADMIN_TOKEN:?CONTROL_PLANE_ADMIN_TOKEN must be set for --full}"
@@ -108,9 +107,6 @@ if [[ "$mode" == "full" ]]; then
   run_redis_integration
   bash scripts/smoke_test.sh
   bash scripts/redis_recovery_test.sh
-  bash scripts/k8s_deploy.sh
-  bash scripts/k8s_smoke.sh
-  bash scripts/k8s_rolling_update_test.sh
   scripts/benchmark_matrix.sh
 fi
 

@@ -1,6 +1,6 @@
-captured_at_utc=2026-08-18T16:02:47Z
-git_head=32c1e68a79fa72edcb36082d6f43455a12578a89
-working_tree=2 tracked changes
+captured_at_utc=2026-08-25T02:00:39Z
+git_head=0ad989a2a1051f2d4a188dde8ba1b90111cf00ea
+working_tree=139 tracked changes
 
 [kernel]
 Linux LAPTOP-7Q69GP7V 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
@@ -14,7 +14,7 @@ CPU(s):                                  32
 
 [memory]
                total        used        free      shared  buff/cache   available
-Mem:            15Gi       3.6Gi        10Gi       3.0Mi       969Mi        11Gi
+Mem:            15Gi       3.6Gi       3.0Gi        49Mi       8.9Gi        11Gi
 Swap:          4.0Gi          0B       4.0Gi
 
 [toolchains]
@@ -29,11 +29,9 @@ CMake suite maintained and supported by Kitware (kitware.com/cmake).
 go version go1.22.12 linux/amd64
 Python 3.10.12
 
-[containers_and_cluster]
-
-The command 'docker' could not be found in this WSL 2 distro.
-We recommend to activate the WSL integration in Docker Desktop settings.
-
-For details about using Docker Desktop with WSL 2, visit:
-kubectl: unavailable
-kind v0.32.0 go1.22.12 linux/amd64
+[containers]
+Client:
+ Version:           29.6.2
+ API version:       1.55
+ Go version:        go1.26.5
+ Git commit:        dfc4efb

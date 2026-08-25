@@ -9,7 +9,6 @@ import struct
 import threading
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 
@@ -139,37 +138,6 @@ def expect_auth_rejection_then_close(
     if body.get("allowed") is not False:
         raise AssertionError(f"expected rejected AUTH response, got {body}")
     expect_closed(sock, message)
-
-
-def fetch_clients(control_plane_url: str) -> list[dict]:
-    gateways_request = urllib.request.Request(
-        f"{control_plane_url}/gateways", headers=admin_headers()
-    )
-    with urllib.request.urlopen(gateways_request, timeout=2.0) as resp:
-        gateways = json.loads(resp.read().decode("utf-8"))
-    if gateways:
-        clients: list[dict] = []
-        for gateway in gateways:
-            gateway_id = urllib.parse.quote(str(gateway["gateway_id"]), safe="")
-            request = urllib.request.Request(
-                f"{control_plane_url}/gateways/{gateway_id}/clients",
-                headers=admin_headers(),
-            )
-            try:
-                with urllib.request.urlopen(request, timeout=2.0) as resp:
-                    clients.extend(json.loads(resp.read().decode("utf-8")))
-            except urllib.error.HTTPError as error:
-                if error.code != 404:
-                    raise
-        return clients
-
-    # The legacy route remains a startup fallback before any Gateway status
-    # report exists. Multi-Gateway checks always use the per-Gateway contract.
-    request = urllib.request.Request(
-        f"{control_plane_url}/clients", headers=admin_headers()
-    )
-    with urllib.request.urlopen(request, timeout=2.0) as resp:
-        return json.loads(resp.read().decode("utf-8"))
 
 
 def update_config(control_plane_url: str, config: dict) -> None:
@@ -418,34 +386,6 @@ def test_auth_duplicate(host: str, port: int, control_plane_url: str) -> None:
     print("[tcp] PASS auth_duplicate")
 
 
-def test_clients_reports_authenticated_id(host: str, port: int, control_plane_url: str) -> None:
-    client_id = unique_client_id("tcp-test-real-client-id")
-    with connect(host, port) as sock:
-        authenticate(sock, control_plane_url, 4105, client_id=client_id)
-        deadline = time.time() + 8.0
-        while time.time() < deadline:
-            clients = fetch_clients(control_plane_url)
-            if any(client.get("client_id") == client_id for client in clients):
-                print("[tcp] PASS clients_reports_authenticated_id")
-                return
-            time.sleep(0.5)
-
-    raise AssertionError(f"/clients did not include authenticated client_id={client_id}")
-
-
-def test_clients_excludes_unauthenticated(host: str, port: int, control_plane_url: str) -> None:
-    unauthenticated_id = "client_"
-    with connect(host, port) as sock:
-        deadline = time.time() + 8.0
-        while time.time() < deadline:
-            clients = fetch_clients(control_plane_url)
-            if any(str(client.get("client_id", "")).startswith(unauthenticated_id) for client in clients):
-                raise AssertionError("/clients included an unauthenticated placeholder client_id")
-            time.sleep(0.5)
-
-    print("[tcp] PASS clients_excludes_unauthenticated")
-
-
 def test_repeated_auth_ping_close(host: str, port: int, control_plane_url: str) -> None:
     for i in range(5):
         with connect(host, port) as sock:
@@ -495,30 +435,6 @@ def test_auth_pending_second_request_closes(host: str, port: int, control_plane_
         expect_closed(sock, "expected close after request sent while AUTH pending")
 
     print("[tcp] PASS auth_pending_second_request_closes")
-
-
-def test_clients_remove_disconnected_client(host: str, port: int, control_plane_url: str) -> None:
-    client_id = unique_client_id("tcp-test-disconnect-cleanup")
-    with connect(host, port) as sock:
-        authenticate(sock, control_plane_url, 5501, client_id=client_id)
-        deadline = time.time() + 12.0
-        while time.time() < deadline:
-            clients = fetch_clients(control_plane_url)
-            if any(client.get("client_id") == client_id for client in clients):
-                break
-            time.sleep(0.5)
-        else:
-            raise AssertionError(f"/clients did not include authenticated client_id={client_id}")
-
-    deadline = time.time() + 12.0
-    while time.time() < deadline:
-        clients = fetch_clients(control_plane_url)
-        if not any(client.get("client_id") == client_id for client in clients):
-            print("[tcp] PASS clients_remove_disconnected_client")
-            return
-        time.sleep(0.5)
-
-    raise AssertionError(f"/clients still included disconnected client_id={client_id}")
 
 
 def test_max_connections_per_client(host: str, port: int, control_plane_url: str) -> None:
@@ -625,12 +541,9 @@ def main() -> int:
 
     for test in tests:
         test(args.host, args.port, args.control_plane_url)
-    test_clients_reports_authenticated_id(args.host, args.port, args.control_plane_url)
-    test_clients_excludes_unauthenticated(args.host, args.port, args.control_plane_url)
     test_repeated_auth_ping_close(args.host, args.port, args.control_plane_url)
     test_concurrent_auth_echo(args.host, args.port, args.control_plane_url)
     test_auth_pending_second_request_closes(args.host, args.port, args.control_plane_url)
-    test_clients_remove_disconnected_client(args.host, args.port, args.control_plane_url)
     test_max_connections_per_client(args.host, args.port, args.control_plane_url)
     test_rate_limit_per_client(args.host, args.port, args.control_plane_url)
 

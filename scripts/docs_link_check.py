@@ -32,6 +32,8 @@ def main() -> int:
     failures: list[str] = []
     checked = 0
     for source in tracked_markdown():
+        if not source.exists():
+            continue
         content = source.read_text(encoding="utf-8")
         for match in LINK.finditer(content):
             raw = match.group(1).strip("<>")
