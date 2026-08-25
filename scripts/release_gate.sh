@@ -13,9 +13,9 @@ Usage: scripts/release_gate.sh [--fast|--full]
   --full  Run --fast plus real Redis integration, Docker smoke/recovery,
           and the Docker benchmark matrix.
 
-Full mode requires Docker, kubectl, an existing reachable cluster, and
-CONTROL_PLANE_ADMIN_TOKEN, GATEWAY_SHARED_TOKEN, and TOKEN_PEPPER. It never
-creates a release tag; review and commit its raw results before tagging.
+Full mode requires Docker and CONTROL_PLANE_ADMIN_TOKEN, GATEWAY_SHARED_TOKEN,
+and TOKEN_PEPPER. It never creates a release tag; review and commit its raw
+results before tagging.
 EOF
 }
 
