@@ -10,7 +10,6 @@ import (
 	"log"
 	"mime"
 	"net/http"
-	"runtime/debug"
 	"time"
 )
 
@@ -37,18 +36,9 @@ func newRequestID() string {
 	return "req-" + hex.EncodeToString(value[:])
 }
 
-func middleware(next http.Handler, metrics *metricsRegistry) http.Handler {
+func middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
-		route := "unmatched"
-		if matcher, ok := next.(interface {
-			Handler(*http.Request) (http.Handler, string)
-		}); ok {
-			_, pattern := matcher.Handler(r)
-			route = canonicalRoute(pattern)
-		}
-		metrics.httpInFlight.WithLabelValues(r.Method, route).Inc()
-		defer metrics.httpInFlight.WithLabelValues(r.Method, route).Dec()
 
 		requestID := r.Header.Get("X-Request-ID")
 		if requestID == "" {
@@ -60,12 +50,9 @@ func middleware(next http.Handler, metrics *metricsRegistry) http.Handler {
 		response := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				metrics.panics.WithLabelValues(route).Inc()
-				log.Printf("panic recovered request_id=%s error=%v stack=%s", requestID, recovered, debug.Stack())
+				log.Printf("panic recovered request_id=%s error=%v", requestID, recovered)
 				writeAPIError(response, r, http.StatusInternalServerError, "INTERNAL", "internal server error")
 			}
-			metrics.httpRequests.WithLabelValues(r.Method, route, statusLabel(response.status)).Inc()
-			metrics.httpDuration.WithLabelValues(r.Method, route).Observe(time.Since(started).Seconds())
 			entry, _ := json.Marshal(map[string]any{
 				"request_id": requestID, "method": r.Method, "path": r.URL.Path,
 				"status": response.status, "duration_ms": time.Since(started).Milliseconds(),

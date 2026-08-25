@@ -65,7 +65,7 @@ func TestTokenReturnedOnceAndDisableBlocksAuth(t *testing.T) {
 func TestAdminAndGatewayAuthentication(t *testing.T) {
 	t.Setenv("CONTROL_PLANE_ADMIN_TOKEN", "admin-secret")
 	t.Setenv("GATEWAY_SHARED_TOKEN", "gateway-secret")
-	router := routesWithStore(newMemoryStore())
+	router := routesWithConfig(newMemoryStore(), developmentApplicationConfigFromEnv())
 
 	admin := httptest.NewRecorder()
 	router.ServeHTTP(admin, newTestRequest(http.MethodGet, "/tokens", nil))

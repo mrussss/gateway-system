@@ -11,9 +11,9 @@ import (
 	"testing"
 )
 
-func TestLiveAndReadyEndpoints(t *testing.T) {
-	store = newMemoryStore()
-	for _, path := range []string{"/health/live", "/health/ready"} {
+func TestHealthAndReadyEndpoints(t *testing.T) {
+	store := newMemoryStore()
+	for _, path := range []string{"/health", "/health/ready"} {
 		response := httptest.NewRecorder()
 		routesWithStore(store).ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusOK {
@@ -23,7 +23,7 @@ func TestLiveAndReadyEndpoints(t *testing.T) {
 }
 
 func TestMiddlewareRejectsNonJSON(t *testing.T) {
-	store = newMemoryStore()
+	store := newMemoryStore()
 	request := httptest.NewRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{}`))
 	request.Header.Set("Content-Type", "text/plain")
 	response := httptest.NewRecorder()
@@ -34,7 +34,7 @@ func TestMiddlewareRejectsNonJSON(t *testing.T) {
 }
 
 func TestMiddlewareRejectsMissingContentType(t *testing.T) {
-	store = newMemoryStore()
+	store := newMemoryStore()
 	request := httptest.NewRequest(http.MethodPost, "/auth/check", bytes.NewBufferString(`{}`))
 	response := httptest.NewRecorder()
 	routesWithStore(store).ServeHTTP(response, request)
@@ -51,7 +51,7 @@ func TestMiddlewareRejectsMissingContentType(t *testing.T) {
 }
 
 func TestStrictJSONRejectsTrailingValue(t *testing.T) {
-	store = newMemoryStore()
+	store := newMemoryStore()
 	request := httptest.NewRequest(http.MethodPost, "/auth/check", strings.NewReader(`{} {}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
@@ -62,7 +62,7 @@ func TestStrictJSONRejectsTrailingValue(t *testing.T) {
 }
 
 func TestRoutingErrorsUseTheAPIEnvelope(t *testing.T) {
-	store = newMemoryStore()
+	store := newMemoryStore()
 	router := routesWithStore(store)
 	tests := []struct {
 		name       string
@@ -98,7 +98,7 @@ type unhealthyStore struct{ *memoryStore }
 func (s unhealthyStore) Ping(context.Context) error { return errors.New("unavailable") }
 
 func TestReadyFailsWhenStoreIsUnavailable(t *testing.T) {
-	store = unhealthyStore{memoryStore: newMemoryStore()}
+	store := unhealthyStore{memoryStore: newMemoryStore()}
 	response := httptest.NewRecorder()
 	routesWithStore(store).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/health/ready", nil))
 	if response.Code != http.StatusServiceUnavailable {

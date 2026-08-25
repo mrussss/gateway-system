@@ -6,23 +6,16 @@ import (
 )
 
 const (
-	defaultStoreBackend        = "memory"
-	defaultRedisAddr           = "localhost:6379"
-	defaultGatewayOfflineAfter = 30 * time.Second
-	defaultGatewayStatusTTL    = 5 * time.Minute
-	defaultClientSnapshotTTL   = 60 * time.Second
-	storeErrorMessage          = "store error"
+	defaultStoreBackend = "memory"
+	defaultRedisAddr    = "localhost:6379"
+	storeErrorMessage   = "store error"
 )
 
 type Store interface {
-	saveMetrics(req metricsReportRequest) (gatewayStatusResponse, error)
-	getStatus() (gatewayStatusResponse, bool, error)
-	saveClients(gatewayID string, clients []clientInfo) error
-	getClients() ([]clientInfo, error)
-	listGateways() ([]gatewayStatusResponse, error)
-	getGatewayStatus(gatewayID string) (gatewayStatusResponse, bool, error)
-	getGatewayClients(gatewayID string) ([]clientInfo, bool, error)
-	isDigestAllowed(clientID string, digest string) (bool, error)
+	verifyDigest(clientID, digest string) (tokenAuthDecision, error)
+	authFailureLimited(clientID string, limit int64) (bool, error)
+	recordAuthFailure(clientID string, window time.Duration) (int64, error)
+	clearAuthFailures(clientID string) error
 	createToken(record tokenRecord) error
 	rotateToken(clientID string, expected int64, digest, updatedAt string) (tokenRecord, error)
 	disableToken(clientID string, updatedAt string) error
@@ -39,16 +32,6 @@ const (
 	tokenAuthDisabled
 )
 
-type tokenDecisionStore interface {
-	verifyDigest(clientID, digest string) (tokenAuthDecision, error)
-}
-
-type authFailureStore interface {
-	authFailureLimited(clientID string, limit int64) (bool, error)
-	recordAuthFailure(clientID string, window time.Duration) (int64, error)
-	clearAuthFailures(clientID string) error
-}
-
 type authFailurePolicy struct {
 	limit  int64
 	window time.Duration
@@ -61,7 +44,7 @@ func authFailurePolicyFromEnv() authFailurePolicy {
 	}
 }
 
-func newStoreFromEnv(registries ...*metricsRegistry) Store {
+func newStoreFromEnv() Store {
 	backend := os.Getenv("STORE_BACKEND")
 	if backend == "" {
 		backend = defaultStoreBackend
@@ -71,7 +54,7 @@ func newStoreFromEnv(registries ...*metricsRegistry) Store {
 		if addr == "" {
 			addr = defaultRedisAddr
 		}
-		return newRedisStore(addr, registries...)
+		return newRedisStore(addr)
 	}
 	return newMemoryStore()
 }

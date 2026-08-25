@@ -17,14 +17,13 @@ func Run() {
 	if err != nil {
 		log.Fatalf("invalid startup configuration: %v", err)
 	}
-	metrics := newMetricsRegistry()
-	appStore := newStoreFromEnv(metrics)
+	appStore := newStoreFromEnv()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	server := &http.Server{
 		Addr:              ":8080",
-		Handler:           routesWithConfigAndMetrics(appStore, config, metrics),
+		Handler:           routesWithConfig(appStore, config),
 		ReadHeaderTimeout: 3 * time.Second,
 		ReadTimeout:       5 * time.Second,
 		WriteTimeout:      5 * time.Second,

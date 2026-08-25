@@ -102,7 +102,6 @@ StartupConfig parseStartupConfig()
     config.control_plane_timeout_ms = static_cast<int>(
         readUnsigned("CONTROL_PLANE_TIMEOUT_MS", config.control_plane_timeout_ms,
                      100, 30000));
-    config.gateway_id = readString("GATEWAY_ID", config.gateway_id, false);
     config.gateway_token = readString("GATEWAY_SHARED_TOKEN", "", true);
     if (config.app_environment != "development" && isBlank(config.gateway_token))
     {

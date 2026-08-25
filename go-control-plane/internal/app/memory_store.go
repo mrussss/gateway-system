@@ -13,97 +13,18 @@ type memoryAuthFailure struct {
 }
 
 type memoryStore struct {
-	mu               sync.RWMutex
-	status           gatewayStatusResponse
-	hasStatus        bool
-	clients          []clientInfo
-	statusByGateway  map[string]gatewayStatusResponse
-	clientsByGateway map[string][]clientInfo
-	gateways         map[string]struct{}
-	tokens           map[string]tokenRecord
-	authFailures     map[string]memoryAuthFailure
-	config           runtimeConfig
+	mu           sync.RWMutex
+	tokens       map[string]tokenRecord
+	authFailures map[string]memoryAuthFailure
+	config       runtimeConfig
 }
 
 func newMemoryStore() *memoryStore {
 	return &memoryStore{
-		clients:          make([]clientInfo, 0),
-		statusByGateway:  map[string]gatewayStatusResponse{},
-		clientsByGateway: map[string][]clientInfo{},
-		gateways:         map[string]struct{}{},
-		tokens:           map[string]tokenRecord{},
-		authFailures:     map[string]memoryAuthFailure{},
-		config:           defaultRuntimeConfig(),
+		tokens:       map[string]tokenRecord{},
+		authFailures: map[string]memoryAuthFailure{},
+		config:       defaultRuntimeConfig(),
 	}
-}
-
-func (s *memoryStore) saveMetrics(req metricsReportRequest) (gatewayStatusResponse, error) {
-	status := statusFromMetrics(req)
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.status = status
-	s.hasStatus = true
-	s.statusByGateway[req.GatewayID] = status
-	s.gateways[req.GatewayID] = struct{}{}
-	return status, nil
-}
-
-func (s *memoryStore) getStatus() (gatewayStatusResponse, bool, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.status, s.hasStatus, nil
-}
-
-func (s *memoryStore) saveClients(gatewayID string, clients []clientInfo) error {
-	copied := append(make([]clientInfo, 0, len(clients)), clients...)
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.clients = copied
-	s.clientsByGateway[gatewayID] = copied
-	s.gateways[gatewayID] = struct{}{}
-	return nil
-}
-
-func (s *memoryStore) getClients() ([]clientInfo, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return append(make([]clientInfo, 0, len(s.clients)), s.clients...), nil
-}
-
-func (s *memoryStore) listGateways() ([]gatewayStatusResponse, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	statuses := make([]gatewayStatusResponse, 0, len(s.statusByGateway))
-	for _, status := range s.statusByGateway {
-		statuses = append(statuses, status)
-	}
-	sortGatewayStatuses(statuses)
-	return statuses, nil
-}
-
-func (s *memoryStore) getGatewayStatus(gatewayID string) (gatewayStatusResponse, bool, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	status, ok := s.statusByGateway[gatewayID]
-	return status, ok, nil
-}
-
-func (s *memoryStore) getGatewayClients(gatewayID string) ([]clientInfo, bool, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	clients, ok := s.clientsByGateway[gatewayID]
-	if !ok {
-		return nil, false, nil
-	}
-	return append(make([]clientInfo, 0, len(clients)), clients...), true, nil
-}
-
-func (s *memoryStore) isDigestAllowed(clientID, digest string) (bool, error) {
-	decision, err := s.verifyDigest(clientID, digest)
-	return decision == tokenAuthAllowed, err
 }
 
 func (s *memoryStore) verifyDigest(clientID, digest string) (tokenAuthDecision, error) {
@@ -200,14 +121,11 @@ func (s *memoryStore) disableToken(clientID, updatedAt string) error {
 func (s *memoryStore) listTokens() ([]tokenEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	entries := make([]tokenEntry, 0, len(s.tokens))
 	for _, record := range s.tokens {
 		entries = append(entries, record.tokenEntry)
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].ClientID < entries[j].ClientID
-	})
+	sort.Slice(entries, func(i, j int) bool { return entries[i].ClientID < entries[j].ClientID })
 	return entries, nil
 }
 
@@ -223,7 +141,6 @@ func (s *memoryStore) updateConfig(expectedVersion int64, req configUpdateReques
 	if s.config.Version != expectedVersion {
 		return runtimeConfig{}, errConfigConflict
 	}
-
 	s.config = runtimeConfig{
 		Version:                       s.config.Version + 1,
 		MaxPayloadSize:                req.MaxPayloadSize,

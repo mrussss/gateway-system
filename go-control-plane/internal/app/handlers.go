@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"time"
 )
 
 type application struct {
@@ -17,39 +16,20 @@ type application struct {
 	adminToken   string
 	gatewayToken string
 	authFailures authFailurePolicy
-	authMetrics  *authMetrics
-	metrics      *metricsRegistry
 }
 
 func routesWithConfig(store Store, config applicationConfig) http.Handler {
-	metrics := newMetricsRegistry()
-	return routesWithConfigAndMetrics(store, config, metrics)
-}
-
-func routesWithConfigAndMetrics(store Store, config applicationConfig, metrics *metricsRegistry) http.Handler {
-	metrics.attachGatewayStore(store)
 	a := &application{
 		store:        store,
 		tokens:       newTokenService(config.tokenPepper),
 		adminToken:   config.adminToken,
 		gatewayToken: config.gatewayToken,
 		authFailures: authFailurePolicyFromEnv(),
-		authMetrics:  metrics.auth,
-		metrics:      metrics,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", a.handleHealth)
-	mux.HandleFunc("GET /health/live", a.handleHealth)
 	mux.HandleFunc("GET /health/ready", a.handleReady)
-	mux.Handle("GET /metrics", metrics.handler())
 	mux.Handle("POST /auth/check", a.requireGateway(http.HandlerFunc(a.handleAuthCheck)))
-	mux.Handle("POST /metrics/report", a.requireGateway(http.HandlerFunc(a.handleMetricsReport)))
-	mux.Handle("GET /gateway/status", a.requireAdmin(http.HandlerFunc(a.handleGatewayStatus)))
-	mux.Handle("GET /gateways", a.requireAdmin(http.HandlerFunc(a.handleGatewaysList)))
-	mux.Handle("GET /gateways/{gateway_id}/status", a.requireAdmin(http.HandlerFunc(a.handleGatewayStatusByID)))
-	mux.Handle("POST /clients/report", a.requireGateway(http.HandlerFunc(a.handleClientsReport)))
-	mux.Handle("GET /clients", a.requireAdmin(http.HandlerFunc(a.handleClients)))
-	mux.Handle("GET /gateways/{gateway_id}/clients", a.requireAdmin(http.HandlerFunc(a.handleGatewayClientsByID)))
 	mux.Handle("POST /tokens", a.requireAdmin(http.HandlerFunc(a.handleTokensUpsert)))
 	mux.Handle("GET /tokens", a.requireAdmin(http.HandlerFunc(a.handleTokensList)))
 	mux.Handle("DELETE /tokens/{client_id}", a.requireAdmin(http.HandlerFunc(a.handleTokensDelete)))
@@ -57,17 +37,8 @@ func routesWithConfigAndMetrics(store Store, config applicationConfig, metrics *
 	mux.Handle("GET /config", a.requireAdminOrGateway(http.HandlerFunc(a.handleConfigGet)))
 	mux.Handle("PUT /config", a.requireAdmin(http.HandlerFunc(a.handleConfigUpdate)))
 	registerMethodFallback(mux, "/health", http.MethodGet)
-	registerMethodFallback(mux, "/health/live", http.MethodGet)
 	registerMethodFallback(mux, "/health/ready", http.MethodGet)
-	registerMethodFallback(mux, "/metrics", http.MethodGet)
 	registerMethodFallback(mux, "/auth/check", http.MethodPost)
-	registerMethodFallback(mux, "/metrics/report", http.MethodPost)
-	registerMethodFallback(mux, "/gateway/status", http.MethodGet)
-	registerMethodFallback(mux, "/gateways", http.MethodGet)
-	registerMethodFallback(mux, "/gateways/{gateway_id}/status", http.MethodGet)
-	registerMethodFallback(mux, "/clients/report", http.MethodPost)
-	registerMethodFallback(mux, "/clients", http.MethodGet)
-	registerMethodFallback(mux, "/gateways/{gateway_id}/clients", http.MethodGet)
 	registerMethodFallback(mux, "/tokens", http.MethodPost+", "+http.MethodGet)
 	registerMethodFallback(mux, "/tokens/{client_id}", http.MethodDelete)
 	registerMethodFallback(mux, "/tokens/{client_id}/rotate", http.MethodPost)
@@ -75,7 +46,7 @@ func routesWithConfigAndMetrics(store Store, config applicationConfig, metrics *
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, r, http.StatusNotFound, "NOT_FOUND", "route not found")
 	})
-	return middleware(mux, metrics)
+	return middleware(mux)
 }
 
 func registerMethodFallback(mux *http.ServeMux, pattern, allow string) {
@@ -85,7 +56,7 @@ func registerMethodFallback(mux *http.ServeMux, pattern, allow string) {
 	})
 }
 
-func (a *application) handleHealth(w http.ResponseWriter, r *http.Request) {
+func (a *application) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, healthResponse{Status: "ok"})
 }
 
@@ -104,197 +75,49 @@ func (a *application) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSON(w, r, &req); err != nil {
 		return
 	}
-
 	if req.ClientID == "" || req.Token == "" || len(req.ClientID) > 128 || len(req.Token) > 4096 {
 		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "client_id and token are required")
 		return
 	}
-
-	limiter, hasLimiter := a.store.(authFailureStore)
-	if hasLimiter {
-		limited, err := limiter.authFailureLimited(req.ClientID, a.authFailures.limit)
-		if err != nil {
-			a.authMetrics.failureCounterErrors.Add(1)
-			a.authMetrics.recordUnavailable()
-			writeAuthUnavailable(w, r)
-			return
-		}
-		if limited {
-			a.authMetrics.rateLimited.Add(1)
-			a.authMetrics.record(tokenAuthInvalid)
-			writeJSON(w, http.StatusOK, authCheckResponse{Allowed: false, Code: "RATE_LIMITED", Reason: "rate limited"})
-			return
-		}
-	}
-
-	decision, err := a.verifyDigest(req.ClientID, a.tokens.digest(req.Token))
+	limited, err := a.store.authFailureLimited(req.ClientID, a.authFailures.limit)
 	if err != nil {
-		a.authMetrics.recordUnavailable()
+		writeAuthUnavailable(w, r)
+		return
+	}
+	if limited {
+		writeJSON(w, http.StatusOK, authCheckResponse{Allowed: false, Code: "RATE_LIMITED", Reason: "rate limited"})
+		return
+	}
+	decision, err := a.store.verifyDigest(req.ClientID, a.tokens.digest(req.Token))
+	if err != nil {
 		writeAuthUnavailable(w, r)
 		return
 	}
 	if decision != tokenAuthAllowed {
-		count := int64(0)
-		if hasLimiter {
-			count, err = limiter.recordAuthFailure(req.ClientID, a.authFailures.window)
-			if err != nil {
-				a.authMetrics.failureCounterErrors.Add(1)
-				a.authMetrics.recordUnavailable()
-				writeAuthUnavailable(w, r)
-				return
-			}
+		count, err := a.store.recordAuthFailure(req.ClientID, a.authFailures.window)
+		if err != nil {
+			writeAuthUnavailable(w, r)
+			return
 		}
-
 		code, reason := "INVALID_CREDENTIALS", "invalid token"
 		if decision == tokenAuthDisabled {
 			code, reason = "TOKEN_DISABLED", "token disabled"
 		}
-		if hasLimiter && count >= a.authFailures.limit {
+		if count >= a.authFailures.limit {
 			code, reason = "RATE_LIMITED", "rate limited"
-			a.authMetrics.rateLimited.Add(1)
 		}
-		a.authMetrics.record(decision)
 		writeJSON(w, http.StatusOK, authCheckResponse{Allowed: false, Code: code, Reason: reason})
 		return
 	}
-	if hasLimiter {
-		if err := limiter.clearAuthFailures(req.ClientID); err != nil {
-			a.authMetrics.failureCounterErrors.Add(1)
-			a.authMetrics.recordUnavailable()
-			writeAuthUnavailable(w, r)
-			return
-		}
+	if err := a.store.clearAuthFailures(req.ClientID); err != nil {
+		writeAuthUnavailable(w, r)
+		return
 	}
-	a.authMetrics.record(tokenAuthAllowed)
-
-	writeJSON(w, http.StatusOK, authCheckResponse{
-		Allowed: true,
-		Code:    "OK",
-		Reason:  "ok",
-	})
-}
-
-func (a *application) verifyDigest(clientID, digest string) (tokenAuthDecision, error) {
-	if verifier, ok := a.store.(tokenDecisionStore); ok {
-		return verifier.verifyDigest(clientID, digest)
-	}
-	allowed, err := a.store.isDigestAllowed(clientID, digest)
-	if allowed {
-		return tokenAuthAllowed, err
-	}
-	return tokenAuthInvalid, err
+	writeJSON(w, http.StatusOK, authCheckResponse{Allowed: true, Code: "OK", Reason: "ok"})
 }
 
 func writeAuthUnavailable(w http.ResponseWriter, r *http.Request) {
 	writeAPIError(w, r, http.StatusServiceUnavailable, "AUTH_UNAVAILABLE", "authentication service unavailable")
-}
-
-func (a *application) handleMetricsReport(w http.ResponseWriter, r *http.Request) {
-	var req metricsReportRequest
-	if err := decodeJSON(w, r, &req); err != nil {
-		return
-	}
-
-	if !validGatewayID(req.GatewayID) {
-		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "gateway_id is invalid")
-		return
-	}
-
-	status, err := a.store.saveMetrics(req)
-	if err != nil {
-		writeStoreError(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, status)
-}
-
-func (a *application) handleGatewayStatus(w http.ResponseWriter, r *http.Request) {
-	status, ok, err := a.store.getStatus()
-	if err != nil {
-		writeStoreError(w, r, err)
-		return
-	}
-	if !ok {
-		writeAPIError(w, r, http.StatusNotFound, "NOT_FOUND", "gateway status not reported")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, gatewayStatusToView(status, time.Now().UTC()))
-}
-
-func (a *application) handleGatewaysList(w http.ResponseWriter, r *http.Request) {
-	statuses, err := a.store.listGateways()
-	if err != nil {
-		writeStoreError(w, r, err)
-		return
-	}
-	now := time.Now().UTC()
-	views := make([]gatewayStatusView, 0, len(statuses))
-	for _, status := range statuses {
-		views = append(views, gatewayStatusToView(status, now))
-	}
-	writeJSON(w, http.StatusOK, views)
-}
-
-func (a *application) handleGatewayStatusByID(w http.ResponseWriter, r *http.Request) {
-	gatewayID := r.PathValue("gateway_id")
-	status, ok, err := a.store.getGatewayStatus(gatewayID)
-	if err != nil {
-		writeStoreError(w, r, err)
-		return
-	}
-	if !ok {
-		writeAPIError(w, r, http.StatusNotFound, "NOT_FOUND", "gateway status not reported")
-		return
-	}
-	writeJSON(w, http.StatusOK, gatewayStatusToView(status, time.Now().UTC()))
-}
-
-func (a *application) handleClientsReport(w http.ResponseWriter, r *http.Request) {
-	var req clientsReportRequest
-	if err := decodeJSON(w, r, &req); err != nil {
-		return
-	}
-
-	if !validGatewayID(req.GatewayID) {
-		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "gateway_id is invalid")
-		return
-	}
-
-	if err := a.store.saveClients(req.GatewayID, req.Clients); err != nil {
-		writeStoreError(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
-}
-
-func (a *application) handleClients(w http.ResponseWriter, r *http.Request) {
-	clients, err := a.store.getClients()
-	if err != nil {
-		writeStoreError(w, r, err)
-		return
-	}
-	if clients == nil {
-		clients = make([]clientInfo, 0)
-	}
-	writeJSON(w, http.StatusOK, clients)
-}
-
-func (a *application) handleGatewayClientsByID(w http.ResponseWriter, r *http.Request) {
-	gatewayID := r.PathValue("gateway_id")
-	clients, ok, err := a.store.getGatewayClients(gatewayID)
-	if err != nil {
-		writeStoreError(w, r, err)
-		return
-	}
-	if !ok {
-		writeAPIError(w, r, http.StatusNotFound, "NOT_FOUND", "gateway clients not reported")
-		return
-	}
-	if clients == nil {
-		clients = make([]clientInfo, 0)
-	}
-	writeJSON(w, http.StatusOK, clients)
 }
 
 func (a *application) handleTokensUpsert(w http.ResponseWriter, r *http.Request) {
@@ -302,7 +125,6 @@ func (a *application) handleTokensUpsert(w http.ResponseWriter, r *http.Request)
 	if err := decodeJSON(w, r, &req); err != nil {
 		return
 	}
-
 	if req.ClientID == "" {
 		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "client_id is required")
 		return
@@ -335,17 +157,15 @@ func (a *application) handleTokensList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *application) handleTokensDelete(w http.ResponseWriter, r *http.Request) {
-	clientID := r.PathValue("client_id")
-	if clientID == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "client_id is required")
+	if clientID := r.PathValue("client_id"); clientID != "" {
+		if err := a.store.disableToken(clientID, nowRFC3339()); err != nil {
+			writeStoreError(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, successResponse{Success: true})
 		return
 	}
-
-	if err := a.store.disableToken(clientID, nowRFC3339()); err != nil {
-		writeStoreError(w, r, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, successResponse{Success: true})
+	writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "client_id is required")
 }
 
 func (a *application) handleTokensRotate(w http.ResponseWriter, r *http.Request) {
@@ -418,10 +238,6 @@ func (a *application) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *application) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
-	result := "invalid"
-	defer func() {
-		a.metrics.configUpdates.WithLabelValues(result).Inc()
-	}()
 	if r.Header.Get("If-Match") == "" {
 		writeAPIError(w, r, http.StatusPreconditionRequired, "PRECONDITION_REQUIRED", "If-Match is required")
 		return
@@ -435,25 +251,19 @@ func (a *application) handleConfigUpdate(w http.ResponseWriter, r *http.Request)
 	if err := decodeJSON(w, r, &req); err != nil {
 		return
 	}
-
 	if err := validateConfigUpdate(req); err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", err.Error())
 		return
 	}
-
 	cfg, err := a.store.updateConfig(expected, req)
 	if errors.Is(err, errConfigConflict) {
-		result = "conflict"
-		a.metrics.configConflicts.Inc()
 		writeAPIError(w, r, http.StatusConflict, "CONFLICT", "config version conflict")
 		return
 	}
 	if err != nil {
-		result = "error"
 		writeStoreError(w, r, err)
 		return
 	}
-	result = "success"
 	w.Header().Set("ETag", `"`+strconv.FormatInt(cfg.Version, 10)+`"`)
 	writeJSON(w, http.StatusOK, cfg)
 }

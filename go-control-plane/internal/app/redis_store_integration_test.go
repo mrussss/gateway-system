@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestRedisGatewayStateContract(t *testing.T) {
+func TestRedisTokenLifecycleContract(t *testing.T) {
 	addr := os.Getenv("REDIS_TEST_ADDR")
 	if addr == "" {
 		t.Skip("REDIS_TEST_ADDR is not set")
@@ -20,37 +20,29 @@ func TestRedisGatewayStateContract(t *testing.T) {
 	if err := storage.client.FlushDB(ctx).Err(); err != nil {
 		t.Fatal(err)
 	}
-
-	status, err := storage.saveMetrics(metricsReportRequest{GatewayID: "gateway-1", GatewayBootID: "boot-1", ActiveConnections: 3, TotalMessages: 9, Timestamp: time.Now().Unix()})
-	if err != nil {
+	service := newTokenService("redis-test-pepper")
+	now := nowRFC3339()
+	if err := storage.createToken(tokenRecord{tokenEntry: tokenEntry{ClientID: "redis-client", Generation: 1, CreatedAt: now, UpdatedAt: now}, Digest: service.digest("token-1")}); err != nil {
 		t.Fatal(err)
 	}
-	if status.GatewayBootID != "boot-1" {
-		t.Fatalf("unexpected status: %+v", status)
+	decision, err := storage.verifyDigest("redis-client", service.digest("token-1"))
+	if err != nil || decision != tokenAuthAllowed {
+		t.Fatalf("initial Redis AUTH decision=%v err=%v", decision, err)
 	}
-	if kind, err := storage.client.Type(ctx, gatewayStatusKey("gateway-1")).Result(); err != nil || kind != "hash" {
-		t.Fatalf("status type=%q err=%v", kind, err)
+	rotated, err := storage.rotateToken("redis-client", 1, service.digest("token-2"), nowRFC3339())
+	if err != nil || rotated.Generation != 2 {
+		t.Fatalf("rotate result=%+v err=%v", rotated, err)
 	}
-	if ttl, err := storage.client.TTL(ctx, gatewayStatusKey("gateway-1")).Result(); err != nil || ttl <= 0 {
-		t.Fatalf("status ttl=%s err=%v", ttl, err)
-	}
-	scoreBefore, err := storage.client.ZScore(ctx, "gateway:index", "gateway-1").Result()
-	if err != nil {
+	if err := storage.disableToken("redis-client", nowRFC3339()); err != nil {
 		t.Fatal(err)
 	}
-
-	if err := storage.saveClients("gateway-1", []clientInfo{{ClientID: "client-1"}}); err != nil {
-		t.Fatal(err)
+	decision, err = storage.verifyDigest("redis-client", service.digest("token-2"))
+	if err != nil || decision != tokenAuthDisabled {
+		t.Fatalf("disabled Redis AUTH decision=%v err=%v", decision, err)
 	}
-	scoreAfter, err := storage.client.ZScore(ctx, "gateway:index", "gateway-1").Result()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if scoreBefore != scoreAfter {
-		t.Fatalf("client snapshot refreshed online score: %f -> %f", scoreBefore, scoreAfter)
-	}
-	if ttl, err := storage.client.TTL(ctx, gatewayClientsKey("gateway-1")).Result(); err != nil || ttl <= 0 || ttl > defaultClientSnapshotTTL {
-		t.Fatalf("client ttl=%s err=%v", ttl, err)
+	entries, err := storage.listTokens()
+	if err != nil || len(entries) != 1 || entries[0].ClientID != "redis-client" || !entries[0].Disabled {
+		t.Fatalf("unexpected Redis token metadata=%+v err=%v", entries, err)
 	}
 }
 

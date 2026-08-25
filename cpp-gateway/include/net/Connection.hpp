@@ -15,20 +15,16 @@ struct Connection
     std::string output_buffer;
     size_t write_offset = 0;
     std::string client_id;
-    std::string remote_addr;
-    std::string connected_at;
     bool authenticated = false;
     bool auth_pending = false;
     bool closing = false;
     std::shared_ptr<AuthCancellation> auth_cancellation;
 
-    Connection(int fd_, uint64_t conn_id_, std::string remote_addr_, std::string connected_at_)
+    Connection(int fd_, uint64_t conn_id_)
         : fd(fd_),
           conn_id(conn_id_),
           input_buffer(""),
-          client_id("client_" + std::to_string(conn_id_)),
-          remote_addr(std::move(remote_addr_)),
-          connected_at(std::move(connected_at_))
+          client_id("client_" + std::to_string(conn_id_))
     {
     }
 };

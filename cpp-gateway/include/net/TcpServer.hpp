@@ -34,7 +34,7 @@ public:
     explicit TcpServer(int port);
     TcpServer(int port, std::string control_plane_host, int control_plane_port);
     TcpServer(int port, std::string control_plane_host, int control_plane_port,
-              std::string gateway_id, size_t request_queue_capacity = 4096,
+              size_t request_queue_capacity,
               size_t response_queue_capacity = 4096, int shutdown_timeout_ms = 5000,
               unsigned int worker_count = 0, std::string gateway_token = "",
               int control_plane_timeout_ms = 1000,
@@ -96,15 +96,12 @@ private:
     bool modifyConnectionEvents(int fd, uint32_t events);
     uint32_t connectionEvents(bool wants_write, bool closing = false) const;
 
-    void startMetricsReporter();
     void startConfigPuller();
-    void metricsReporterLoop();
     void configPullerLoop();
     size_t countAuthenticatedConnectionsForClientLocked(const std::string &client_id,
                                                         int exclude_fd) const;
     bool allowRequestForClientLocked(const std::string &client_id,
                                      const RuntimeConfig &config);
-    std::vector<ClientReport> buildClientSnapshot();
 
     struct RateLimitWindow
     {
@@ -145,12 +142,8 @@ private:
     mutable std::mutex connections_mutex_;
     std::vector<std::thread> workers_;
     std::vector<std::thread> auth_workers_;
-    std::thread metrics_reporter_;
     std::thread config_puller_;
     ControlPlaneClient control_plane_;
-    std::string gateway_id_{"gateway-001"};
-    std::string gateway_boot_id_;
-    int64_t process_start_time_{};
     std::string readiness_file_{"/tmp/gateway-ready"};
     RuntimeConfig runtime_config_{};
     std::mutex runtime_config_mutex_;

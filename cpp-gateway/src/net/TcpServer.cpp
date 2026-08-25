@@ -6,8 +6,6 @@
 #include <chrono>
 #include <csignal>
 #include <cstring>
-#include <ctime>
-#include <iomanip>
 #include <fstream>
 #include <limits>
 #include <netinet/in.h>
@@ -46,36 +44,6 @@ public:
 private:
     std::atomic<size_t> &counter_;
 };
-
-std::string generateBootId()
-{
-    std::ifstream input("/proc/sys/kernel/random/uuid");
-    std::string value;
-    if (input >> value) { return value; }
-    return std::to_string(static_cast<long long>(std::time(nullptr))) + "-" + std::to_string(getpid());
-}
-
-std::string formatUtcTime(std::chrono::system_clock::time_point time_point)
-{
-    std::time_t time = std::chrono::system_clock::to_time_t(time_point);
-    std::tm tm{};
-    gmtime_r(&time, &tm);
-    std::ostringstream output;
-    output << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
-    return output.str();
-}
-
-std::string formatRemoteAddr(const sockaddr_in &address)
-{
-    char ip[INET_ADDRSTRLEN] = {0};
-    if (inet_ntop(AF_INET, &address.sin_addr, ip, sizeof(ip)) == nullptr)
-    {
-        return "unknown";
-    }
-    std::ostringstream output;
-    output << ip << ':' << ntohs(address.sin_port);
-    return output.str();
-}
 
 Response makeOverloadResponse(const Request &request, bool close_connection)
 {
@@ -118,17 +86,17 @@ TcpServer *TcpServer::instance_ = nullptr;
 volatile std::sig_atomic_t TcpServer::signal_stop_requested_ = 0;
 
 TcpServer::TcpServer(int port)
-    : TcpServer(port, "127.0.0.1", 8080, "gateway-001")
+    : TcpServer(port, "127.0.0.1", 8080)
 {
 }
 
 TcpServer::TcpServer(int port, std::string control_plane_host, int control_plane_port)
-    : TcpServer(port, std::move(control_plane_host), control_plane_port, "gateway-001")
+    : TcpServer(port, std::move(control_plane_host), control_plane_port, 4096)
 {
 }
 
 TcpServer::TcpServer(int port, std::string control_plane_host, int control_plane_port,
-                     std::string gateway_id, size_t request_queue_capacity,
+                     size_t request_queue_capacity,
                      size_t response_queue_capacity, int shutdown_timeout_ms,
                      unsigned int worker_count, std::string gateway_token,
                      int control_plane_timeout_ms, unsigned int auth_worker_count,
@@ -142,9 +110,7 @@ TcpServer::TcpServer(int port, std::string control_plane_host, int control_plane
       response_queue_(std::max<size_t>(response_queue_capacity, 1)),
       control_plane_(std::move(control_plane_host), control_plane_port,
                      control_plane_timeout_ms,
-                     std::move(gateway_token)),
-      gateway_id_(std::move(gateway_id)), gateway_boot_id_(generateBootId()),
-      process_start_time_(std::time(nullptr))
+                     std::move(gateway_token))
 {
     if (configured_auth_worker_count_ == 0 || configured_auth_worker_count_ > 16)
     {
@@ -235,7 +201,6 @@ void TcpServer::start()
         auth_workers_.emplace_back([this, worker_id] { authWorkerLoop(worker_id); });
     }
 
-    startMetricsReporter();
     startConfigPuller();
     loop();
     finishShutdown();
@@ -544,10 +509,6 @@ void TcpServer::finishShutdown()
     response_queue_.stop();
     background_wait_cv_.notify_all();
 
-    if (metrics_reporter_.joinable())
-    {
-        metrics_reporter_.join();
-    }
     if (config_puller_.joinable())
     {
         config_puller_.join();
@@ -721,9 +682,7 @@ void TcpServer::handleAccept()
         const uint64_t connection_id = next_conn_id_.fetch_add(1);
         {
             std::lock_guard<std::mutex> lock(connections_mutex_);
-            connections_.emplace(fd, Connection(fd, connection_id,
-                                                 formatRemoteAddr(client_address),
-                                                 formatUtcTime(std::chrono::system_clock::now())));
+            connections_.emplace(fd, Connection(fd, connection_id));
         }
         business::StatsManager::getInstance().incrementConnections();
         LOG_DEBUG("accepted fd=%d conn_id=%llu", fd,
@@ -1165,81 +1124,12 @@ uint32_t TcpServer::connectionEvents(bool wants_write, bool closing) const
     return events;
 }
 
-void TcpServer::startMetricsReporter()
-{
-    metrics_reporter_ = std::thread([this]
-    {
-        metricsReporterLoop();
-    });
-}
-
 void TcpServer::startConfigPuller()
 {
     config_puller_ = std::thread([this]
     {
         configPullerLoop();
     });
-}
-
-void TcpServer::metricsReporterLoop()
-{
-    while (state_.load() == ServerState::RUNNING)
-    {
-        auto &stats = business::StatsManager::getInstance();
-        const auto snapshot = stats.snapshot();
-        const RuntimeConfig config = getRuntimeConfigSnapshot();
-        GatewayMetrics metrics{};
-        metrics.gateway_id = gateway_id_;
-        metrics.gateway_boot_id = gateway_boot_id_;
-        metrics.process_start_time = process_start_time_;
-        metrics.active_connections = snapshot.active_connections;
-        metrics.total_requests = snapshot.total_requests;
-        metrics.bytes_in = snapshot.bytes_in;
-        metrics.bytes_out = snapshot.bytes_out;
-        metrics.error_count = snapshot.errors;
-        metrics.request_queue_capacity = request_queue_.capacity();
-        metrics.request_queue_backlog = request_queue_.size();
-        metrics.request_queue_peak = request_queue_.peakSize();
-        metrics.request_queue_rejected = snapshot.request_queue_rejected;
-        metrics.auth_queue_capacity = auth_queue_.capacity();
-        metrics.auth_queue_backlog = auth_queue_.size();
-        metrics.auth_queue_peak = auth_queue_.peakSize();
-        metrics.auth_queue_rejected = snapshot.auth_queue_rejected;
-        metrics.auth_in_flight = auth_in_flight_.load(std::memory_order_relaxed);
-        metrics.auth_tasks_cancelled_before_start =
-            snapshot.auth_tasks_cancelled_before_start;
-        metrics.response_queue_capacity = response_queue_.capacity();
-        metrics.response_queue_backlog = response_queue_.size();
-        metrics.response_queue_peak = response_queue_.peakSize();
-        metrics.response_queue_rejected = snapshot.response_queue_rejected;
-        metrics.response_queue_rejected_normal = snapshot.response_queue_rejected_normal;
-        metrics.response_queue_rejected_auth = snapshot.response_queue_rejected_auth;
-        metrics.slow_client_closed = snapshot.slow_client_closed;
-        metrics.stale_response_dropped = snapshot.stale_response_dropped;
-        metrics.auth_success = snapshot.auth_success;
-        metrics.auth_failure = snapshot.auth_failure;
-        metrics.auth_allowed = snapshot.auth_allowed;
-        metrics.auth_denied = snapshot.auth_denied;
-        metrics.auth_unavailable = snapshot.auth_unavailable;
-        metrics.auth_duration_count = snapshot.auth_duration_count;
-        metrics.auth_duration_total_us = snapshot.auth_duration_total_us;
-        metrics.control_plane = control_plane_.metricsSnapshot();
-        metrics.runtime_config_version = config.version;
-        metrics.server_state = "RUNNING";
-        metrics.timestamp =
-            std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        control_plane_.reportMetrics(metrics);
-        if (state_.load() != ServerState::RUNNING)
-        {
-            break;
-        }
-        control_plane_.reportClients(metrics.gateway_id, buildClientSnapshot());
-        std::unique_lock<std::mutex> lock(background_wait_mutex_);
-        background_wait_cv_.wait_for(lock, std::chrono::seconds(5), [this]
-        {
-            return state_.load() != ServerState::RUNNING;
-        });
-    }
 }
 
 void TcpServer::configPullerLoop()
@@ -1308,23 +1198,6 @@ bool TcpServer::allowRequestForClientLocked(const std::string &client_id,
     }
     ++window.count;
     return true;
-}
-
-std::vector<ClientReport> TcpServer::buildClientSnapshot()
-{
-    std::vector<ClientReport> clients;
-    std::lock_guard<std::mutex> lock(connections_mutex_);
-    clients.reserve(connections_.size());
-    for (const auto &[fd, connection] : connections_)
-    {
-        (void)fd;
-        if (connection.authenticated)
-        {
-            clients.push_back({connection.client_id, connection.remote_addr,
-                               connection.connected_at});
-        }
-    }
-    return clients;
 }
 
 void TcpServer::closeConnection(int fd)

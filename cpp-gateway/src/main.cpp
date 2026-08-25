@@ -10,7 +10,7 @@ int main()
     {
         const StartupConfig config = parseStartupConfig();
         TcpServer server(config.gateway_port, config.control_plane_host,
-                         config.control_plane_port, config.gateway_id,
+                         config.control_plane_port,
                          config.request_queue_capacity,
                          config.response_queue_capacity,
                          config.shutdown_timeout_ms, config.worker_count,

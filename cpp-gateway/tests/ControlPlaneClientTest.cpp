@@ -327,19 +327,6 @@ int main()
              CHECK(host_rejected);
              CHECK(token_rejected);
          }},
-        {"HTTP failures are counted by low-cardinality category", []
-         {
-             FakeHttpServer server([](int fd)
-             {
-                 sendAll(fd, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Length: 2\r\n\r\n{}");
-             });
-             ControlPlaneClient client("127.0.0.1", server.port(), 500);
-             const AuthResult result = client.checkAuth("client-1", "secret");
-             const ControlPlaneMetricsSnapshot metrics = client.metricsSnapshot();
-             CHECK(result.http_error == HttpError::DuplicateContentLength);
-             CHECK_EQ(metrics.requests_auth, uint64_t{1});
-             CHECK_EQ(metrics.errors_protocol, uint64_t{1});
-         }},
         {"poll supports descriptors above FD_SETSIZE", []
          {
              std::vector<int> descriptors;

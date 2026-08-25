@@ -10,7 +10,7 @@ int main()
     return runTests({
         {"concurrent repeated stop is idempotent", []
          {
-             TcpServer server(0, "127.0.0.1", 1, "stop-test", 16, 16, 500, 1);
+             TcpServer server(0, "127.0.0.1", 1, 16, 16, 500, 1);
              std::thread server_thread([&]
              {
                  server.start();

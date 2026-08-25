@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -40,13 +39,6 @@ func TestAuthFailuresAreBoundedAndSuccessClearsCounter(t *testing.T) {
 	assertAuthCode(t, router, "client-1", "bad-token", "RATE_LIMITED")
 	assertAuthCode(t, router, "client-1", "good-token", "RATE_LIMITED")
 
-	metrics := httptest.NewRecorder()
-	router.ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-	if metrics.Code != http.StatusOK ||
-		!strings.Contains(metrics.Body.String(), `control_plane_auth_total{result="allowed"} 1`) ||
-		!strings.Contains(metrics.Body.String(), "control_plane_auth_rate_limited_total 2") {
-		t.Fatalf("unexpected auth metrics:\n%s", metrics.Body.String())
-	}
 }
 
 func TestAuthFailureCounterExpiresAndConcurrentIncrementsAreNotLost(t *testing.T) {
@@ -72,30 +64,6 @@ func TestAuthFailureCounterExpiresAndConcurrentIncrementsAreNotLost(t *testing.T
 	limited, err = storage.authFailureLimited("client-1", 1)
 	if err != nil || limited {
 		t.Fatalf("expected expired failure counter, limited=%v err=%v", limited, err)
-	}
-}
-
-func TestControlPlaneErrorTelemetrySurvivesStatusMapping(t *testing.T) {
-	report := metricsReportRequest{
-		controlPlaneTelemetry: controlPlaneTelemetry{
-			ControlPlaneRequestsAuth:   11,
-			ControlPlaneErrorsDeadline: 3,
-			ControlPlaneErrorsProtocol: 2,
-		},
-		GatewayID: "gateway-1",
-	}
-	status := statusFromMetrics(report)
-	body, err := json.Marshal(status)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(body), `"control_plane_errors_deadline":3`) ||
-		!strings.Contains(string(body), `"control_plane_requests_auth":11`) {
-		t.Fatalf("control-plane telemetry missing from status JSON: %s", body)
-	}
-	stored := statusToRedis(status)
-	if stored["control_plane_errors_protocol"] != int64(2) {
-		t.Fatalf("control-plane telemetry missing from Redis mapping: %#v", stored)
 	}
 }
 

@@ -8,7 +8,10 @@ import (
 )
 
 func routesWithStore(store Store) http.Handler {
-	return routesWithConfig(store, developmentApplicationConfigFromEnv())
+	return routesWithConfig(store, applicationConfig{
+		environment: appEnvDevelopment,
+		tokenPepper: developmentTokenPepper,
+	})
 }
 
 func setTokenForTest(t testing.TB, store Store, clientID, token string) {
@@ -19,7 +22,7 @@ func setTokenForTest(t testing.TB, store Store, clientID, token string) {
 }
 
 func createTokenForTest(store Store, clientID, token string) error {
-	service := newTokenService(developmentApplicationConfigFromEnv().tokenPepper)
+	service := newTokenService(developmentTokenPepper)
 	now := nowRFC3339()
 	return store.createToken(tokenRecord{
 		tokenEntry: tokenEntry{
