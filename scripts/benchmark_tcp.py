@@ -26,6 +26,13 @@ MESSAGE_TYPES = {
     "log_push": (LOG_PUSH, LOG_ACK),
     "stats": (STATS, STATS_RESP),
 }
+GATEWAY_COUNTER_KEYS = (
+    "request_queue_rejected",
+    "response_queue_rejected",
+    "auth_queue_rejected",
+    "slow_client_closed",
+    "stale_response_dropped",
+)
 
 
 @dataclass
@@ -132,6 +139,35 @@ def authenticate(sock: socket.socket, client_id: str, token: str) -> float:
     return elapsed_ms
 
 
+def read_gateway_stats(args: argparse.Namespace, phase: str) -> dict[str, object]:
+    client_id = f"benchmark-stats-{phase}-{args.run_id}"
+    token = register_token(args, client_id)
+    with socket.create_connection((args.host, args.port), timeout=5.0) as sock:
+        sock.settimeout(10.0)
+        authenticate(sock, client_id, token)
+        sock.sendall(packet(STATS, 2))
+        response = recv_response(sock)
+    if response.version != VERSION or response.msg_type != STATS_RESP or response.request_id != 2:
+        raise RuntimeError(f"unexpected STATS response: {response}")
+    body = json.loads(response.payload.decode("utf-8"))
+    if not isinstance(body, dict):
+        raise RuntimeError(f"STATS response was not an object: {body!r}")
+    return body
+
+
+def counter_delta(before: dict[str, object], after: dict[str, object]) -> dict[str, int]:
+    delta: dict[str, int] = {}
+    for key in GATEWAY_COUNTER_KEYS:
+        before_value = before.get(key)
+        after_value = after.get(key)
+        if not isinstance(before_value, int) or not isinstance(after_value, int):
+            raise RuntimeError(f"STATS missing integer counter {key}")
+        if after_value < before_value:
+            raise RuntimeError(f"STATS counter moved backwards: {key}")
+        delta[key] = after_value - before_value
+    return delta
+
+
 def build_payload(args: argparse.Namespace) -> bytes:
     text = args.payload if args.payload is not None else "x" * args.payload_size
     if args.message in ("ping", "stats"):
@@ -230,6 +266,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--worker-count", type=int, help="record the startup WORKER_COUNT")
     parser.add_argument("--request-queue-capacity", type=int, help="record startup Request Queue capacity")
     parser.add_argument("--response-queue-capacity", type=int, help="record startup Response Queue capacity")
+    parser.add_argument("--profile-name", default="unspecified")
+    parser.add_argument("--repeat-index", type=int, default=1)
+    parser.add_argument(
+        "--capture-gateway-stats",
+        action="store_true",
+        help="capture STATS before and after the workload",
+    )
     parser.add_argument("--output", help="write the complete JSON result to this path")
     parser.add_argument(
         "--allow-request-failures",
@@ -244,6 +287,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise SystemExit("clients/requests must be positive and payload-size non-negative")
     if not 0.0 <= args.slow_client_ratio <= 1.0 or args.slow_read_delay_ms < 0:
         raise SystemExit("slow-client-ratio must be 0..1 and delay must be non-negative")
+    if args.repeat_index <= 0:
+        raise SystemExit("repeat-index must be positive")
     if len(f"{args.client_id_prefix}-{args.run_id}-{args.clients:04d}") > 128:
         raise SystemExit("generated client_id exceeds the API limit")
 
@@ -259,6 +304,7 @@ def main() -> int:
     threads: list[threading.Thread] = []
     benchmark_started = time.perf_counter() if args.mode == "full" else 0.0
     process_before = read_process_sample(args.gateway_pid) if args.mode == "full" else None
+    gateway_stats_before: dict[str, object] | None = None
 
     for index in range(args.clients):
         thread = threading.Thread(
@@ -274,13 +320,18 @@ def main() -> int:
         if ready_count[0] != args.clients:
             raise RuntimeError("timed out preparing steady-state clients")
         process_before = read_process_sample(args.gateway_pid)
+        if args.capture_gateway_stats:
+            gateway_stats_before = read_gateway_stats(args, "before")
         benchmark_started = time.perf_counter()
         start_event.set()
+    elif args.capture_gateway_stats:
+        gateway_stats_before = read_gateway_stats(args, "before")
 
     for thread in threads:
         thread.join()
     elapsed_seconds = time.perf_counter() - benchmark_started
     process_after = read_process_sample(args.gateway_pid)
+    gateway_stats_after = read_gateway_stats(args, "after") if args.capture_gateway_stats else None
 
     completed = [value for value in results if value is not None]
     latencies = [latency for value in completed for latency in value.request_latencies_ms]
@@ -297,10 +348,12 @@ def main() -> int:
         process["rss_kib_delta"] = int(process_after["rss_kib"]) - int(process_before["rss_kib"])
 
     result = {
-        "schema_version": 1,
+        "schema_version": 2,
         "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "parameters": {
             "mode": args.mode,
+            "profile_name": args.profile_name,
+            "repeat_index": args.repeat_index,
             "build_mode": args.build_mode,
             "host": args.host,
             "port": args.port,
@@ -341,6 +394,15 @@ def main() -> int:
             "average": sum(setup_latencies) / len(setup_latencies) if setup_latencies else 0.0,
         },
         "process": process,
+        "gateway_stats": (
+            {
+                "before": gateway_stats_before,
+                "after": gateway_stats_after,
+                "delta": counter_delta(gateway_stats_before, gateway_stats_after),
+            }
+            if gateway_stats_before is not None and gateway_stats_after is not None
+            else None
+        ),
         "clients": [asdict(value) for value in completed],
     }
 
