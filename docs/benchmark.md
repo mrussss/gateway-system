@@ -22,6 +22,10 @@ Run the reproducible Compose matrix with:
 
     CONTROL_PLANE_ADMIN_TOKEN=... GATEWAY_SHARED_TOKEN=... TOKEN_PEPPER=... scripts/benchmark_matrix.sh
 
+When the default host ports are occupied, use a Compose override together
+with `BENCHMARK_CONTROL_PLANE_URL`, `BENCHMARK_GATEWAY_HOST` and
+`BENCHMARK_GATEWAY_PORT`; the service-internal ports remain unchanged.
+
 The script requires a clean Git tree before creating the output directory or
 capturing the environment. `BENCHMARK_ALLOW_DIRTY=1` is available only for
 development runs and marks the captured evidence as non-final.

@@ -6,6 +6,9 @@ COMPOSE=(docker compose)
 run_id="${BENCHMARK_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
 output_dir="${BENCHMARK_OUTPUT_DIR:-$ROOT_DIR/results/benchmark/$run_id}"
 requests_per_client="${BENCHMARK_REQUESTS_PER_CLIENT:-20}"
+control_plane_url="${BENCHMARK_CONTROL_PLANE_URL:-http://127.0.0.1:8080}"
+gateway_host="${BENCHMARK_GATEWAY_HOST:-127.0.0.1}"
+gateway_port="${BENCHMARK_GATEWAY_PORT:-9000}"
 export CONTROL_PLANE_ADMIN_TOKEN="${CONTROL_PLANE_ADMIN_TOKEN:-local-admin-change-me}"
 export GATEWAY_SHARED_TOKEN="${GATEWAY_SHARED_TOKEN:-local-gateway-change-me}"
 export TOKEN_PEPPER="${TOKEN_PEPPER:-local-pepper-change-me}"
@@ -40,7 +43,7 @@ trap cleanup EXIT
 
 wait_ready() {
   local deadline=$((SECONDS + 90))
-  until curl -fsS http://127.0.0.1:8080/health/ready >/dev/null; do
+  until curl -fsS "$control_plane_url/health/ready" >/dev/null; do
     (( SECONDS < deadline )) || { echo "[benchmark] control plane not ready" >&2; return 1; }
     sleep 1
   done
@@ -73,6 +76,9 @@ for profile in \
       python3 scripts/benchmark_tcp.py \
         --mode steady \
         --build-mode Release-container \
+        --host "$gateway_host" \
+        --port "$gateway_port" \
+        --control-plane "$control_plane_url" \
         --clients "$clients" \
         --requests-per-client "$requests_per_client" \
         --payload-size "$payload_size" \
@@ -89,6 +95,9 @@ for profile in \
   python3 scripts/benchmark_tcp.py \
     --mode steady \
     --build-mode Release-container \
+    --host "$gateway_host" \
+    --port "$gateway_port" \
+    --control-plane "$control_plane_url" \
     --clients 100 \
     --requests-per-client "$requests_per_client" \
     --payload-size 4096 \
