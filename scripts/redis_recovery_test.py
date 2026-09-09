@@ -30,6 +30,8 @@ from tcp_protocol_test import (
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CONTROL_PLANE_URL = os.environ.get("CONTROL_PLANE_URL", "http://127.0.0.1:8080")
 GATEWAY_TOKEN = os.environ.get("GATEWAY_SHARED_TOKEN", "local-gateway-change-me")
+GATEWAY_HOST = os.environ.get("RECOVERY_GATEWAY_HOST", "127.0.0.1")
+GATEWAY_PORT = int(os.environ.get("RECOVERY_GATEWAY_PORT", "9000"))
 
 
 def request_json(path: str, *, admin: bool = False) -> tuple[int, dict]:
@@ -77,7 +79,7 @@ def main() -> int:
     _, active_config = request_json("/config", admin=True)
     expected_version = int(active_config["version"])
 
-    established = connect("127.0.0.1", 9000)
+    established = connect(GATEWAY_HOST, GATEWAY_PORT)
     if authenticate_existing(established, client_id, token, 7001).get("code") != "OK":
         raise AssertionError("initial AUTH failed")
 
@@ -91,7 +93,7 @@ def main() -> int:
         established.sendall(packet(ECHO, 7002, payload))
         assert_response(recv_response(established), ECHO_RESP, 7002, payload)
 
-        with connect("127.0.0.1", 9000) as unauthenticated:
+        with connect(GATEWAY_HOST, GATEWAY_PORT) as unauthenticated:
             result = authenticate_existing(unauthenticated, client_id, token, 7003)
             if result.get("allowed") is not False or result.get("code") != "AUTH_UNAVAILABLE":
                 raise AssertionError(f"new AUTH did not fail closed: {result}")
@@ -100,7 +102,7 @@ def main() -> int:
             compose("unpause", "redis")
 
     wait_http("/health/ready", 200)
-    with connect("127.0.0.1", 9000) as recovered:
+    with connect(GATEWAY_HOST, GATEWAY_PORT) as recovered:
         result = authenticate_existing(recovered, client_id, token, 7004)
         if result.get("code") != "OK":
             raise AssertionError(f"AUTH did not recover: {result}")

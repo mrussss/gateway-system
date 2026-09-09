@@ -70,7 +70,8 @@ run_redis_integration() {
     (( SECONDS < deadline )) || { echo "[release-gate] Redis did not become ready" >&2; return 1; }
     sleep 1
   done
-  (cd go-control-plane && REDIS_TEST_ADDR=127.0.0.1:6379 go test -count=1 -run '^TestRedis' ./internal/app)
+  (cd go-control-plane && REDIS_TEST_ADDR="${REDIS_TEST_ADDR:-127.0.0.1:6379}" \
+    go test -count=1 -run '^TestRedis' ./internal/app)
   docker compose down --volumes --remove-orphans
 }
 
@@ -105,6 +106,12 @@ if [[ "$mode" == "full" ]]; then
   : "${GATEWAY_SHARED_TOKEN:?GATEWAY_SHARED_TOKEN must be set for --full}"
   : "${TOKEN_PEPPER:?TOKEN_PEPPER must be set for --full}"
   run_redis_integration
+  export SMOKE_CONTROL_PLANE_URL="${SMOKE_CONTROL_PLANE_URL:-http://127.0.0.1:8080}"
+  export SMOKE_GATEWAY_HOST="${SMOKE_GATEWAY_HOST:-127.0.0.1}"
+  export SMOKE_GATEWAY_PORT="${SMOKE_GATEWAY_PORT:-9000}"
+  export CONTROL_PLANE_URL="${CONTROL_PLANE_URL:-$SMOKE_CONTROL_PLANE_URL}"
+  export RECOVERY_GATEWAY_HOST="${RECOVERY_GATEWAY_HOST:-$SMOKE_GATEWAY_HOST}"
+  export RECOVERY_GATEWAY_PORT="${RECOVERY_GATEWAY_PORT:-$SMOKE_GATEWAY_PORT}"
   bash scripts/smoke_test.sh
   bash scripts/redis_recovery_test.sh
   scripts/benchmark_matrix.sh
