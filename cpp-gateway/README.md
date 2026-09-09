@@ -34,12 +34,14 @@ ctest --test-dir build-sanitized --output-on-failure
 - Every asynchronous result is checked against `fd + conn_id`.
 - A peer half-close drains readable frames, admitted work and pending output
   before the Reactor closes the connection; truncated EOF input is discarded.
+- DRAINING and half-close use one close-after-drain rule: `in_flight_work == 0`
+  and an empty output buffer are required before close.
 - A successful Response Queue push is followed by eventfd notification.
 - Queue `FULL` and `STOPPED` results are handled explicitly.
 - Output uses a write offset; a slow connection is capped at 8 MiB.
 - SIGINT/SIGTERM enters deadline-bounded DRAINING rather than immediately closing admitted work.
 - Socket I/O deadlines bound connect/send/receive; synchronous `getaddrinfo`
-  remains the explicit DNS lifecycle exception.
+  in AUTH and config pulls remains the explicit DNS lifecycle exception.
 - Per-request logs are DEBUG metadata only; payloads and AUTH tokens are never printed.
 
 Startup controls include `APP_ENV` (default `production`), `CONTROL_PLANE_TIMEOUT_MS` (default 1000), `AUTH_WORKER_COUNT` (2), and `AUTH_QUEUE_CAPACITY` (32). `GATEWAY_SHARED_TOKEN` is mandatory outside explicit development mode. Invalid or out-of-range values fail startup.

@@ -8,7 +8,8 @@ CTest covers protocol framing, bounded queues, eventfd notification, runtime
 config parsing/versioning, AUTH tasks, the control-plane HTTP parser/deadline,
 fd plus conn_id stale-response safety, peer half-close behavior and graceful
 shutdown. The Python black-box suite covers single/sticky/AUTH half-close,
-truncated EOF input, AUTH isolation, queue overload, slow readers, failure
+truncated EOF input, multi-in-flight SIGTERM drain, AUTH isolation, queue
+overload, fd reuse including cross-generation rejection, slow readers, failure
 recovery and bounded drain.
 
 Run normal and sanitized builds:

@@ -27,8 +27,8 @@ Workers never mutate socket lifetime. Every request and response carries
 being applied after kernel fd reuse.
 
 When the peer sends FIN, the Reactor drains readable bytes before marking
-`peer_read_closed`. Complete frames are admitted normally, while a truncated
-trailing frame is logged and discarded. The connection remains live while
+`read_eof`. Complete frames are admitted normally, while a truncated trailing
+frame is logged and discarded. The connection remains live while
 `in_flight_work` or pending output exists; Worker responses can therefore be
 written after the peer half-close, and the fd closes only after both are
 drained.
@@ -50,9 +50,10 @@ RUNNING → DRAINING → STOPPED
 ```
 
 DRAINING closes the listener, stops new work, drains accepted work and
-responses, flushes pending output, and aborts remaining queue items at the
-shutdown deadline. The deadline is finite and eventfd wakes the loop for both
-responses and stop requests.
+responses, flushes pending output, and closes a connection only when its
+admitted work and output are both drained. Remaining queue items are aborted
+at the shutdown deadline. The deadline is finite and eventfd wakes the loop
+for both responses and stop requests.
 
 ## Control plane
 
@@ -85,3 +86,9 @@ monitoring product, multi-gateway registry or fleet status, online-client
 aggregation, service discovery, distributed rate limiting, TLS termination,
 business database integration, message queues, multi-Reactor sharding or HA
 Redis orchestration.
+
+The single Reactor drains a readable socket until `EAGAIN`. A continuously
+writing peer can therefore consume a disproportionate share of one Reactor
+iteration; this is an explicit single-Reactor input-fairness boundary. The
+final scope does not add a multi-Reactor scheduler, `io_uring` or a coroutine
+runtime to address it.

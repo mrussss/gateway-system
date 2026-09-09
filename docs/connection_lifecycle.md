@@ -26,7 +26,7 @@ responses do not decrement the counter.
 OPEN
   │ EPOLLIN | EPOLLRDHUP or recv == 0
   ▼
-PEER_READ_CLOSED
+READ_EOF
   ├── no EPOLLIN registration
   ├── complete frames already buffered are still admitted
   ├── truncated trailing input is logged and discarded
@@ -44,5 +44,9 @@ tail.
 
 `DRAINING` stops new accepts and new decoded work, but admitted work and
 responses continue until the shutdown deadline. A peer half-close follows the
-same close-after-drain rule. Deadline expiry closes remaining descriptors to
-keep process shutdown bounded.
+same close-after-drain rule. A connection is eligible for close only when
+`closing || read_eof || DRAINING`, `in_flight_work == 0`, and output is empty.
+Deadline expiry closes remaining descriptors to keep process shutdown bounded.
+
+Response-queue rejection records also use the complete `(fd, conn_id)`
+identity. A stale generation cannot overwrite or close a newer connection.

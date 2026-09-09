@@ -23,7 +23,7 @@ STOPPED
 5. `request_queue.stop()` and `auth_queue.stop()` reject new pushes but let both Worker groups pop every admitted item.
 6. Each Worker pushes its final Response and notifies eventfd. The last producer across both groups stops the Response Queue and notifies again.
 7. The Reactor drains responses, enables EPOLLOUT, and sends each pending output buffer.
-8. Connections with empty output close. When Workers are gone, the Response Queue is stopped/empty, and all connections are closed, shutdown completes.
+8. A connection closes only when its admitted `in_flight_work` is zero and its output is empty. When Workers are gone, the Response Queue is stopped/empty, and all connections are closed, shutdown completes.
 9. If the deadline expires first, queued but not-yet-started normal requests, AUTH tasks, and responses are aborted; remaining connections close. AUTH HTTP calls started during DRAINING use the shutdown deadline as an upper bound before threads/descriptors are joined or released.
 
 ## Guarantees
@@ -40,8 +40,14 @@ STOPPED
 - A successful `send()` means bytes entered the kernel socket buffer, not that the remote application consumed them.
 - Deadline expiry may truncate pending responses.
 - Deadline expiry may discard admitted work that a Worker has not started yet; this is what keeps shutdown bounded under a deep queue.
-- Synchronous `getaddrinfo` cannot be interrupted by the socket deadline and can still extend process exit; it remains the explicit lifecycle-bound exception.
+- Synchronous `getaddrinfo` used by AUTH Worker calls and background config
+  pulls cannot be interrupted by the socket deadline and can still extend
+  process exit; it remains the explicit lifecycle-bound exception.
 
 ## Tests
 
-`graceful_shutdown_test` covers idle/repeated stop, a delayed AUTH backlog drained by one Auth Worker, AUTH overload isolation with concurrent ECHO, cancellation before AUTH starts, generated output held by a slow client, control-plane outage, and forced deadline exit.
+`graceful_shutdown_test` covers idle/repeated stop, delayed AUTH and normal-work
+backlogs, multi-in-flight shutdown drain, AUTH overload isolation with
+concurrent ECHO, cancellation before AUTH starts, fd reuse including
+cross-generation Response Queue rejection, generated output held by a slow
+client, control-plane outage, and forced deadline exit.
