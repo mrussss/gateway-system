@@ -17,3 +17,7 @@ requests may finish within the deadline; new requests are rejected after the
 listener closes.
 
 The contract is independent of any orchestrator or probe implementation.
+
+The C++ control-plane socket deadline bounds non-blocking connect, send and
+receive operations. Synchronous `getaddrinfo` resolution is not interruptible
+by that socket deadline and remains the explicit DNS lifecycle exception.

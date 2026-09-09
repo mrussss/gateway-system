@@ -26,6 +26,13 @@ Workers never mutate socket lifetime. Every request and response carries
 `fd + conn_id`; the monotonic connection id prevents a delayed response from
 being applied after kernel fd reuse.
 
+When the peer sends FIN, the Reactor drains readable bytes before marking
+`peer_read_closed`. Complete frames are admitted normally, while a truncated
+trailing frame is logged and discarded. The connection remains live while
+`in_flight_work` or pending output exists; Worker responses can therefore be
+written after the peer half-close, and the fd closes only after both are
+drained.
+
 The normal and AUTH queues are bounded and return explicit `OK`, `FULL` and
 `STOPPED` states. AUTH has its own queue and worker pool, so a slow Go/Redis
 dependency cannot consume ordinary TCP worker capacity. Worker responses enter

@@ -6,8 +6,9 @@ The test suite protects the final ownership boundary.
 
 CTest covers protocol framing, bounded queues, eventfd notification, runtime
 config parsing/versioning, AUTH tasks, the control-plane HTTP parser/deadline,
-fd plus conn_id stale-response safety and graceful shutdown. The Python
-black-box suite covers AUTH isolation, queue overload, slow readers, failure
+fd plus conn_id stale-response safety, peer half-close behavior and graceful
+shutdown. The Python black-box suite covers single/sticky/AUTH half-close,
+truncated EOF input, AUTH isolation, queue overload, slow readers, failure
 recovery and bounded drain.
 
 Run normal and sanitized builds:

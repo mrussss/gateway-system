@@ -55,7 +55,8 @@ fd and monotonic connection id; stale responses are discarded.
 
 See [architecture](docs/architecture.md), [protocol](docs/protocol.md),
 [shutdown](docs/shutdown.md), [API contract](docs/api_contract.md) and
-[design decisions](docs/design_decisions.md).
+[connection lifecycle](docs/connection_lifecycle.md),
+[benchmark](docs/benchmark.md) and [design decisions](docs/design_decisions.md).
 
 ## Quick start
 
