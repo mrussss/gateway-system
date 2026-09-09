@@ -6,10 +6,12 @@
 #include <csignal>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -76,6 +78,28 @@ private:
         Worker,
     };
 
+    struct ConnectionKey
+    {
+        int fd;
+        uint64_t conn_id;
+
+        bool operator==(const ConnectionKey &other) const noexcept
+        {
+            return fd == other.fd && conn_id == other.conn_id;
+        }
+    };
+
+    struct ConnectionKeyHash
+    {
+        size_t operator()(const ConnectionKey &key) const noexcept
+        {
+            const size_t fd_hash = std::hash<int>{}(key.fd);
+            const size_t conn_id_hash = std::hash<uint64_t>{}(key.conn_id);
+            return fd_hash ^ (conn_id_hash + static_cast<size_t>(0x9e3779b9) +
+                              (fd_hash << 6) + (fd_hash >> 2));
+        }
+    };
+
     void initServer();
     void loop();
     void beginDraining();
@@ -90,8 +114,8 @@ private:
     void handleAccept();
     void handleRead(int fd);
     void handleWrite(int fd);
-    void markPeerReadClosed(int fd);
-    void maybeCloseHalfClosedConnection(int fd);
+    void markReadEof(int fd);
+    void maybeCloseAfterDrain(int fd);
     void drainResponseQueue();
     void drainRejectedResponses();
     void applyResponse(Response response, ResponseOrigin origin);
@@ -100,10 +124,10 @@ private:
     void authWorkerLoop(unsigned int worker_id);
     void onResponseProducerExited();
     void closeConnection(int fd);
-    bool decodeAndEnqueue(int fd, bool peer_read_closed = false);
+    bool decodeAndEnqueue(int fd, bool read_eof = false);
     bool modifyConnectionEvents(int fd, uint32_t events);
     uint32_t connectionEvents(const Connection &connection) const;
-    bool shouldCloseHalfClosedConnection(const Connection &connection) const;
+    bool canCloseAfterDrain(const Connection &connection) const;
     void assertReactorThread() const;
 
     void startConfigPuller();
@@ -145,7 +169,7 @@ private:
     BlockQueue<Response> response_queue_;
     ReactorNotifier notifier_;
     std::mutex rejected_responses_mutex_;
-    std::unordered_map<int, uint64_t> rejected_response_connections_;
+    std::unordered_set<ConnectionKey, ConnectionKeyHash> rejected_response_connections_;
 
     std::unordered_map<int, Connection> connections_;
     std::vector<std::thread> workers_;

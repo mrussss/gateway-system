@@ -185,10 +185,18 @@ class GatewayProcess:
         response_capacity: int = 10000,
         auth_capacity: int = 32,
         auth_workers: int = 2,
+        worker_count: int = 1,
+        worker_delay_ms: int | None = None,
+        worker_admitted_target: int | None = None,
+        worker_test_environment: dict[str, str] | None = None,
     ) -> None:
         self.port = unused_port()
         self.readiness_file = Path("/tmp/gateway-ready")
         self.readiness_file.unlink(missing_ok=True)
+        self.admitted_marker = Path(
+            f"/tmp/gateway-system-admitted-{os.getpid()}-{self.port}"
+        )
+        self.admitted_marker.unlink(missing_ok=True)
         control_plane_timeout_ms = min(1000, (shutdown_ms - 100) // 2)
         if control_plane_timeout_ms < 100:
             raise ValueError("shutdown_ms cannot satisfy the startup timeout contract")
@@ -204,12 +212,25 @@ class GatewayProcess:
                 "REQUEST_QUEUE_CAPACITY": str(request_capacity),
                 "RESPONSE_QUEUE_CAPACITY": str(response_capacity),
                 "SHUTDOWN_TIMEOUT_MS": str(shutdown_ms),
-                "WORKER_COUNT": "1",
+                "WORKER_COUNT": str(worker_count),
                 "AUTH_QUEUE_CAPACITY": str(auth_capacity),
                 "AUTH_WORKER_COUNT": str(auth_workers),
                 "GATEWAY_LOG_PATH": "/tmp/gateway-system-graceful-test.log",
             }
         )
+        environment.pop("WORKER_TEST_DELAY_MS", None)
+        environment.pop("WORKER_TEST_DELAY_REQUEST_ID", None)
+        environment.pop("WORKER_TEST_ADMITTED_FILE", None)
+        environment.pop("WORKER_TEST_ADMITTED_TARGET", None)
+        environment.pop("WORKER_TEST_NORMAL_NOTIFY_DELAY_MS", None)
+        environment.pop("WORKER_TEST_SUPPRESS_NORMAL_RESPONSE_NOTIFY", None)
+        if worker_delay_ms is not None:
+            environment["WORKER_TEST_DELAY_MS"] = str(worker_delay_ms)
+        if worker_admitted_target is not None:
+            environment["WORKER_TEST_ADMITTED_FILE"] = str(self.admitted_marker)
+            environment["WORKER_TEST_ADMITTED_TARGET"] = str(worker_admitted_target)
+        if worker_test_environment:
+            environment.update(worker_test_environment)
         self.process = subprocess.Popen(
             [str(executable)],
             env=environment,
@@ -255,6 +276,17 @@ class GatewayProcess:
         except subprocess.TimeoutExpired:
             self.process.kill()
             self._raise_failure(f"gateway did not exit within {timeout}s")
+
+    def wait_for_admitted_work(self, timeout: float = 3.0) -> int:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                return int(self.admitted_marker.read_text().strip())
+            except (FileNotFoundError, ValueError):
+                if self.process.poll() is not None:
+                    self._raise_failure("gateway exited before admitted-work marker")
+                time.sleep(0.005)
+        self._raise_failure("gateway did not record admitted-work marker")
 
     def _raise_failure(self, reason: str) -> None:
         if self.process.poll() is None:
@@ -311,6 +343,47 @@ def test_queued_requests_are_drained(
     control_plane.set_auth_delay(0.0)
     if gateway.process.returncode != 0:
         raise AssertionError("queued-request shutdown returned non-zero")
+
+
+def test_multi_inflight_requests_are_drained(
+    executable: Path, control_plane: FakeControlPlane
+) -> None:
+    gateway = GatewayProcess(
+        executable,
+        control_plane.port,
+        shutdown_ms=3000,
+        request_capacity=16,
+        response_capacity=32,
+        worker_delay_ms=250,
+        worker_admitted_target=3,
+    )
+    client = gateway.connect_authenticated("multi-inflight-shutdown")
+    client.settimeout(5)
+    try:
+        client.sendall(
+            packet(ECHO, 2, b"first")
+            + packet(ECHO, 3, b"second")
+            + packet(ECHO, 4, b"third")
+        )
+        client.shutdown(socket.SHUT_WR)
+        admitted = gateway.wait_for_admitted_work()
+        if admitted < 3:
+            raise AssertionError(f"expected three admitted requests, got {admitted}")
+
+        gateway.signal()
+        responses = [recv_packet(client) for _ in range(3)]
+        if [response[1] for response in responses] != [2, 3, 4]:
+            raise AssertionError(f"multi-in-flight responses were incomplete: {responses}")
+        if [response[2] for response in responses] != [b"first", b"second", b"third"]:
+            raise AssertionError(f"multi-in-flight payloads changed: {responses}")
+        if client.recv(1) != b"":
+            raise AssertionError("gateway did not close after multi-in-flight drain")
+        gateway.wait(timeout=5)
+        if gateway.process.returncode != 0:
+            raise AssertionError("multi-in-flight shutdown returned non-zero")
+    finally:
+        client.close()
+        gateway.admitted_marker.unlink(missing_ok=True)
 
 
 def test_slow_client_is_bounded_by_deadline(executable: Path, control_port: int) -> None:
@@ -595,6 +668,89 @@ def test_fd_reuse_rejects_stale_auth_response(
         raise AssertionError("stale response drop was not observable after exact fd reuse")
 
 
+def test_cross_generation_response_rejection(
+    executable: Path, control_plane: FakeControlPlane
+) -> None:
+    gateway = GatewayProcess(
+        executable,
+        control_plane.port,
+        shutdown_ms=3000,
+        request_capacity=8,
+        response_capacity=1,
+        worker_count=3,
+        worker_admitted_target=1,
+        worker_test_environment={
+            "WORKER_TEST_DELAY_MS": "500",
+            "WORKER_TEST_DELAY_REQUEST_ID": "100",
+            "WORKER_TEST_NORMAL_NOTIFY_DELAY_MS": "1000",
+            "WORKER_TEST_SUPPRESS_NORMAL_RESPONSE_NOTIFY": "1",
+        },
+    )
+    keepers = [
+        socket.create_connection(("127.0.0.1", gateway.port), timeout=3)
+        for _ in range(8)
+    ]
+    old = gateway.connect_authenticated("old-rejection-generation")
+    old.sendall(packet(PING, 100))
+    if gateway.wait_for_admitted_work() < 1:
+        raise AssertionError("old generation request was not admitted")
+    old_server_fd = server_fd_for_client(gateway.process.pid, gateway.port, old)
+    old.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+    old.close()
+
+    fd_path = Path(f"/proc/{gateway.process.pid}/fd/{old_server_fd}")
+    deadline = time.monotonic() + 1
+    while fd_path.exists() and time.monotonic() < deadline:
+        time.sleep(0.005)
+    replacement = socket.create_connection(("127.0.0.1", gateway.port), timeout=3)
+    replacement.settimeout(3)
+    replacement_server_fd = server_fd_for_client(
+        gateway.process.pid, gateway.port, replacement
+    )
+    if replacement_server_fd != old_server_fd:
+        replacement.close()
+        for keeper in keepers:
+            keeper.close()
+        gateway.signal()
+        gateway.wait(timeout=5)
+        raise AssertionError(
+            f"test could not force fd reuse: old={old_server_fd} new={replacement_server_fd}"
+        )
+
+    payload = json.dumps({"client_id": "replacement-rejection-generation", "token": "test-token"}).encode()
+    replacement.sendall(packet(AUTH, 1, payload))
+    message_type, request_id, auth_payload = recv_packet(replacement)
+    if (
+        message_type != AUTH_RESP
+        or request_id != 1
+        or json.loads(auth_payload).get("allowed") is not True
+    ):
+        raise AssertionError("replacement generation did not authenticate")
+
+    # Two replacement requests are processed by separate Workers. With a full
+    # Response Queue, one succeeds and one records a rejection for generation B.
+    # The delayed old-generation response records generation A afterwards.
+    replacement.sendall(packet(PING, 201) + packet(PING, 202))
+    closed = False
+    try:
+        while True:
+            recv_packet(replacement)
+    except (ConnectionError, OSError, RuntimeError):
+        closed = True
+    except socket.timeout:
+        pass
+    finally:
+        replacement.close()
+        for keeper in keepers:
+            keeper.close()
+    gateway.signal()
+    gateway.wait(timeout=5)
+    if not closed:
+        raise AssertionError("replacement generation was not closed by its own rejection")
+    if gateway.process.returncode != 0:
+        raise AssertionError("cross-generation rejection shutdown returned non-zero")
+
+
 def test_cancelled_queued_auth(executable: Path, control_plane: FakeControlPlane) -> None:
     control_plane.set_auth_delay(0.3)
     control_plane.reset_auth_requests()
@@ -685,11 +841,13 @@ def main() -> int:
     with FakeControlPlane() as control_plane:
         test_idle_and_repeated_stop(executable, control_plane.port)
         test_queued_requests_are_drained(executable, control_plane)
+        test_multi_inflight_requests_are_drained(executable, control_plane)
         test_auth_queue_overload(executable, control_plane)
         test_request_queue_overload(executable, control_plane)
         test_response_queue_overload(executable, control_plane)
         test_cancelled_queued_auth(executable, control_plane)
         test_fd_reuse_rejects_stale_auth_response(executable, control_plane)
+        test_cross_generation_response_rejection(executable, control_plane)
         test_deep_queue_deadline(executable, control_plane)
         test_slow_client_is_bounded_by_deadline(executable, control_plane.port)
     test_control_plane_outage(executable)

@@ -6,6 +6,7 @@
 #include <cerrno>
 #include <chrono>
 #include <csignal>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -81,6 +82,70 @@ Response makeInternalAuthErrorResponse(const Request &request)
     response.close_connection = true;
     return response;
 }
+
+#ifndef NDEBUG
+void recordAdmittedWorkForTest(const Connection &connection)
+{
+    const char *path = std::getenv("WORKER_TEST_ADMITTED_FILE");
+    const char *raw_target = std::getenv("WORKER_TEST_ADMITTED_TARGET");
+    if (path == nullptr || *path == '\0' || raw_target == nullptr || *raw_target == '\0')
+    {
+        return;
+    }
+
+    char *end = nullptr;
+    const long target = std::strtol(raw_target, &end, 10);
+    if (end == raw_target || *end != '\0' || target <= 0 ||
+        connection.in_flight_work < static_cast<size_t>(target))
+    {
+        return;
+    }
+
+    std::ofstream marker(path, std::ios::trunc);
+    if (marker)
+    {
+        marker << connection.in_flight_work << '\n';
+    }
+}
+
+long workerTestDelayMs(const char *name)
+{
+    const char *raw_delay = std::getenv(name);
+    if (raw_delay == nullptr || *raw_delay == '\0')
+    {
+        return 0;
+    }
+
+    char *end = nullptr;
+    const long delay_ms = std::strtol(raw_delay, &end, 10);
+    if (end == raw_delay || *end != '\0' || delay_ms <= 0 || delay_ms > 60000)
+    {
+        return 0;
+    }
+    return delay_ms;
+}
+
+void applyWorkerTestDelay(const Request &request)
+{
+    const char *raw_request_id = std::getenv("WORKER_TEST_DELAY_REQUEST_ID");
+    if (raw_request_id != nullptr && *raw_request_id != '\0')
+    {
+        char *end = nullptr;
+        const unsigned long long request_id = std::strtoull(raw_request_id, &end, 10);
+        if (end == raw_request_id || *end != '\0' ||
+            request.request_id != static_cast<uint64_t>(request_id))
+        {
+            return;
+        }
+    }
+
+    const long delay_ms = workerTestDelayMs("WORKER_TEST_DELAY_MS");
+    if (delay_ms > 0)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+    }
+}
+#endif
 }
 
 TcpServer *TcpServer::instance_ = nullptr;
@@ -215,6 +280,9 @@ void TcpServer::normalWorkerLoop(unsigned int worker_id)
     {
         try
         {
+#ifndef NDEBUG
+            applyWorkerTestDelay(request);
+#endif
             enqueueWorkerResponse(dispatcher.dispatch(request), ResponseProducer::NormalWorker);
         }
         catch (const std::exception &error)
@@ -444,7 +512,7 @@ void TcpServer::loop()
             }
             if ((flags & (EPOLLRDHUP | EPOLLHUP)) != 0)
             {
-                markPeerReadClosed(fd);
+                markReadEof(fd);
             }
             if ((flags & EPOLLOUT) != 0)
             {
@@ -600,8 +668,7 @@ bool TcpServer::drainComplete()
     std::vector<int> completed;
     for (const auto &[fd, connection] : connections_)
     {
-        if (connection.in_flight_work == 0 &&
-            connection.write_offset >= connection.output_buffer.size())
+        if (canCloseAfterDrain(connection))
         {
             completed.push_back(fd);
         }
@@ -699,7 +766,7 @@ void TcpServer::handleRead(int fd)
     {
         const auto connection = connections_.find(fd);
         if (connection == connections_.end() || connection->second.closing ||
-            connection->second.peer_read_closed)
+            connection->second.read_eof)
         {
             return;
         }
@@ -722,7 +789,7 @@ void TcpServer::handleRead(int fd)
         if (bytes_read == 0)
         {
             decodeAndEnqueue(fd, true);
-            markPeerReadClosed(fd);
+            markReadEof(fd);
             return;
         }
         if (errno == EINTR)
@@ -740,7 +807,7 @@ void TcpServer::handleRead(int fd)
     }
 }
 
-void TcpServer::markPeerReadClosed(int fd)
+void TcpServer::markReadEof(int fd)
 {
     assertReactorThread();
     auto connection = connections_.find(fd);
@@ -750,16 +817,16 @@ void TcpServer::markPeerReadClosed(int fd)
     }
 
     Connection &current = connection->second;
-    if (current.peer_read_closed)
+    if (current.read_eof)
     {
-        maybeCloseHalfClosedConnection(fd);
+        maybeCloseAfterDrain(fd);
         return;
     }
-    current.peer_read_closed = true;
-    LOG_DEBUG("peer read half-closed fd=%d conn_id=%llu in_flight=%zu", fd,
+    current.read_eof = true;
+    LOG_DEBUG("peer read EOF fd=%d conn_id=%llu in_flight=%zu", fd,
               static_cast<unsigned long long>(current.conn_id), current.in_flight_work);
 
-    if (shouldCloseHalfClosedConnection(current))
+    if (canCloseAfterDrain(current))
     {
         closeConnection(fd);
         return;
@@ -767,12 +834,12 @@ void TcpServer::markPeerReadClosed(int fd)
     modifyConnectionEvents(fd, connectionEvents(current));
 }
 
-void TcpServer::maybeCloseHalfClosedConnection(int fd)
+void TcpServer::maybeCloseAfterDrain(int fd)
 {
     assertReactorThread();
     auto connection = connections_.find(fd);
     if (connection != connections_.end() &&
-        shouldCloseHalfClosedConnection(connection->second))
+        canCloseAfterDrain(connection->second))
     {
         closeConnection(fd);
     }
@@ -783,9 +850,6 @@ void TcpServer::handleWrite(int fd)
     assertReactorThread();
     while (true)
     {
-        bool close_after_write = false;
-        bool peer_read_closed = false;
-        size_t in_flight_work = 0;
         bool output_empty = false;
         ssize_t sent = 0;
         auto connection = connections_.find(fd);
@@ -795,9 +859,6 @@ void TcpServer::handleWrite(int fd)
         }
         Connection &current = connection->second;
         output_empty = current.write_offset >= current.output_buffer.size();
-        close_after_write = current.closing;
-        peer_read_closed = current.peer_read_closed;
-        in_flight_work = current.in_flight_work;
         if (!output_empty)
         {
             sent = send(fd, current.output_buffer.data() + current.write_offset,
@@ -818,8 +879,7 @@ void TcpServer::handleWrite(int fd)
 
         if (output_empty)
         {
-            if (close_after_write || state_.load() == ServerState::DRAINING ||
-                (peer_read_closed && in_flight_work == 0))
+            if (canCloseAfterDrain(current))
             {
                 closeConnection(fd);
                 return;
@@ -858,7 +918,25 @@ bool TcpServer::enqueueWorkerResponse(Response response, ResponseProducer produc
         LOG_DEBUG("response queued fd=%d conn_id=%llu type=%d request_id=%llu bytes=%zu",
                   fd, static_cast<unsigned long long>(connection_id), static_cast<int>(type),
                   static_cast<unsigned long long>(request_id), payload_size);
+#ifndef NDEBUG
+        const bool suppress_notify =
+            producer == ResponseProducer::NormalWorker &&
+            std::getenv("WORKER_TEST_SUPPRESS_NORMAL_RESPONSE_NOTIFY") != nullptr;
+        if (producer == ResponseProducer::NormalWorker)
+        {
+            const long delay_ms = workerTestDelayMs("WORKER_TEST_NORMAL_NOTIFY_DELAY_MS");
+            if (delay_ms > 0)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+            }
+        }
+        if (!suppress_notify)
+        {
+            notifier_.notify();
+        }
+#else
         notifier_.notify();
+#endif
         return true;
     }
 
@@ -876,9 +954,17 @@ bool TcpServer::enqueueWorkerResponse(Response response, ResponseProducer produc
               result == PushResult::FULL ? "full" : "stopped");
     {
         std::lock_guard<std::mutex> lock(rejected_responses_mutex_);
-        rejected_response_connections_[fd] = connection_id;
+        rejected_response_connections_.insert(ConnectionKey{fd, connection_id});
     }
+#ifndef NDEBUG
+    if (producer != ResponseProducer::NormalWorker ||
+        std::getenv("WORKER_TEST_SUPPRESS_NORMAL_RESPONSE_NOTIFY") == nullptr)
+    {
+        notifier_.notify();
+    }
+#else
     notifier_.notify();
+#endif
     return false;
 }
 
@@ -895,20 +981,17 @@ void TcpServer::drainResponseQueue()
 void TcpServer::drainRejectedResponses()
 {
     assertReactorThread();
-    std::unordered_map<int, uint64_t> rejected;
+    std::unordered_set<ConnectionKey, ConnectionKeyHash> rejected;
     {
         std::lock_guard<std::mutex> lock(rejected_responses_mutex_);
         rejected.swap(rejected_response_connections_);
     }
-    for (const auto &[fd, connection_id] : rejected)
+    for (const ConnectionKey &key : rejected)
     {
-        bool matches = false;
-        auto connection = connections_.find(fd);
-        matches = connection != connections_.end() &&
-                  connection->second.conn_id == connection_id;
-        if (matches)
+        auto connection = connections_.find(key.fd);
+        if (connection != connections_.end() && connection->second.conn_id == key.conn_id)
         {
-            closeConnection(fd);
+            closeConnection(key.fd);
         }
     }
 }
@@ -930,9 +1013,20 @@ void TcpServer::applyResponse(Response response, ResponseOrigin origin)
     }
 
     Connection &current = connection->second;
-    if (origin == ResponseOrigin::Worker && current.in_flight_work > 0)
+    if (origin == ResponseOrigin::Worker)
     {
-        --current.in_flight_work;
+        if (current.in_flight_work == 0)
+        {
+            LOG_ERROR("worker completion without admitted work: fd=%d conn_id=%llu",
+                      current.fd, static_cast<unsigned long long>(current.conn_id));
+#ifndef NDEBUG
+            assert(false && "in_flight_work accounting violation");
+#endif
+        }
+        else
+        {
+            --current.in_flight_work;
+        }
     }
     if (response.type == MessageType::AUTH_RESP || response.close_connection)
     {
@@ -1005,11 +1099,11 @@ void TcpServer::applyResponse(Response response, ResponseOrigin origin)
     }
     else
     {
-        maybeCloseHalfClosedConnection(response.fd);
+        maybeCloseAfterDrain(response.fd);
     }
 }
 
-bool TcpServer::decodeAndEnqueue(int fd, bool peer_read_closed)
+bool TcpServer::decodeAndEnqueue(int fd, bool read_eof)
 {
     assertReactorThread();
     std::vector<Request> decoded_requests;
@@ -1025,7 +1119,7 @@ bool TcpServer::decodeAndEnqueue(int fd, bool peer_read_closed)
         return false;
     }
     Connection &current = connection->second;
-    const bool eof = peer_read_closed || current.peer_read_closed;
+    const bool eof = read_eof || current.read_eof;
     const DecodeStatus status = ProtocolCodec::decode(
         current.input_buffer, current.fd, decoded_requests, current.conn_id);
     if (status == DecodeStatus::INVALID_LENGTH)
@@ -1146,6 +1240,9 @@ bool TcpServer::decodeAndEnqueue(int fd, bool peer_read_closed)
             if (connection != connections_.end() && connection->second.conn_id == request_conn_id)
             {
                 ++connection->second.in_flight_work;
+#ifndef NDEBUG
+                recordAdmittedWorkForTest(connection->second);
+#endif
             }
             continue;
         }
@@ -1188,7 +1285,7 @@ uint32_t TcpServer::connectionEvents(const Connection &connection) const
 {
     uint32_t events = CLIENT_BASE_EVENTS;
     if (state_.load() == ServerState::RUNNING && !connection.closing &&
-        !connection.peer_read_closed)
+        !connection.read_eof)
     {
         events |= EPOLLIN;
     }
@@ -1199,10 +1296,12 @@ uint32_t TcpServer::connectionEvents(const Connection &connection) const
     return events;
 }
 
-bool TcpServer::shouldCloseHalfClosedConnection(const Connection &connection) const
+bool TcpServer::canCloseAfterDrain(const Connection &connection) const
 {
-    return connection.peer_read_closed && connection.in_flight_work == 0 &&
-           connection.write_offset >= connection.output_buffer.size();
+    const bool output_empty = connection.write_offset >= connection.output_buffer.size();
+    const bool drain_requested = connection.closing || connection.read_eof ||
+                                 state_.load() == ServerState::DRAINING;
+    return drain_requested && connection.in_flight_work == 0 && output_empty;
 }
 
 void TcpServer::assertReactorThread() const

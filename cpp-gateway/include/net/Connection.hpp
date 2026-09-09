@@ -19,7 +19,7 @@ struct Connection
     bool authenticated = false;
     bool auth_pending = false;
     bool closing = false;
-    bool peer_read_closed = false;
+    bool read_eof = false;
     size_t in_flight_work = 0;
     std::shared_ptr<AuthCancellation> auth_cancellation;
 
