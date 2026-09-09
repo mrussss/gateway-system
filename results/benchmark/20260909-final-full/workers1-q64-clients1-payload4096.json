@@ -1,0 +1,80 @@
+{
+  "auth_latency_ms": {
+    "average": 1.6070350002337364,
+    "observations": 1,
+    "p50": 1.6070350002337364,
+    "p95": 1.6070350002337364,
+    "p99": 1.6070350002337364
+  },
+  "clients": [
+    {
+      "auth_latency_ms": 1.6070350002337364,
+      "error": null,
+      "failed": 0,
+      "request_latencies_ms": [
+        0.5211879997659707,
+        0.37893599983362947,
+        0.3352590001668432,
+        0.2853809996850032,
+        0.39371100001517334,
+        0.40243100011139177,
+        0.6063969999559049,
+        0.43945000015810365,
+        0.4073110003446345,
+        0.3592420002860308,
+        0.3268699997533986,
+        0.424765999923693,
+        0.4466750001483888,
+        0.37407099989650305,
+        0.427974000103859,
+        0.42269799996574875,
+        0.3345290001561807,
+        0.3412690002733143,
+        0.42561400005070027,
+        0.36634399975810084
+      ],
+      "setup_latency_ms": 5.292747999646963,
+      "success": 20
+    }
+  ],
+  "parameters": {
+    "build_mode": "Release-container",
+    "clients": 1,
+    "host": "127.0.0.1",
+    "message": "echo",
+    "mode": "steady",
+    "payload_bytes": 4096,
+    "port": 19000,
+    "request_queue_capacity": 64,
+    "requests_per_client": 20,
+    "response_queue_capacity": 4096,
+    "setup_concurrency": 16,
+    "slow_client_ratio": 0.0,
+    "slow_read_delay_ms": 25.0,
+    "worker_count": 1
+  },
+  "process": {
+    "after": null,
+    "before": null
+  },
+  "requests": {
+    "attempted": 20,
+    "elapsed_seconds": 0.008220686000186106,
+    "failed": 0,
+    "latency_ms": {
+      "average": 0.40100580001762864,
+      "max": 0.6063969999559049,
+      "p50": 0.39371100001517334,
+      "p95": 0.5211879997659707,
+      "p99": 0.6063969999559049
+    },
+    "qps": 2432.886987721855,
+    "success": 20
+  },
+  "schema_version": 1,
+  "setup_latency_ms": {
+    "average": 5.292747999646963,
+    "observations": 1
+  },
+  "timestamp_utc": "2026-09-09T09:47:56Z"
+}
