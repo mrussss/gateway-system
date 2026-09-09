@@ -23,6 +23,11 @@ JSON files plus `summary.json`, which reports min/median/max for QPS and
 latency percentiles. `BENCHMARK_REQUESTS_PER_CLIENT` can override the sample
 plan for development runs.
 
+The final matrix is strict: a case with any failed request fails the matrix
+validation. The standalone TCP runner retains an explicit
+`--allow-request-failures` option for deliberate overload experiments, but the
+final matrix does not use it.
+
 Every raw result contains `gateway_stats.before`, `gateway_stats.after` and
 counter deltas for queue rejection, slow-client close and stale-response
 events. Queue peaks are process-lifetime values and are not presented as

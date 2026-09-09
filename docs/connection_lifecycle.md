@@ -35,10 +35,10 @@ READ_EOF
 ```
 
 The event order is deliberate: fatal `EPOLLERR` closes immediately; readable
-bytes are drained first; `EPOLLRDHUP`/`EPOLLHUP` then marks the peer read side
-closed; pending output is flushed afterward. This prevents FIN from dropping
-an AUTH request, sticky requests or a complete frame followed by a truncated
-tail.
+bytes are drained first; `EPOLLRDHUP`/`EPOLLHUP` then marks local read EOF and
+observes that the peer write side is closed; pending output is flushed
+afterward. This prevents FIN from dropping an AUTH request, sticky requests or
+a complete frame followed by a truncated tail.
 
 ## Shutdown interaction
 

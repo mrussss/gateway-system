@@ -156,7 +156,6 @@ for profile in \
           --worker-count "$worker_count" \
           --request-queue-capacity "$request_capacity" \
           --response-queue-capacity "$response_capacity" \
-          --allow-request-failures \
           --run-id "$run_id-$profile_name-r$repeat_index-$clients-$payload_size" \
           --output "$output_dir/$profile_name-repeat$repeat_index-clients$clients-payload$payload_size.json"
       done
@@ -181,7 +180,6 @@ for profile in \
       --worker-count "$worker_count" \
       --request-queue-capacity "$request_capacity" \
       --response-queue-capacity "$response_capacity" \
-      --allow-request-failures \
       --run-id "$run_id-$profile_name-r$repeat_index-slow" \
       --output "$output_dir/$profile_name-repeat$repeat_index-slow10pct.json"
   done
@@ -206,6 +204,8 @@ for path in files:
     requests = result["requests"]
     if requests["attempted"] != requests["success"] + requests["failed"]:
         raise SystemExit(f"request accounting mismatch: {path}")
+    if requests["failed"] != 0:
+        raise SystemExit(f"benchmark case recorded failed requests: {path}")
     if requests["success"] == 0:
         raise SystemExit(f"no successful requests: {path}")
     stats = result.get("gateway_stats")
