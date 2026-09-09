@@ -28,6 +28,12 @@ counter deltas for queue rejection, slow-client close and stale-response
 events. Queue peaks are process-lifetime values and are not presented as
 per-cell values unless the profile has been restarted.
 
+Before each profile, the runner uses the existing versioned `/config` API and
+CAS contract to raise `max_requests_per_client_per_second` for the workload.
+This keeps the requested sample plan from being dominated by the normal
+per-client policy limiter; queue capacities and worker counts remain the
+controlled matrix variables.
+
 Run the reproducible Compose matrix with:
 
     CONTROL_PLANE_ADMIN_TOKEN=... GATEWAY_SHARED_TOKEN=... TOKEN_PEPPER=... scripts/benchmark_matrix.sh

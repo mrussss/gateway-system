@@ -58,6 +58,35 @@ wait_ready() {
   sleep 6
 }
 
+configure_benchmark_runtime() {
+  local current_config etag config_payload
+  current_config="$(curl -fsS -H "Authorization: Bearer $CONTROL_PLANE_ADMIN_TOKEN" "$control_plane_url/config")"
+  etag="$(curl -fsS -D - -o /dev/null \
+    -H "Authorization: Bearer $CONTROL_PLANE_ADMIN_TOKEN" "$control_plane_url/config" \
+    | awk 'tolower($1)=="etag:" {print $2}' | tr -d '\r')"
+  [[ -n "$etag" ]] || { echo "[benchmark] config response missing ETag" >&2; return 1; }
+  config_payload="$(printf '%s' "$current_config" | python3 -c '
+import json
+import sys
+
+config = json.load(sys.stdin)
+config["max_requests_per_client_per_second"] = 1000000
+fields = (
+    "max_payload_size",
+    "max_connections_per_client",
+    "max_requests_per_client_per_second",
+    "slow_client_output_limit",
+    "log_level",
+)
+print(json.dumps({field: config[field] for field in fields}))
+')"
+  curl -fsS -X PUT "$control_plane_url/config" \
+    -H "Authorization: Bearer $CONTROL_PLANE_ADMIN_TOKEN" \
+    -H "If-Match: $etag" -H "Content-Type: application/json" \
+    -d "$config_payload" >/dev/null
+  sleep 6
+}
+
 export AUTH_WORKER_COUNT=2
 export AUTH_QUEUE_CAPACITY=32
 
@@ -104,6 +133,7 @@ for profile in \
   export RESPONSE_QUEUE_CAPACITY="$response_capacity"
   "${COMPOSE[@]}" up -d --force-recreate
   wait_ready
+  configure_benchmark_runtime
 
   gateway_pid="$(docker inspect -f '{{.State.Pid}}' "$("${COMPOSE[@]}" ps -q cpp-gateway)")"
   for ((repeat_index = 1; repeat_index <= repeats; repeat_index++)); do
