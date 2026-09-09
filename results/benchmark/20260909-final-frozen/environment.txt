@@ -1,0 +1,52 @@
+captured_at_utc=2026-09-09T11:02:10Z
+git_head=859717ce2cc3160473b391bf18a40194deedbd37
+git_status=clean
+
+[kernel]
+Linux LAPTOP-7Q69GP7V 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+
+[cpu]
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           39 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  32
+
+[memory]
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       4.6Gi       6.3Gi        50Mi       4.6Gi        10Gi
+Swap:          4.0Gi          0B       4.0Gi
+
+[toolchains]
+g++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+Copyright (C) 2021 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+cmake version 3.22.1
+
+CMake suite maintained and supported by Kitware (kitware.com/cmake).
+go version go1.22.12 linux/amd64
+Python 3.10.12
+
+[containers]
+Client:
+ Version:           29.6.2
+ API version:       1.55
+ Go version:        go1.26.5
+ Git commit:        dfc4efb
+Docker Compose version v5.3.1
+
+[benchmark]
+run_id=20260909-final-frozen
+repeats=3
+requests_1=1000
+requests_10=200
+requests_100=50
+requests_500=20
+response_queue_capacity=4096
+auth_worker_count=2
+auth_queue_capacity=32
+gateway_host=127.0.0.1
+gateway_port=19000
+control_plane_url=http://127.0.0.1:18080
