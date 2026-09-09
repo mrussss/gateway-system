@@ -10,8 +10,19 @@ export CONTROL_PLANE_ADMIN_TOKEN="${CONTROL_PLANE_ADMIN_TOKEN:-local-admin-chang
 export GATEWAY_SHARED_TOKEN="${GATEWAY_SHARED_TOKEN:-local-gateway-change-me}"
 export TOKEN_PEPPER="${TOKEN_PEPPER:-local-pepper-change-me}"
 
-mkdir -p "$output_dir"
 cd "$ROOT_DIR"
+if [[ "${BENCHMARK_ALLOW_DIRTY:-0}" != "1" ]]; then
+  if ! git diff --quiet || ! git diff --cached --quiet ||
+     [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+    echo "[benchmark] refusing to run with a dirty working tree" >&2
+    echo "[benchmark] set BENCHMARK_ALLOW_DIRTY=1 only for development runs" >&2
+    exit 1
+  fi
+else
+  echo "[benchmark] WARNING: BENCHMARK_ALLOW_DIRTY=1; evidence is not final" >&2
+fi
+
+mkdir -p "$output_dir"
 scripts/capture_environment.sh "$output_dir/environment.txt" >/dev/null
 
 cleanup() {
@@ -40,8 +51,15 @@ wait_ready() {
   sleep 6
 }
 
+export AUTH_WORKER_COUNT=2
+export AUTH_QUEUE_CAPACITY=32
+
 "${COMPOSE[@]}" build
-for profile in "workers1-q64:1:64:64" "workers4-q4096:4:4096:4096"; do
+for profile in \
+  "workers1-q64:1:64:4096" \
+  "workers1-q4096:1:4096:4096" \
+  "workers4-q64:4:64:4096" \
+  "workers4-q4096:4:4096:4096"; do
   IFS=: read -r profile_name worker_count request_capacity response_capacity <<<"$profile"
   export WORKER_COUNT="$worker_count"
   export REQUEST_QUEUE_CAPACITY="$request_capacity"
@@ -93,8 +111,8 @@ import sys
 
 directory = pathlib.Path(sys.argv[1])
 files = sorted(glob.glob(str(directory / "*.json")))
-if len(files) != 18:
-    raise SystemExit(f"expected 18 benchmark JSON files, found {len(files)}")
+if len(files) != 36:
+    raise SystemExit(f"expected 36 benchmark JSON files, found {len(files)}")
 for path in files:
     result = json.load(open(path, encoding="utf-8"))
     requests = result["requests"]

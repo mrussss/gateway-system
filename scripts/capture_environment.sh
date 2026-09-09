@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 output="${1:-$ROOT_DIR/results/environment/$timestamp.txt}"
 mkdir -p "$(dirname "$output")"
+git_status="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=all)"
 
 command_version() {
   local name="$1"
@@ -19,7 +20,14 @@ command_version() {
 {
   echo "captured_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "git_head=$(git -C "$ROOT_DIR" rev-parse HEAD)"
-  echo "working_tree=$(git -C "$ROOT_DIR" status --short --untracked-files=no | wc -l | tr -d ' ') tracked changes"
+  if [[ -z "$git_status" ]]; then
+    echo "git_status=clean"
+  else
+    echo "git_status=dirty"
+    echo "git_status_porcelain<<EOF"
+    printf '%s\n' "$git_status"
+    echo "EOF"
+  fi
   echo
   echo "[kernel]"
   uname -a
@@ -38,6 +46,7 @@ command_version() {
   echo
   echo "[containers]"
   command_version docker docker version
+  command_version docker docker compose version
 } >"$output"
 
 echo "$output"
