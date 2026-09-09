@@ -70,6 +70,12 @@ private:
         AuthWorker,
     };
 
+    enum class ResponseOrigin
+    {
+        Local,
+        Worker,
+    };
+
     void initServer();
     void loop();
     void beginDraining();
@@ -84,24 +90,27 @@ private:
     void handleAccept();
     void handleRead(int fd);
     void handleWrite(int fd);
+    void markPeerReadClosed(int fd);
+    void maybeCloseHalfClosedConnection(int fd);
     void drainResponseQueue();
     void drainRejectedResponses();
-    void applyResponse(Response response);
+    void applyResponse(Response response, ResponseOrigin origin);
     bool enqueueWorkerResponse(Response response, ResponseProducer producer);
     void normalWorkerLoop(unsigned int worker_id);
     void authWorkerLoop(unsigned int worker_id);
     void onResponseProducerExited();
     void closeConnection(int fd);
-    bool decodeAndEnqueue(int fd);
+    bool decodeAndEnqueue(int fd, bool peer_read_closed = false);
     bool modifyConnectionEvents(int fd, uint32_t events);
-    uint32_t connectionEvents(bool wants_write, bool closing = false) const;
+    uint32_t connectionEvents(const Connection &connection) const;
+    bool shouldCloseHalfClosedConnection(const Connection &connection) const;
+    void assertReactorThread() const;
 
     void startConfigPuller();
     void configPullerLoop();
-    size_t countAuthenticatedConnectionsForClientLocked(const std::string &client_id,
-                                                        int exclude_fd) const;
-    bool allowRequestForClientLocked(const std::string &client_id,
-                                     const RuntimeConfig &config);
+    size_t countAuthenticatedConnectionsForClient(const std::string &client_id,
+                                                  int exclude_fd) const;
+    bool allowRequestForClient(const std::string &client_id, const RuntimeConfig &config);
 
     struct RateLimitWindow
     {
@@ -139,7 +148,6 @@ private:
     std::unordered_map<int, uint64_t> rejected_response_connections_;
 
     std::unordered_map<int, Connection> connections_;
-    mutable std::mutex connections_mutex_;
     std::vector<std::thread> workers_;
     std::vector<std::thread> auth_workers_;
     std::thread config_puller_;

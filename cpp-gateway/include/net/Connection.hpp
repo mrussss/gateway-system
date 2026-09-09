@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -18,6 +19,8 @@ struct Connection
     bool authenticated = false;
     bool auth_pending = false;
     bool closing = false;
+    bool peer_read_closed = false;
+    size_t in_flight_work = 0;
     std::shared_ptr<AuthCancellation> auth_cancellation;
 
     Connection(int fd_, uint64_t conn_id_)

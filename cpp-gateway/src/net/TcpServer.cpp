@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <arpa/inet.h>
+#include <cassert>
 #include <cerrno>
 #include <chrono>
 #include <csignal>
@@ -386,6 +387,7 @@ void TcpServer::initServer()
 
 void TcpServer::loop()
 {
+    assertReactorThread();
     epoll_event events[1024];
     while (state_.load() != ServerState::STOPPED)
     {
@@ -425,15 +427,24 @@ void TcpServer::loop()
                 continue;
             }
 
-            if ((flags & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) != 0)
+            if ((flags & EPOLLERR) != 0)
             {
-                LOG_DEBUG("closing fd=%d after epoll flags=0x%x", fd, flags);
+                LOG_DEBUG("closing fd=%d after epoll error flags=0x%x", fd, flags);
                 closeConnection(fd);
                 continue;
             }
-            if ((flags & EPOLLIN) != 0 && state_.load() == ServerState::RUNNING)
+            if ((flags & (EPOLLIN | EPOLLRDHUP | EPOLLHUP)) != 0 &&
+                state_.load() == ServerState::RUNNING)
             {
                 handleRead(fd);
+            }
+            if (connections_.find(fd) == connections_.end())
+            {
+                continue;
+            }
+            if ((flags & (EPOLLRDHUP | EPOLLHUP)) != 0)
+            {
+                markPeerReadClosed(fd);
             }
             if ((flags & EPOLLOUT) != 0)
             {
@@ -466,6 +477,7 @@ void TcpServer::loop()
 
 void TcpServer::beginDraining()
 {
+    assertReactorThread();
     std::unique_lock<std::mutex> deadline_lock(shutdown_deadline_mutex_);
     ServerState expected = ServerState::RUNNING;
     if (!state_.compare_exchange_strong(expected, ServerState::DRAINING))
@@ -484,25 +496,21 @@ void TcpServer::beginDraining()
              static_cast<long long>(shutdown_timeout_.count()), request_queue_.size(),
              auth_queue_.size());
 
-    std::vector<std::pair<int, bool>> connection_states;
+    std::vector<std::pair<int, uint32_t>> connection_events;
+    connection_events.reserve(connections_.size());
+    for (const auto &[fd, connection] : connections_)
     {
-        std::lock_guard<std::mutex> lock(connections_mutex_);
-        connection_states.reserve(connections_.size());
-        for (const auto &[fd, connection] : connections_)
-        {
-            const bool wants_write = connection.write_offset < connection.output_buffer.size();
-            connection_states.emplace_back(fd, wants_write);
-        }
+        connection_events.emplace_back(fd, connectionEvents(connection));
     }
-    for (const auto &[fd, wants_write] : connection_states)
+    for (const auto &[fd, events] : connection_events)
     {
-        const uint32_t write_event = wants_write ? static_cast<uint32_t>(EPOLLOUT) : 0U;
-        modifyConnectionEvents(fd, CLIENT_BASE_EVENTS | write_event);
+        modifyConnectionEvents(fd, events);
     }
 }
 
 void TcpServer::finishShutdown()
 {
+    assertReactorThread();
     markNotReady();
     request_queue_.stop();
     auth_queue_.stop();
@@ -529,14 +537,11 @@ void TcpServer::finishShutdown()
     }
 
     std::vector<int> fds;
+    fds.reserve(connections_.size());
+    for (const auto &[fd, connection] : connections_)
     {
-        std::lock_guard<std::mutex> lock(connections_mutex_);
-        fds.reserve(connections_.size());
-        for (const auto &[fd, connection] : connections_)
-        {
-            (void)connection;
-            fds.push_back(fd);
-        }
+        (void)connection;
+        fds.push_back(fd);
     }
     for (int fd : fds)
     {
@@ -576,6 +581,7 @@ void TcpServer::markNotReady()
 
 bool TcpServer::drainComplete()
 {
+    assertReactorThread();
     if (response_producers_remaining_.load() != 0 || !request_queue_.stopped() ||
         request_queue_.size() != 0 || !auth_queue_.stopped() || auth_queue_.size() != 0 ||
         !response_queue_.stopped() || response_queue_.size() != 0)
@@ -592,14 +598,12 @@ bool TcpServer::drainComplete()
     }
 
     std::vector<int> completed;
+    for (const auto &[fd, connection] : connections_)
     {
-        std::lock_guard<std::mutex> lock(connections_mutex_);
-        for (const auto &[fd, connection] : connections_)
+        if (connection.in_flight_work == 0 &&
+            connection.write_offset >= connection.output_buffer.size())
         {
-            if (connection.write_offset >= connection.output_buffer.size())
-            {
-                completed.push_back(fd);
-            }
+            completed.push_back(fd);
         }
     }
     for (int fd : completed)
@@ -607,7 +611,6 @@ bool TcpServer::drainComplete()
         closeConnection(fd);
     }
 
-    std::lock_guard<std::mutex> lock(connections_mutex_);
     return connections_.empty();
 }
 
@@ -649,6 +652,7 @@ void TcpServer::closeListener()
 
 void TcpServer::handleAccept()
 {
+    assertReactorThread();
     while (state_.load() == ServerState::RUNNING)
     {
         sockaddr_in client_address{};
@@ -669,8 +673,10 @@ void TcpServer::handleAccept()
             return;
         }
 
+        const uint64_t connection_id = next_conn_id_.fetch_add(1);
         epoll_event event{};
-        event.events = connectionEvents(false);
+        Connection connection(fd, connection_id);
+        event.events = connectionEvents(connection);
         event.data.fd = fd;
         if (epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &event) == -1)
         {
@@ -679,11 +685,7 @@ void TcpServer::handleAccept()
             continue;
         }
 
-        const uint64_t connection_id = next_conn_id_.fetch_add(1);
-        {
-            std::lock_guard<std::mutex> lock(connections_mutex_);
-            connections_.emplace(fd, Connection(fd, connection_id));
-        }
+        connections_.emplace(fd, std::move(connection));
         business::StatsManager::getInstance().incrementConnections();
         LOG_DEBUG("accepted fd=%d conn_id=%llu", fd,
                   static_cast<unsigned long long>(connection_id));
@@ -692,21 +694,19 @@ void TcpServer::handleAccept()
 
 void TcpServer::handleRead(int fd)
 {
+    assertReactorThread();
     while (state_.load() == ServerState::RUNNING)
     {
+        const auto connection = connections_.find(fd);
+        if (connection == connections_.end() || connection->second.closing ||
+            connection->second.peer_read_closed)
         {
-            std::lock_guard<std::mutex> lock(connections_mutex_);
-            const auto connection = connections_.find(fd);
-            if (connection == connections_.end() || connection->second.closing)
-            {
-                return;
-            }
+            return;
         }
         char buffer[4096];
         ssize_t bytes_read = recv(fd, buffer, sizeof(buffer), 0);
         if (bytes_read > 0)
         {
-            std::lock_guard<std::mutex> lock(connections_mutex_);
             auto connection = connections_.find(fd);
             if (connection == connections_.end())
             {
@@ -721,7 +721,8 @@ void TcpServer::handleRead(int fd)
         }
         if (bytes_read == 0)
         {
-            closeConnection(fd);
+            decodeAndEnqueue(fd, true);
+            markPeerReadClosed(fd);
             return;
         }
         if (errno == EINTR)
@@ -739,50 +740,91 @@ void TcpServer::handleRead(int fd)
     }
 }
 
+void TcpServer::markPeerReadClosed(int fd)
+{
+    assertReactorThread();
+    auto connection = connections_.find(fd);
+    if (connection == connections_.end())
+    {
+        return;
+    }
+
+    Connection &current = connection->second;
+    if (current.peer_read_closed)
+    {
+        maybeCloseHalfClosedConnection(fd);
+        return;
+    }
+    current.peer_read_closed = true;
+    LOG_DEBUG("peer read half-closed fd=%d conn_id=%llu in_flight=%zu", fd,
+              static_cast<unsigned long long>(current.conn_id), current.in_flight_work);
+
+    if (shouldCloseHalfClosedConnection(current))
+    {
+        closeConnection(fd);
+        return;
+    }
+    modifyConnectionEvents(fd, connectionEvents(current));
+}
+
+void TcpServer::maybeCloseHalfClosedConnection(int fd)
+{
+    assertReactorThread();
+    auto connection = connections_.find(fd);
+    if (connection != connections_.end() &&
+        shouldCloseHalfClosedConnection(connection->second))
+    {
+        closeConnection(fd);
+    }
+}
+
 void TcpServer::handleWrite(int fd)
 {
+    assertReactorThread();
     while (true)
     {
         bool close_after_write = false;
+        bool peer_read_closed = false;
+        size_t in_flight_work = 0;
         bool output_empty = false;
         ssize_t sent = 0;
+        auto connection = connections_.find(fd);
+        if (connection == connections_.end())
         {
-            std::lock_guard<std::mutex> lock(connections_mutex_);
-            auto connection = connections_.find(fd);
-            if (connection == connections_.end())
+            return;
+        }
+        Connection &current = connection->second;
+        output_empty = current.write_offset >= current.output_buffer.size();
+        close_after_write = current.closing;
+        peer_read_closed = current.peer_read_closed;
+        in_flight_work = current.in_flight_work;
+        if (!output_empty)
+        {
+            sent = send(fd, current.output_buffer.data() + current.write_offset,
+                        current.output_buffer.size() - current.write_offset, MSG_NOSIGNAL);
+            if (sent > 0)
             {
-                return;
-            }
-            Connection &current = connection->second;
-            output_empty = current.write_offset >= current.output_buffer.size();
-            close_after_write = current.closing;
-            if (!output_empty)
-            {
-                sent = send(fd, current.output_buffer.data() + current.write_offset,
-                            current.output_buffer.size() - current.write_offset, MSG_NOSIGNAL);
-                if (sent > 0)
+                current.write_offset += static_cast<size_t>(sent);
+                business::StatsManager::getInstance().incrementWriteBytes(
+                    static_cast<size_t>(sent));
+                if (current.write_offset == current.output_buffer.size())
                 {
-                    current.write_offset += static_cast<size_t>(sent);
-                    business::StatsManager::getInstance().incrementWriteBytes(
-                        static_cast<size_t>(sent));
-                    if (current.write_offset == current.output_buffer.size())
-                    {
-                        current.output_buffer.clear();
-                        current.write_offset = 0;
-                        output_empty = true;
-                    }
+                    current.output_buffer.clear();
+                    current.write_offset = 0;
+                    output_empty = true;
                 }
             }
         }
 
         if (output_empty)
         {
-            if (close_after_write || state_.load() == ServerState::DRAINING)
+            if (close_after_write || state_.load() == ServerState::DRAINING ||
+                (peer_read_closed && in_flight_work == 0))
             {
                 closeConnection(fd);
                 return;
             }
-            modifyConnectionEvents(fd, connectionEvents(false, false));
+            modifyConnectionEvents(fd, connectionEvents(current));
             return;
         }
         if (sent > 0)
@@ -842,15 +884,17 @@ bool TcpServer::enqueueWorkerResponse(Response response, ResponseProducer produc
 
 void TcpServer::drainResponseQueue()
 {
+    assertReactorThread();
     Response response{};
     while (response_queue_.tryPop(response))
     {
-        applyResponse(std::move(response));
+        applyResponse(std::move(response), ResponseOrigin::Worker);
     }
 }
 
 void TcpServer::drainRejectedResponses()
 {
+    assertReactorThread();
     std::unordered_map<int, uint64_t> rejected;
     {
         std::lock_guard<std::mutex> lock(rejected_responses_mutex_);
@@ -859,12 +903,9 @@ void TcpServer::drainRejectedResponses()
     for (const auto &[fd, connection_id] : rejected)
     {
         bool matches = false;
-        {
-            std::lock_guard<std::mutex> lock(connections_mutex_);
-            auto connection = connections_.find(fd);
-            matches = connection != connections_.end() &&
-                      connection->second.conn_id == connection_id;
-        }
+        auto connection = connections_.find(fd);
+        matches = connection != connections_.end() &&
+                  connection->second.conn_id == connection_id;
         if (matches)
         {
             closeConnection(fd);
@@ -872,85 +913,85 @@ void TcpServer::drainRejectedResponses()
     }
 }
 
-void TcpServer::applyResponse(Response response)
+void TcpServer::applyResponse(Response response, ResponseOrigin origin)
 {
+    assertReactorThread();
     bool close_now = false;
     bool enable_write = false;
-    bool connection_closing = false;
+    uint32_t events_after_response = 0;
     RuntimeConfig config = getRuntimeConfigSnapshot();
+    auto connection = connections_.find(response.fd);
+    if (connection == connections_.end() || connection->second.conn_id != response.conn_id)
     {
-        std::lock_guard<std::mutex> lock(connections_mutex_);
-        auto connection = connections_.find(response.fd);
-        if (connection == connections_.end() ||
-            connection->second.conn_id != response.conn_id)
-        {
-            business::StatsManager::getInstance().incrementStaleResponseDropped();
-            LOG_DEBUG("discarding stale response fd=%d conn_id=%llu", response.fd,
-                      static_cast<unsigned long long>(response.conn_id));
-            return;
-        }
+        business::StatsManager::getInstance().incrementStaleResponseDropped();
+        LOG_DEBUG("discarding stale response fd=%d conn_id=%llu", response.fd,
+                  static_cast<unsigned long long>(response.conn_id));
+        return;
+    }
 
-        Connection &current = connection->second;
-        if (response.type == MessageType::AUTH_RESP || response.close_connection)
+    Connection &current = connection->second;
+    if (origin == ResponseOrigin::Worker && current.in_flight_work > 0)
+    {
+        --current.in_flight_work;
+    }
+    if (response.type == MessageType::AUTH_RESP || response.close_connection)
+    {
+        current.auth_pending = false;
+        current.auth_cancellation.reset();
+    }
+    if (response.client_id_to_authenticate)
+    {
+        const size_t authenticated = countAuthenticatedConnectionsForClient(
+            *response.client_id_to_authenticate, current.fd);
+        if (authenticated >= static_cast<size_t>(config.max_connections_per_client))
         {
-            current.auth_pending = false;
-            current.auth_cancellation.reset();
-        }
-        if (response.client_id_to_authenticate)
-        {
-            const size_t authenticated = countAuthenticatedConnectionsForClientLocked(
-                *response.client_id_to_authenticate, current.fd);
-            if (authenticated >= static_cast<size_t>(config.max_connections_per_client))
-            {
-                business::StatsManager::getInstance().incrementErrors();
-                response.client_id_to_authenticate.reset();
-                response.close_connection = true;
-                response.type = MessageType::AUTH_RESP;
-                response.payload =
-                    R"({"allowed":false,"reason":"max connections exceeded"})";
-                business::StatsManager::getInstance().incrementAuthFailure();
-            }
-            else
-            {
-                current.authenticated = true;
-                current.client_id = *response.client_id_to_authenticate;
-                business::StatsManager::getInstance().incrementAuthSuccess();
-            }
-        }
-        else if (response.type == MessageType::AUTH_RESP)
-        {
+            business::StatsManager::getInstance().incrementErrors();
+            response.client_id_to_authenticate.reset();
+            response.close_connection = true;
+            response.type = MessageType::AUTH_RESP;
+            response.payload = R"({"allowed":false,"reason":"max connections exceeded"})";
             business::StatsManager::getInstance().incrementAuthFailure();
         }
-
-        if (response.close_connection && response.skip_write)
+        else
         {
+            current.authenticated = true;
+            current.client_id = *response.client_id_to_authenticate;
+            business::StatsManager::getInstance().incrementAuthSuccess();
+        }
+    }
+    else if (response.type == MessageType::AUTH_RESP)
+    {
+        business::StatsManager::getInstance().incrementAuthFailure();
+    }
+
+    if (response.close_connection && response.skip_write)
+    {
+        close_now = true;
+    }
+    else
+    {
+        std::string encoded = ProtocolCodec::encode(response);
+        const size_t pending_bytes = current.output_buffer.size() - current.write_offset;
+        if (pending_bytes + encoded.size() > config.slow_client_output_limit)
+        {
+            business::StatsManager::getInstance().incrementErrors();
+            business::StatsManager::getInstance().incrementSlowClientClosed();
+            LOG_ERROR("output buffer limit exceeded: fd=%d conn_id=%llu pending=%zu new=%zu",
+                      current.fd, static_cast<unsigned long long>(current.conn_id),
+                      pending_bytes, encoded.size());
             close_now = true;
         }
         else
         {
-            std::string encoded = ProtocolCodec::encode(response);
-            const size_t pending_bytes = current.output_buffer.size() - current.write_offset;
-            if (pending_bytes + encoded.size() > config.slow_client_output_limit)
+            if (current.write_offset > 0)
             {
-                business::StatsManager::getInstance().incrementErrors();
-                business::StatsManager::getInstance().incrementSlowClientClosed();
-                LOG_ERROR("output buffer limit exceeded: fd=%d conn_id=%llu pending=%zu new=%zu",
-                          current.fd, static_cast<unsigned long long>(current.conn_id),
-                          pending_bytes, encoded.size());
-                close_now = true;
+                current.output_buffer.erase(0, current.write_offset);
+                current.write_offset = 0;
             }
-            else
-            {
-                if (current.write_offset > 0)
-                {
-                    current.output_buffer.erase(0, current.write_offset);
-                    current.write_offset = 0;
-                }
-                current.output_buffer.append(encoded);
-                current.closing = current.closing || response.close_connection;
-                connection_closing = current.closing;
-                enable_write = true;
-            }
+            current.output_buffer.append(encoded);
+            current.closing = current.closing || response.close_connection;
+            events_after_response = connectionEvents(current);
+            enable_write = true;
         }
     }
 
@@ -960,12 +1001,17 @@ void TcpServer::applyResponse(Response response)
     }
     else if (enable_write)
     {
-        modifyConnectionEvents(response.fd, connectionEvents(true, connection_closing));
+        modifyConnectionEvents(response.fd, events_after_response);
+    }
+    else
+    {
+        maybeCloseHalfClosedConnection(response.fd);
     }
 }
 
-bool TcpServer::decodeAndEnqueue(int fd)
+bool TcpServer::decodeAndEnqueue(int fd, bool peer_read_closed)
 {
+    assertReactorThread();
     std::vector<Request> decoded_requests;
     std::vector<Request> requests_to_enqueue;
     std::vector<AuthTask> auth_tasks_to_enqueue;
@@ -973,80 +1019,85 @@ bool TcpServer::decodeAndEnqueue(int fd)
     bool close_now = false;
     RuntimeConfig config = getRuntimeConfigSnapshot();
 
+    auto connection = connections_.find(fd);
+    if (connection == connections_.end())
     {
-        std::lock_guard<std::mutex> lock(connections_mutex_);
-        auto connection = connections_.find(fd);
-        if (connection == connections_.end())
-        {
-            return false;
-        }
-        Connection &current = connection->second;
-        const DecodeStatus status = ProtocolCodec::decode(
-            current.input_buffer, current.fd, decoded_requests, current.conn_id);
-        if (status == DecodeStatus::INVALID_LENGTH)
+        return false;
+    }
+    Connection &current = connection->second;
+    const bool eof = peer_read_closed || current.peer_read_closed;
+    const DecodeStatus status = ProtocolCodec::decode(
+        current.input_buffer, current.fd, decoded_requests, current.conn_id);
+    if (status == DecodeStatus::INVALID_LENGTH)
+    {
+        business::StatsManager::getInstance().incrementErrors();
+        close_now = true;
+    }
+    else if (eof && status == DecodeStatus::NEED_MORE_DATA)
+    {
+        LOG_ERROR("truncated frame at peer EOF: fd=%d conn_id=%llu trailing_bytes=%zu", fd,
+                  static_cast<unsigned long long>(current.conn_id),
+                  current.input_buffer.size());
+        current.input_buffer.clear();
+    }
+
+    for (auto &request : decoded_requests)
+    {
+        if (request.payload.size() + 10 > static_cast<size_t>(config.max_payload_size))
         {
             business::StatsManager::getInstance().incrementErrors();
             close_now = true;
+            break;
         }
-
-        for (auto &request : decoded_requests)
+        if (!current.authenticated)
         {
-            if (request.payload.size() + 10 > static_cast<size_t>(config.max_payload_size))
+            if (request.type != MessageType::AUTH || current.auth_pending)
             {
                 business::StatsManager::getInstance().incrementErrors();
                 close_now = true;
                 break;
             }
-            if (!current.authenticated)
-            {
-                if (request.type != MessageType::AUTH || current.auth_pending)
-                {
-                    business::StatsManager::getInstance().incrementErrors();
-                    close_now = true;
-                    break;
-                }
-                current.auth_pending = true;
-                auto cancellation = std::make_shared<AuthCancellation>();
-                auto task = makeAuthTask(std::move(request), cancellation);
-                if (!task)
-                {
-                    business::StatsManager::getInstance().incrementErrors();
-                    close_now = true;
-                    break;
-                }
-                current.auth_cancellation = std::move(cancellation);
-                auth_tasks_to_enqueue.push_back(std::move(*task));
-                continue;
-            }
-            if (request.type == MessageType::AUTH)
-            {
-                Response response{};
-                response.fd = current.fd;
-                response.conn_id = current.conn_id;
-                response.version = request.version;
-                response.type = MessageType::ERROR_RESP;
-                response.request_id = request.request_id;
-                response.status_code = 400;
-                response.payload = R"({"status":400,"message":"already authenticated"})";
-                local_responses.push_back(std::move(response));
-                continue;
-            }
-            if (!allowRequestForClientLocked(current.client_id, config))
+            current.auth_pending = true;
+            auto cancellation = std::make_shared<AuthCancellation>();
+            auto task = makeAuthTask(std::move(request), cancellation);
+            if (!task)
             {
                 business::StatsManager::getInstance().incrementErrors();
-                Response response{};
-                response.fd = current.fd;
-                response.conn_id = current.conn_id;
-                response.version = request.version;
-                response.type = MessageType::ERROR_RESP;
-                response.request_id = request.request_id;
-                response.status_code = 429;
-                response.payload = R"({"status":429,"message":"rate limited"})";
-                local_responses.push_back(std::move(response));
-                continue;
+                close_now = true;
+                break;
             }
-            requests_to_enqueue.push_back(std::move(request));
+            current.auth_cancellation = std::move(cancellation);
+            auth_tasks_to_enqueue.push_back(std::move(*task));
+            continue;
         }
+        if (request.type == MessageType::AUTH)
+        {
+            Response response{};
+            response.fd = current.fd;
+            response.conn_id = current.conn_id;
+            response.version = request.version;
+            response.type = MessageType::ERROR_RESP;
+            response.request_id = request.request_id;
+            response.status_code = 400;
+            response.payload = R"({"status":400,"message":"already authenticated"})";
+            local_responses.push_back(std::move(response));
+            continue;
+        }
+        if (!allowRequestForClient(current.client_id, config))
+        {
+            business::StatsManager::getInstance().incrementErrors();
+            Response response{};
+            response.fd = current.fd;
+            response.conn_id = current.conn_id;
+            response.version = request.version;
+            response.type = MessageType::ERROR_RESP;
+            response.request_id = request.request_id;
+            response.status_code = 429;
+            response.payload = R"({"status":429,"message":"rate limited"})";
+            local_responses.push_back(std::move(response));
+            continue;
+        }
+        requests_to_enqueue.push_back(std::move(request));
     }
 
     if (close_now)
@@ -1057,7 +1108,18 @@ bool TcpServer::decodeAndEnqueue(int fd)
 
     for (auto &task : auth_tasks_to_enqueue)
     {
+        const int task_fd = task.request.fd;
+        const uint64_t task_conn_id = task.request.conn_id;
         const PushResult result = auth_queue_.push(std::move(task));
+        if (result == PushResult::OK)
+        {
+            auto connection = connections_.find(task_fd);
+            if (connection != connections_.end() && connection->second.conn_id == task_conn_id)
+            {
+                ++connection->second.in_flight_work;
+            }
+            continue;
+        }
         if (result != PushResult::OK)
         {
             business::StatsManager::getInstance().incrementErrors();
@@ -1075,7 +1137,18 @@ bool TcpServer::decodeAndEnqueue(int fd)
     }
     for (auto &request : requests_to_enqueue)
     {
+        const int request_fd = request.fd;
+        const uint64_t request_conn_id = request.conn_id;
         const PushResult result = request_queue_.push(std::move(request));
+        if (result == PushResult::OK)
+        {
+            auto connection = connections_.find(request_fd);
+            if (connection != connections_.end() && connection->second.conn_id == request_conn_id)
+            {
+                ++connection->second.in_flight_work;
+            }
+            continue;
+        }
         if (result != PushResult::OK)
         {
             business::StatsManager::getInstance().incrementErrors();
@@ -1088,13 +1161,14 @@ bool TcpServer::decodeAndEnqueue(int fd)
     }
     for (auto &response : local_responses)
     {
-        applyResponse(std::move(response));
+        applyResponse(std::move(response), ResponseOrigin::Local);
     }
     return true;
 }
 
 bool TcpServer::modifyConnectionEvents(int fd, uint32_t events)
 {
+    assertReactorThread();
     epoll_event event{};
     event.events = events;
     event.data.fd = fd;
@@ -1110,18 +1184,32 @@ bool TcpServer::modifyConnectionEvents(int fd, uint32_t events)
     return true;
 }
 
-uint32_t TcpServer::connectionEvents(bool wants_write, bool closing) const
+uint32_t TcpServer::connectionEvents(const Connection &connection) const
 {
     uint32_t events = CLIENT_BASE_EVENTS;
-    if (state_.load() == ServerState::RUNNING && !closing)
+    if (state_.load() == ServerState::RUNNING && !connection.closing &&
+        !connection.peer_read_closed)
     {
         events |= EPOLLIN;
     }
-    if (wants_write)
+    if (connection.write_offset < connection.output_buffer.size())
     {
         events |= EPOLLOUT;
     }
     return events;
+}
+
+bool TcpServer::shouldCloseHalfClosedConnection(const Connection &connection) const
+{
+    return connection.peer_read_closed && connection.in_flight_work == 0 &&
+           connection.write_offset >= connection.output_buffer.size();
+}
+
+void TcpServer::assertReactorThread() const
+{
+#ifndef NDEBUG
+    assert(loop_thread_id_ == std::this_thread::get_id());
+#endif
 }
 
 void TcpServer::startConfigPuller()
@@ -1167,8 +1255,8 @@ RuntimeConfig TcpServer::getRuntimeConfigSnapshot()
     return runtime_config_;
 }
 
-size_t TcpServer::countAuthenticatedConnectionsForClientLocked(const std::string &client_id,
-                                                               int exclude_fd) const
+size_t TcpServer::countAuthenticatedConnectionsForClient(const std::string &client_id,
+                                                          int exclude_fd) const
 {
     size_t count = 0;
     for (const auto &[fd, connection] : connections_)
@@ -1181,8 +1269,8 @@ size_t TcpServer::countAuthenticatedConnectionsForClientLocked(const std::string
     return count;
 }
 
-bool TcpServer::allowRequestForClientLocked(const std::string &client_id,
-                                            const RuntimeConfig &config)
+bool TcpServer::allowRequestForClient(const std::string &client_id,
+                                      const RuntimeConfig &config)
 {
     const auto now = std::chrono::steady_clock::now();
     RateLimitWindow &window = rate_limit_windows_[client_id];
@@ -1202,30 +1290,28 @@ bool TcpServer::allowRequestForClientLocked(const std::string &client_id,
 
 void TcpServer::closeConnection(int fd)
 {
+    assertReactorThread();
     bool existed = false;
     std::string client_id;
     bool authenticated = false;
+    auto connection = connections_.find(fd);
+    if (connection == connections_.end())
     {
-        std::lock_guard<std::mutex> lock(connections_mutex_);
-        auto connection = connections_.find(fd);
-        if (connection == connections_.end())
-        {
-            return;
-        }
-        client_id = connection->second.client_id;
-        authenticated = connection->second.authenticated;
-        if (connection->second.auth_cancellation)
-        {
-            connection->second.auth_cancellation->cancelled.store(
-                true, std::memory_order_relaxed);
-        }
-        connections_.erase(connection);
-        if (authenticated && countAuthenticatedConnectionsForClientLocked(client_id, -1) == 0)
-        {
-            rate_limit_windows_.erase(client_id);
-        }
-        existed = true;
+        return;
     }
+    client_id = connection->second.client_id;
+    authenticated = connection->second.authenticated;
+    if (connection->second.auth_cancellation)
+    {
+        connection->second.auth_cancellation->cancelled.store(
+            true, std::memory_order_relaxed);
+    }
+    connections_.erase(connection);
+    if (authenticated && countAuthenticatedConnectionsForClient(client_id, -1) == 0)
+    {
+        rate_limit_windows_.erase(client_id);
+    }
+    existed = true;
     if (epfd_ != -1)
     {
         epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, nullptr);

@@ -540,6 +540,10 @@ def test_fd_reuse_rejects_stale_auth_response(
     while control_plane.auth_requests() == 0 and time.monotonic() < deadline:
         time.sleep(0.005)
     old_server_fd = server_fd_for_client(gateway.process.pid, gateway.port, old)
+    # Preserve the fd-reuse scenario: an abrupt disconnect removes the old
+    # connection before its delayed Worker response arrives. An orderly FIN
+    # is covered separately as the supported half-close contract.
+    old.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
     old.close()
 
     fd_path = Path(f"/proc/{gateway.process.pid}/fd/{old_server_fd}")
@@ -624,6 +628,9 @@ def test_cancelled_queued_auth(executable: Path, control_plane: FakeControlPlane
             json.dumps({"client_id": "cancelled-auth", "token": "test-token"}).encode(),
         )
     )
+    # An orderly FIN is intentionally treated as a peer half-close: admitted
+    # AUTH work must still complete. Use an RST for the cancellation contract.
+    cancelled.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
     cancelled.close()
     active.settimeout(2)
     recv_packet(active)

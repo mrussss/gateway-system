@@ -79,4 +79,10 @@ if(BUILD_TESTING)
                 $<TARGET_FILE:message_server>
     )
     set_tests_properties(graceful_shutdown_test PROPERTIES TIMEOUT 30)
+    add_test(
+        NAME half_close_test
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/HalfCloseTest.py
+                $<TARGET_FILE:message_server>
+    )
+    set_tests_properties(half_close_test PROPERTIES TIMEOUT 30)
 endif()
