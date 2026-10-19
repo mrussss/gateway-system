@@ -2,7 +2,14 @@ FROM ubuntu:22.04 AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
 ARG UBUNTU_MIRROR=""
-RUN if [ -n "$UBUNTU_MIRROR" ]; then \
+RUN if [ "${UBUNTU_MIRROR#https://}" != "$UBUNTU_MIRROR" ]; then \
+      . /etc/os-release; \
+      printf 'deb http://%s %s main\n' "${UBUNTU_MIRROR#https://}" "$VERSION_CODENAME" > /tmp/ubuntu-bootstrap.list; \
+      apt-get -o Acquire::Retries=3 -o Dir::Etc::sourcelist=/tmp/ubuntu-bootstrap.list -o Dir::Etc::sourceparts=- update \
+        && apt-get -o Acquire::Retries=3 -o Dir::Etc::sourcelist=/tmp/ubuntu-bootstrap.list -o Dir::Etc::sourceparts=- install -y --no-install-recommends ca-certificates \
+        && rm /tmp/ubuntu-bootstrap.list || exit 1; \
+    fi \
+    && if [ -n "$UBUNTU_MIRROR" ]; then \
       sed -i \
         -e "s|http://archive.ubuntu.com/ubuntu|${UBUNTU_MIRROR%/}|g" \
         -e "s|http://security.ubuntu.com/ubuntu|${UBUNTU_MIRROR%/}|g" \
