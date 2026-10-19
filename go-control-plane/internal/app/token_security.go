@@ -42,6 +42,11 @@ func digestEqual(left, right string) bool {
 	return hmac.Equal([]byte(left), []byte(right))
 }
 
+func validTokenClientID(clientID string) bool {
+	// token:index 是全局 Set，不能再作为某个客户端的 Token Hash 使用。
+	return clientID != "" && len(clientID) <= 128 && clientID != "index"
+}
+
 func parseGeneration(value string) (int64, error) {
 	value = strings.Trim(value, "\"")
 	generation, err := strconv.ParseInt(value, 10, 64)

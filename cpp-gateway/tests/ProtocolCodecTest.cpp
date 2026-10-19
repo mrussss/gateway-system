@@ -100,6 +100,22 @@ int main()
              std::vector<Request> requests;
              CHECK(ProtocolCodec::decode(input, 1, requests, 1) == DecodeStatus::INVALID_LENGTH);
          }},
+        {"runtime length limit is checked before the body arrives", []
+         {
+             const uint32_t length = htonl(1025);
+             std::string input(reinterpret_cast<const char *>(&length), sizeof(length));
+             std::vector<Request> requests;
+             CHECK(ProtocolCodec::decode(input, 1, requests, 1, 1024) == DecodeStatus::INVALID_LENGTH);
+             CHECK(requests.empty());
+         }},
+        {"runtime length boundary accepts a complete frame", []
+         {
+             std::string input = makePacket(1, MessageType::ECHO, 5, std::string(1014, 'x'));
+             std::vector<Request> requests;
+             CHECK(ProtocolCodec::decode(input, 1, requests, 1, 1024) == DecodeStatus::OK);
+             CHECK_EQ(requests.size(), size_t{1});
+             CHECK_EQ(requests[0].payload.size(), size_t{1014});
+         }},
         {"complete packets are consumed and partial tail remains", []
          {
              const std::string tail = makePacket(1, MessageType::ECHO, 2, "tail");

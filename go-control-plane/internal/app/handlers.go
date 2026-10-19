@@ -125,8 +125,8 @@ func (a *application) handleTokensUpsert(w http.ResponseWriter, r *http.Request)
 	if err := decodeJSON(w, r, &req); err != nil {
 		return
 	}
-	if req.ClientID == "" {
-		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "client_id is required")
+	if !validTokenClientID(req.ClientID) {
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "client_id must be 1 to 128 bytes and must not be index")
 		return
 	}
 	token, err := a.tokens.generate()
@@ -157,18 +157,26 @@ func (a *application) handleTokensList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *application) handleTokensDelete(w http.ResponseWriter, r *http.Request) {
-	if clientID := r.PathValue("client_id"); clientID != "" {
+	if clientID := r.PathValue("client_id"); validTokenClientID(clientID) {
 		if err := a.store.disableToken(clientID, nowRFC3339()); err != nil {
+			if errors.Is(err, errTokenNotFound) {
+				writeAPIError(w, r, http.StatusNotFound, "NOT_FOUND", "token not found")
+				return
+			}
 			writeStoreError(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, successResponse{Success: true})
 		return
 	}
-	writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "client_id is required")
+	writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "client_id must be 1 to 128 bytes and must not be index")
 }
 
 func (a *application) handleTokensRotate(w http.ResponseWriter, r *http.Request) {
+	if !validTokenClientID(r.PathValue("client_id")) {
+		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "client_id must be 1 to 128 bytes and must not be index")
+		return
+	}
 	expected, err := parseGeneration(r.Header.Get("If-Match"))
 	if err != nil {
 		writeAPIError(w, r, http.StatusBadRequest, "INVALID_ARGUMENT", "invalid If-Match")

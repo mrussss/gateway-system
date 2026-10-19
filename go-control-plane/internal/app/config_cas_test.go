@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -11,6 +12,58 @@ import (
 
 func validConfigUpdate() configUpdateRequest {
 	return configUpdateRequest{MaxPayloadSize: 1048576, MaxConnectionsPerClient: 4, MaxRequestsPerClientPerSecond: 200, SlowClientOutputLimit: 8388608, LogLevel: "INFO"}
+}
+
+func TestConfigHTTPRejectsValuesUnsupportedByGateway(t *testing.T) {
+	tests := []struct {
+		name   string
+		change func(*configUpdateRequest)
+	}{
+		{"body below fixed header", func(req *configUpdateRequest) { req.MaxPayloadSize = 9 }},
+		{"connection limit exceeds int32", func(req *configUpdateRequest) { req.MaxConnectionsPerClient = 1<<32 + 1 }},
+		{"rate limit exceeds int32", func(req *configUpdateRequest) { req.MaxRequestsPerClientPerSecond = 1<<32 + 1 }},
+		{"output excludes length prefix", func(req *configUpdateRequest) { req.SlowClientOutputLimit = req.MaxPayloadSize + 3 }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			storage := newMemoryStore()
+			router := routesWithStore(storage)
+			req := validConfigUpdate()
+			test.change(&req)
+			body, _ := json.Marshal(req)
+			request := newTestRequest(http.MethodPut, "/config", bytes.NewReader(body))
+			request.Header.Set("If-Match", `"1"`)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest {
+				t.Errorf("status=%d, want 400; body=%s", response.Code, response.Body.String())
+			}
+			current, err := storage.getConfig()
+			if err != nil || current != defaultRuntimeConfig() {
+				t.Fatalf("invalid update changed last good config: config=%+v err=%v", current, err)
+			}
+		})
+	}
+}
+
+func TestConfigHTTPAcceptsGatewayBoundaryValues(t *testing.T) {
+	for _, bodyLimit := range []int{10, 4194314} {
+		storage := newMemoryStore()
+		router := routesWithStore(storage)
+		req := validConfigUpdate()
+		req.MaxPayloadSize = bodyLimit
+		req.SlowClientOutputLimit = bodyLimit + 4
+		req.MaxConnectionsPerClient = 1<<31 - 1
+		req.MaxRequestsPerClientPerSecond = 1<<31 - 1
+		body, _ := json.Marshal(req)
+		request := newTestRequest(http.MethodPut, "/config", bytes.NewReader(body))
+		request.Header.Set("If-Match", `"1"`)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("body limit %d: status=%d body=%s", bodyLimit, response.Code, response.Body.String())
+		}
+	}
 }
 
 func TestMemoryConfigConcurrentCAS(t *testing.T) {

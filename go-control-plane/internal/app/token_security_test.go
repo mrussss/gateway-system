@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -78,5 +79,57 @@ func TestAdminAndGatewayAuthentication(t *testing.T) {
 	router.ServeHTTP(gateway, request)
 	if gateway.Code != http.StatusUnauthorized {
 		t.Fatalf("expected gateway 401, got %d", gateway.Code)
+	}
+}
+
+func checkTokenClientIDValidation(t *testing.T, storage Store) {
+	t.Helper()
+	router := routesWithStore(storage)
+	for _, clientID := range []string{"index", strings.Repeat("x", 129)} {
+		body, err := json.Marshal(tokenUpsertRequest{ClientID: clientID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		requests := []*http.Request{
+			newTestRequest(http.MethodPost, "/tokens", bytes.NewReader(body)),
+			newTestRequest(http.MethodDelete, "/tokens/"+clientID, nil),
+			newTestRequest(http.MethodPost, "/tokens/"+clientID+"/rotate", nil),
+		}
+		for _, request := range requests {
+			request.Header.Set("If-Match", `"1"`)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest {
+				t.Errorf("%s %s: status=%d, want 400; body=%s", request.Method, request.URL.Path, response.Code, response.Body.String())
+			}
+		}
+	}
+	entries, err := storage.listTokens()
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("invalid client IDs changed token state: entries=%+v err=%v", entries, err)
+	}
+	// 合法长度边界仍可创建，并证明拒绝保留名后索引可以继续使用。
+	body, _ := json.Marshal(tokenUpsertRequest{ClientID: strings.Repeat("v", 128)})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, newTestRequest(http.MethodPost, "/tokens", bytes.NewReader(body)))
+	if response.Code != http.StatusCreated {
+		t.Fatalf("valid boundary client ID: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestTokenClientIDValidation(t *testing.T) {
+	checkTokenClientIDValidation(t, newMemoryStore())
+}
+
+func TestTokenDisableMissingReturnsNotFound(t *testing.T) {
+	storage := newMemoryStore()
+	router := routesWithStore(storage)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, newTestRequest(http.MethodDelete, "/tokens/missing", nil))
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("disable missing: status=%d body=%s", response.Code, response.Body.String())
+	}
+	if err := createTokenForTest(storage, "missing", "valid-token"); err != nil {
+		t.Fatalf("disable missing prevented later create: %v", err)
 	}
 }

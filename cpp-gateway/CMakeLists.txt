@@ -85,4 +85,10 @@ if(BUILD_TESTING)
                 $<TARGET_FILE:message_server>
     )
     set_tests_properties(half_close_test PROPERTIES TIMEOUT 30)
+    add_test(
+        NAME input_bounds_test
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/InputBoundsTest.py
+                $<TARGET_FILE:message_server>
+    )
+    set_tests_properties(input_bounds_test PROPERTIES TIMEOUT 20)
 endif()

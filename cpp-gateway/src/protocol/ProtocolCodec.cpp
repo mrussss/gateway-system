@@ -35,7 +35,8 @@ std::string ProtocolCodec::encode(const Response &response)
     return result;
 }
 
-DecodeStatus ProtocolCodec::decode(std::string &input_buffer, int fd, std::vector<Request> &out_requests, uint64_t conn_id)
+DecodeStatus ProtocolCodec::decode(std::string &input_buffer, int fd, std::vector<Request> &out_requests,
+                                   uint64_t conn_id, uint32_t max_body_size)
 {
     size_t read_index = 0;
     bool need_more_data = false;
@@ -59,7 +60,8 @@ DecodeStatus ProtocolCodec::decode(std::string &input_buffer, int fd, std::vecto
         uint32_t host_body_length = ntohl(network_body_len);
 
         // validate body_length range (OOM / invalid-protocol guard)
-        if (host_body_length < FIXED_BODY_SIZE || host_body_length > MAX_BODY_SIZE)
+        if (host_body_length < FIXED_BODY_SIZE || host_body_length > MAX_BODY_SIZE ||
+            host_body_length > max_body_size)
         {
             return DecodeStatus::INVALID_LENGTH;
         }

@@ -113,18 +113,14 @@ func (s *redisStore) rotateToken(clientID string, expected int64, digest, update
 func (s *redisStore) disableToken(clientID, updatedAt string) error {
 	ctx, cancel := redisContext()
 	defer cancel()
-	changed, err := s.client.HSet(ctx, "token:"+clientID, "disabled", 1, "updated_at", updatedAt).Result()
+	// 检查和禁用放进同一个 Lua 操作，避免 HSET 为不存在的 Token 创建残缺记录。
+	script := redis.NewScript(`if redis.call('EXISTS',KEYS[1]) == 0 then return 0 end; redis.call('HSET',KEYS[1],'disabled',1,'updated_at',ARGV[1]); return 1`)
+	changed, err := script.Run(ctx, s.client, []string{"token:" + clientID}, updatedAt).Int()
 	if err != nil {
 		return err
 	}
 	if changed == 0 {
-		exists, err := s.client.Exists(ctx, "token:"+clientID).Result()
-		if err != nil {
-			return err
-		}
-		if exists == 0 {
-			return errTokenNotFound
-		}
+		return errTokenNotFound
 	}
 	return nil
 }

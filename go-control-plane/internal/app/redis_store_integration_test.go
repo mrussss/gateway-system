@@ -2,12 +2,44 @@ package app
 
 import (
 	"context"
+	"errors"
 	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestRedisTokenClientIDValidation(t *testing.T) {
+	addr := os.Getenv("REDIS_TEST_ADDR")
+	if addr == "" {
+		t.Skip("REDIS_TEST_ADDR is not set")
+	}
+	storage := newRedisStore(addr)
+	defer storage.Close()
+	if err := storage.client.FlushDB(context.Background()).Err(); err != nil {
+		t.Fatal(err)
+	}
+	checkTokenClientIDValidation(t, storage)
+}
+
+func TestRedisDisableMissingTokenDoesNotCreateRecord(t *testing.T) {
+	addr := os.Getenv("REDIS_TEST_ADDR")
+	if addr == "" {
+		t.Skip("REDIS_TEST_ADDR is not set")
+	}
+	storage := newRedisStore(addr)
+	defer storage.Close()
+	if err := storage.client.FlushDB(context.Background()).Err(); err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.disableToken("missing", nowRFC3339()); !errors.Is(err, errTokenNotFound) {
+		t.Errorf("disable missing: err=%v, want errTokenNotFound", err)
+	}
+	if err := createTokenForTest(storage, "missing", "valid-token"); err != nil {
+		t.Fatalf("disable missing prevented later create: %v", err)
+	}
+}
 
 func TestRedisTokenLifecycleContract(t *testing.T) {
 	addr := os.Getenv("REDIS_TEST_ADDR")

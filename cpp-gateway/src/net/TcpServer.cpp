@@ -784,6 +784,12 @@ void TcpServer::handleRead(int fd)
                 static_cast<size_t>(bytes_read));
             LOG_DEBUG("read fd=%d conn_id=%llu bytes=%zd", fd,
                       static_cast<unsigned long long>(connection->second.conn_id), bytes_read);
+            // 每次读取后立即解析：完整帧交给有界队列，只保留一个未完成的尾帧。
+            // ET 仍继续读到 EAGAIN；非法长度无需等待整个输入流结束才被拒绝。
+            if (!decodeAndEnqueue(fd))
+            {
+                return;
+            }
             continue;
         }
         if (bytes_read == 0)
@@ -1121,7 +1127,8 @@ bool TcpServer::decodeAndEnqueue(int fd, bool read_eof)
     Connection &current = connection->second;
     const bool eof = read_eof || current.read_eof;
     const DecodeStatus status = ProtocolCodec::decode(
-        current.input_buffer, current.fd, decoded_requests, current.conn_id);
+        current.input_buffer, current.fd, decoded_requests, current.conn_id,
+        static_cast<uint32_t>(config.max_payload_size));
     if (status == DecodeStatus::INVALID_LENGTH)
     {
         business::StatsManager::getInstance().incrementErrors();
