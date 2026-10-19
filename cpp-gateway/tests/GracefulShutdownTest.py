@@ -82,6 +82,38 @@ def server_fd_for_client(process_id: int, gateway_port: int, client: socket.sock
     raise AssertionError("could not map accepted socket inode to gateway fd")
 
 
+def connect_reusing_server_fd(
+    process_id: int,
+    gateway_port: int,
+    target_fd: int,
+    keepers: list[socket.socket],
+) -> socket.socket:
+    """Hold lower accepted fds until Linux reuses the disconnected fd."""
+    deadline = time.monotonic() + 2.0
+    last_fd = None
+    attempts = 0
+    while time.monotonic() < deadline and attempts < 32:
+        candidate = socket.create_connection(("127.0.0.1", gateway_port), timeout=3)
+        candidate.settimeout(3)
+        try:
+            candidate_fd = server_fd_for_client(process_id, gateway_port, candidate)
+        except Exception:
+            candidate.close()
+            raise
+        if candidate_fd == target_fd:
+            return candidate
+
+        # Keep each accepted connection open so its descriptor stays occupied.
+        # The next connection can then advance to the next free descriptor.
+        keepers.append(candidate)
+        last_fd = candidate_fd
+        attempts += 1
+
+    raise AssertionError(
+        f"test could not force fd reuse: old={target_fd} last={last_fd} attempts={attempts}"
+    )
+
+
 class ControlPlaneHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -601,6 +633,8 @@ def test_fd_reuse_rejects_stale_auth_response(
         socket.create_connection(("127.0.0.1", gateway.port), timeout=3)
         for _ in range(8)
     ]
+    for keeper in keepers:
+        server_fd_for_client(gateway.process.pid, gateway.port, keeper)
     old = socket.create_connection(("127.0.0.1", gateway.port), timeout=3)
     old.sendall(
         packet(
@@ -623,20 +657,16 @@ def test_fd_reuse_rejects_stale_auth_response(
     deadline = time.monotonic() + 1
     while fd_path.exists() and time.monotonic() < deadline:
         time.sleep(0.005)
-    replacement = socket.create_connection(("127.0.0.1", gateway.port), timeout=3)
-    replacement.settimeout(3)
-    replacement_server_fd = server_fd_for_client(
-        gateway.process.pid, gateway.port, replacement
-    )
-    if replacement_server_fd != old_server_fd:
-        replacement.close()
+    try:
+        replacement = connect_reusing_server_fd(
+            gateway.process.pid, gateway.port, old_server_fd, keepers
+        )
+    except Exception:
         for keeper in keepers:
             keeper.close()
         gateway.signal()
         gateway.wait(timeout=4)
-        raise AssertionError(
-            f"test could not force fd reuse: old={old_server_fd} new={replacement_server_fd}"
-        )
+        raise
 
     time.sleep(0.25)
     control_plane.set_auth_delay(0.0)
@@ -690,6 +720,8 @@ def test_cross_generation_response_rejection(
         socket.create_connection(("127.0.0.1", gateway.port), timeout=3)
         for _ in range(8)
     ]
+    for keeper in keepers:
+        server_fd_for_client(gateway.process.pid, gateway.port, keeper)
     old = gateway.connect_authenticated("old-rejection-generation")
     old.sendall(packet(PING, 100))
     if gateway.wait_for_admitted_work() < 1:
@@ -702,20 +734,16 @@ def test_cross_generation_response_rejection(
     deadline = time.monotonic() + 1
     while fd_path.exists() and time.monotonic() < deadline:
         time.sleep(0.005)
-    replacement = socket.create_connection(("127.0.0.1", gateway.port), timeout=3)
-    replacement.settimeout(3)
-    replacement_server_fd = server_fd_for_client(
-        gateway.process.pid, gateway.port, replacement
-    )
-    if replacement_server_fd != old_server_fd:
-        replacement.close()
+    try:
+        replacement = connect_reusing_server_fd(
+            gateway.process.pid, gateway.port, old_server_fd, keepers
+        )
+    except Exception:
         for keeper in keepers:
             keeper.close()
         gateway.signal()
         gateway.wait(timeout=5)
-        raise AssertionError(
-            f"test could not force fd reuse: old={old_server_fd} new={replacement_server_fd}"
-        )
+        raise
 
     payload = json.dumps({"client_id": "replacement-rejection-generation", "token": "test-token"}).encode()
     replacement.sendall(packet(AUTH, 1, payload))
