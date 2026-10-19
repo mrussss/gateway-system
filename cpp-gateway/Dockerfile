@@ -1,8 +1,15 @@
 FROM ubuntu:22.04 AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends cmake g++ make ca-certificates \
+ARG UBUNTU_MIRROR=""
+RUN if [ -n "$UBUNTU_MIRROR" ]; then \
+      sed -i \
+        -e "s|http://archive.ubuntu.com/ubuntu|${UBUNTU_MIRROR%/}|g" \
+        -e "s|http://security.ubuntu.com/ubuntu|${UBUNTU_MIRROR%/}|g" \
+        /etc/apt/sources.list; \
+    fi \
+    && apt-get -o Acquire::Retries=3 update \
+    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends cmake g++ make ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

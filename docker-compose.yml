@@ -44,6 +44,8 @@ services:
   cpp-gateway:
     build:
       context: ./cpp-gateway
+      args:
+        UBUNTU_MIRROR: "${UBUNTU_MIRROR:-}"
     environment:
       APP_ENV: production
       GATEWAY_PORT: "9000"
