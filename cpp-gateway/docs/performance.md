@@ -1,29 +1,9 @@
-# C++ Gateway Performance Notes
+# C++ 网关性能路径
 
-The completed performance change is the Response Queue eventfd wakeup.
+Worker 成功推送 Response 后写入 eventfd，阻塞的 Reactor 随即从 epoll_wait 返回并排空响应；正常运行不使用固定周期轮询。eventfd 也用于 stop 通知和 Response Queue 严重拒绝处理。
 
-Historical behavior:
+输出通过 output_buffer + write_offset 保留未发送字节，避免部分写后反复搬移缓冲。需要追加时才压缩已发送区间。
 
-```text
-Worker pushes response
-  → Reactor remains in epoll_wait(timeout=100ms)
-  → low-load response waits for timeout
-```
+本地结果与方法见[Benchmark 说明](../../docs/benchmark.md)。机器、Docker 网络和线程调度会影响数据；不代表生产容量。
 
-Current behavior:
-
-```text
-Worker successfully pushes response
-  → write eventfd
-  → epoll returns
-  → read eventfd until EAGAIN
-  → drain all responses
-```
-
-Normal operation now uses an infinite epoll timeout. Eventfd also wakes the Reactor for stop requests and for severe Response Queue rejection handling.
-
-The output path uses `output_buffer + write_offset`, avoiding a full-buffer copy and `erase(0, n)` on each partial send. A completed buffer is cleared once; appending after a partial write compacts only the unsent prefix.
-
-Current reference numbers and methodology live in [the root benchmark report](../../docs/benchmark.md). The former ~100ms single-connection delay fell to local Release P50/P95 of 0.28/0.60ms. These are comparison data, not a production capacity claim.
-
-Known performance limits remain fresh-connection synchronous HTTP AUTH in a fixed independent Worker group, synchronous LOG_PUSH file flush, a single Reactor, and a Python benchmark client.
+已知限制包括每个新连接的同步 HTTP AUTH、固定大小的独立 AUTH Worker、LOG_PUSH 同步写文件、单 Reactor 和 Python Benchmark client。

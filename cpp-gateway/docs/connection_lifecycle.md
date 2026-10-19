@@ -1,18 +1,7 @@
-# Connection Lifecycle
+# 连接生命周期
 
-```text
-accept4(NONBLOCK | CLOEXEC)
-  → assign monotonic conn_id
-  → register EPOLLIN | EPOLLET | EPOLLRDHUP
-  → AUTH_PENDING
-  → AUTHENTICATED
-  → business requests / output
-  → peer close, error, policy close, or shutdown drain
-  → epoll DEL + close + erase
-```
+accept4 创建非阻塞、CLOEXEC Socket 后分配递增 conn_id，再注册 EPOLLIN、EPOLLET、EPOLLRDHUP。连接经过 AUTH_PENDING、AUTHENTICATED，最终由 Reactor 删除 epoll interest 并关闭。
 
-The fd is only an OS resource number. The connection identity is `(fd, conn_id)`, and every Worker response must match both.
+异步响应必须同时匹配 fd 与 conn_id。ET 读取持续到 EAGAIN；部分写推进 write_offset，遇到 EAGAIN 后等待 EPOLLOUT。半关闭时先处理可读帧，等已接纳工作和输出排空后才关闭。
 
-Read events drain `recv` until EAGAIN and decode all complete frames. Write events advance `write_offset` until EAGAIN or completion. ERR/HUP/RDHUP close through the same idempotent `closeConnection` path.
-
-During DRAINING, listener and EPOLLIN interest are removed. Already admitted Request Queue items continue through Workers; output is flushed until empty or the shutdown deadline. See [the root shutdown contract](../../docs/shutdown.md).
+DRAINING 停止监听与新解码，已接纳工作继续排空至 deadline。详见[连接生命周期契约](../../docs/connection_lifecycle.md)。

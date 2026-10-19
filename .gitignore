@@ -35,3 +35,7 @@ logs/
 .env
 .env.*
 !.env.example
+
+# Benchmark 运行输出：保留摘要与方法说明，不跟踪逐请求原始 JSON。
+results/benchmark/*/*.json
+!results/benchmark/*/summary.json

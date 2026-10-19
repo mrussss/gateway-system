@@ -1,10 +1,5 @@
-# Historical v2 development record
+# 历史 v2 开发记录
 
-The original v2 development plan described exploratory Prometheus,
-multi-gateway, online-client and Kubernetes work. It is retained only as a
-historical record; none of those areas belongs to the permanent `main`
-ownership scope.
+旧 v2 计划曾讨论 Prometheus、多网关、在线客户端和 Kubernetes。这些是历史方案，不是当前功能承诺。
 
-The complete pre-reduction implementation is available from the
-`archive/v2-full` branch and `v2-full-archive` tag. The current project
-boundary is documented in the root README and active architecture/API docs.
+v2 完整代码仍可从 Git 分支 archive/v2-full 和标签 v2-full-archive 恢复。当前边界见根 README、架构与 API 契约。

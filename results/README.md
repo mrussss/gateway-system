@@ -1,12 +1,7 @@
-# Evidence
+# 测试证据
 
-Results are reserved for reproducible evidence of the permanent Final Scope:
-C++ build/sanitizer/benchmark/failure cases, Go tests, real Redis contracts,
-Compose smoke and recovery.
+本目录只保留当前项目范围需要的结果摘要与方法。C++ 构建、Sanitizer、Go、真实 Redis、Compose Smoke/恢复和 Benchmark 命令见[测试说明](../docs/testing.md)。
 
-The repository does not retain evidence for removed Prometheus, multi-gateway,
-online-client aggregation or Kubernetes functionality. Run the current gate to
-create fresh local artifacts:
+历史 Benchmark 原始 JSON 已先行归档；修改前的 206 个跟踪文件可由本机归档包或 Git 提交 f5fdfe8 恢复。当前摘要见 benchmark/20261019-full-gate/。
 
-    scripts/release_gate.sh --fast
-    scripts/release_gate.sh --full
+Benchmark 脚本默认在 results/benchmark/<run-id>/ 生成原始输出；新 JSON 不纳入 Git，仅保留有复核价值的 summary.json 和方法说明。不要提交凭据、本地 .env 或过程日志。

@@ -68,6 +68,7 @@ func (s *redisStore) authFailureLimited(clientID string, limit int64) (bool, err
 func (s *redisStore) recordAuthFailure(clientID string, window time.Duration) (int64, error) {
 	ctx, cancel := redisContext()
 	defer cancel()
+	// 计数和首次失败的 TTL 在同一个脚本内完成，后续失败不会滚动延长窗口。
 	script := redis.NewScript(`local count=redis.call('INCR',KEYS[1]); if count==1 then redis.call('PEXPIRE',KEYS[1],ARGV[1]) end; return count`)
 	return script.Run(ctx, s.client, []string{authFailureKey(clientID)}, window.Milliseconds()).Int64()
 }
@@ -82,6 +83,7 @@ func (s *redisStore) createToken(record tokenRecord) error {
 	ctx, cancel := redisContext()
 	defer cancel()
 	key := "token:" + record.ClientID
+	// 存在性检查、Token Hash 与索引 Set 在同一个脚本内完成，避免并发创建绕过检查。
 	script := redis.NewScript(`if redis.call('EXISTS', KEYS[1]) == 1 then return 0 end redis.call('HSET', KEYS[1], 'digest', ARGV[1], 'generation', 1, 'created_at', ARGV[2], 'updated_at', ARGV[2], 'disabled', 0) redis.call('SADD', KEYS[2], ARGV[3]) return 1`)
 	created, err := script.Run(ctx, s.client, []string{key, "token:index"}, record.Digest, record.CreatedAt, record.ClientID).Int()
 	if err != nil {
@@ -96,6 +98,7 @@ func (s *redisStore) createToken(record tokenRecord) error {
 func (s *redisStore) rotateToken(clientID string, expected int64, digest, updatedAt string) (tokenRecord, error) {
 	ctx, cancel := redisContext()
 	defer cancel()
+	// generation 比较与摘要轮换保持原子，避免并发更新覆盖彼此。
 	script := redis.NewScript(`local current=redis.call('HGET',KEYS[1],'generation'); if not current then return -1 end; if tonumber(current)~=tonumber(ARGV[1]) then return 0 end; local next=tonumber(current)+1; redis.call('HSET',KEYS[1],'digest',ARGV[2],'generation',next,'updated_at',ARGV[3],'disabled',0); return next`)
 	next, err := script.Run(ctx, s.client, []string{"token:" + clientID}, expected, digest, updatedAt).Int64()
 	if err != nil {
@@ -167,6 +170,7 @@ func (s *redisStore) updateConfig(expectedVersion int64, req configUpdateRequest
 	ctx, cancel := redisContext()
 	defer cancel()
 	defaults := defaultRuntimeConfig()
+	// 版本检查、递增和完整配置写入一次完成，避免留下混合版本字段。
 	script := redis.NewScript(`local current=redis.call('HGET',KEYS[1],'version'); if not current or tonumber(current)~=tonumber(ARGV[1]) then return {0,''} end; local next=tonumber(current)+1; local display=redis.call('HGET',KEYS[1],'request_queue_capacity_display') or ARGV[7]; redis.call('HSET',KEYS[1],'version',next,'max_payload_size',ARGV[2],'max_connections_per_client',ARGV[3],'max_requests_per_client_per_second',ARGV[4],'slow_client_output_limit',ARGV[5],'log_level',ARGV[6],'request_queue_capacity_display',display); return {next,display}`)
 	result, err := script.Run(ctx, s.client, []string{"config:active"}, expectedVersion, req.MaxPayloadSize, req.MaxConnectionsPerClient, req.MaxRequestsPerClientPerSecond, req.SlowClientOutputLimit, strings.ToUpper(req.LogLevel), defaults.RequestQueueCapacityDisplay).Slice()
 	if err != nil {

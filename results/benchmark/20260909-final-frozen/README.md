@@ -1,21 +1,5 @@
-# Final frozen benchmark evidence
+# 历史 Benchmark 快照
 
-- Benchmark target commit: `859717ce2cc3160473b391bf18a40194deedbd37`
-- Git status at capture: `clean` (recorded in `environment.txt`)
-- Build mode: `Release-container`
-- Profiles: `workers1-q64`, `workers1-q4096`, `workers4-q64`, `workers4-q4096`
-- Fixed controls: `AUTH_WORKER_COUNT=2`, `AUTH_QUEUE_CAPACITY=32`,
-  `RESPONSE_QUEUE_CAPACITY=4096`
-- Repeats: 3 per cell
-- Raw files: 108 across 36 cells, with zero failed requests
+本目录记录 2026-09-09 的历史结果，目标提交为 859717ce2cc3160473b391bf18a40194deedbd37。该快照不是当前 HEAD 的验收证据。当前结果见[2026-10-19 Full Gate](../20261019-full-gate/README.md)。
 
-Each profile covers 1/10/100/500 clients with 128/4096-byte payloads, plus a
-10% slow-reader case with a 50ms read delay. Every raw result records Gateway
-`STATS` before/after snapshots and counter deltas; `summary.json` reports
-min/median/max across repeats.
-
-The host already had the default ports occupied, so this run used a local-only
-Compose override mapping host ports 16379/18080/19000 to the unchanged service
-ports 6379/8080/9000. The captured results are local development evidence for
-latency, throughput, queue pressure, slow-reader behavior and request
-accounting. They are not production capacity claims.
+精简后此处只保留当时环境和统计摘要，公开环境记录中的主机名已隐去。原始 JSON 在本机 B 阶段归档，也可由 Git 提交 f5fdfe8 的历史树恢复。

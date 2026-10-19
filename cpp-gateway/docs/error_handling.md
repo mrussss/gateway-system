@@ -1,21 +1,15 @@
-# Error Handling
+# 错误处理
 
-| Failure | Implemented behavior |
-| --- | --- |
-| incomplete frame | retain bytes and wait for the next EPOLLIN |
-| invalid body length | increment error and close connection |
-| Request Queue full | status 503; AUTH closes after response |
-| Request Queue stopped | reject explicitly; never silently drop |
-| Response Queue full/stopped | count error, notify Reactor independently, close matching fd + conn_id |
-| output above 8 MiB | close the slow connection |
-| stale response | discard when conn_id does not match |
-| EPOLLERR/HUP/RDHUP | close through the common connection path |
-| EINTR | retry accept4/recv/send/eventfd/control HTTP IO |
-| config fetch/parse failure | retain current complete snapshot |
-| control plane unavailable during AUTH | fail closed |
-| shutdown deadline | force-close remaining connections |
+- 不完整帧：保留已收数据并等待后续读取。
+- 长度非法：记录错误并关闭连接。
+- Request/AUTH Queue 满：明确拒绝；AUTH 尝试响应后关闭。
+- Queue 停止：拒绝新工作，保留已入队工作供退出排空。
+- Response Queue 满或停止：通知 Reactor，只关闭代次匹配的连接。
+- 输出超限：关闭慢读连接。
+- 迟到响应：conn_id 不匹配时丢弃。
+- EPOLLERR/HUP/RDHUP：统一走连接关闭逻辑。
+- 配置获取或解析失败：保留当前完整快照。
+- AUTH 控制面不可用：失败关闭。
+- 退出 deadline 到期：关闭余下连接和未完成工作。
 
-`BlockQueue::stop()` rejects new pushes while preserving drain semantics for items already present. Consumers return false only after the stopped queue becomes empty.
-`BlockQueue::abort()` is used only after the shutdown deadline and discards pending elements.
-
-Detailed cross-component failures are documented in [failure cases](../../docs/failure_cases.md).
+BlockQueue 的 FULL、STOPPED、stop 和 deadline 后 abort 语义以源码和测试为准。跨组件故障见[故障语义](../../docs/failure_semantics.md)。

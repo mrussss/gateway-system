@@ -33,7 +33,7 @@ namespace business
         }
         catch (const std::filesystem::filesystem_error &)
         {
-            // append() returns false so the request receives an explicit failure.
+            // 写入失败要返回明确错误，不能把未落盘的日志确认成功。
         }
     }
 

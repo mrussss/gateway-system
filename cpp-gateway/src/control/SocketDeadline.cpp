@@ -121,8 +121,8 @@ std::optional<SocketDeadline> SocketDeadline::connect(
     }
     std::unique_ptr<addrinfo, AddrInfoDeleter> addresses(raw_addresses);
 
-    // Synchronous getaddrinfo is the documented boundary. Every resolved address
-    // and all socket operations share the deadline created after resolution.
+    // getaddrinfo 是同步调用，不能被 Socket deadline 中断；解析后的地址尝试和
+    // connect/send/receive 操作共用一个绝对 deadline。
     Deadline deadline = std::chrono::steady_clock::now() +
                         std::chrono::milliseconds(timeout_ms);
     if (not_after)

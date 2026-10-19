@@ -1,19 +1,12 @@
-# Design decisions
+# 设计选择
 
-- C++ owns every client socket and epoll mutation; this makes Reactor
-  correctness and shutdown ownership explicit.
-- Normal work and slow AUTH dependency work use separate bounded queues and
-  worker pools.
-- eventfd wakes the Reactor after a response enqueue, so idle latency does not
-  depend on timeout polling.
-- A response is valid only when both fd and monotonic conn_id still match.
-- Output buffers use an offset for partial writes and enforce a slow-reader
-  limit.
-- AUTH is fail-closed on Store or control-plane failure. Redis failure counters
-  use atomic increment plus TTL and clear after success.
-- Runtime config uses Redis Lua CAS and C++ accepts only validated newer
-  versions, retaining last-known-good state otherwise.
-- Go uses net/http and MemoryStore as a local/test double; Redis is the shared
-  state backend for Compose.
-- Internal C++ counters remain useful for tests, overload evidence and
-  benchmarks, but there is no remote metrics product surface.
+- **单 Reactor**：连接状态、epoll interest、输出缓存及关闭由一个线程所有，减少生命周期竞争；不承诺持续输入下的调度公平性。
+- **有界队列**：过载时明确拒绝，避免无界内存积压。
+- **独立 AUTH 队列和 Worker**：Go/Redis 延迟不会占用普通业务 Worker；队列和并发调用均有限制。
+- **eventfd**：响应成功入队后唤醒 Reactor，避免固定周期轮询。
+- **fd + conn_id**：内核会复用 fd；代次不匹配的异步响应必须丢弃。
+- **输出偏移量**：部分写保留未发送后缀，不搬移整个缓冲区。
+- **失败关闭**：控制面或 Store 故障时，新 AUTH 不通过；已认证连接的普通请求可以继续。
+- **版本化配置**：Go 用 Lua CAS 原子更新；C++ 只切换校验通过的较新快照，失败则保留 last-known-good。
+- **窄控制面**：使用 Go net/http；MemoryStore 用于测试和本地开发，Compose 使用 Redis。
+- **本地指标**：C++ 计数用于 STATS、测试和 Benchmark，不提供远程指标产品接口。

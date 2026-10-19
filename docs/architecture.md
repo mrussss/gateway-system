@@ -1,94 +1,38 @@
-# Architecture
+# 系统架构
 
-Gateway System has one C++ Linux data plane and a deliberately narrow Go/Redis
-control plane. `MemoryStore` is only a unit-test and local-development
-double.
+Gateway System 由 Linux C++ 数据面和窄范围 Go/Redis 控制面组成。MemoryStore 只作为测试与本地开发替身。
 
-## Data path
+## TCP 数据路径
 
-```text
-TCP Client
-    │ length-prefixed frames
-    ▼
-C++ Reactor
-    ├── Normal Queue → Worker ─┐
-    ├── AUTH Queue → AUTH Worker ─┤
-    └──────── Response Queue ◄────┘
-                 │
-              eventfd
-                 │
-                 ▼
-              Reactor
-```
+~~~text
+TCP Client → C++ Reactor
+                 ├── Normal Queue → Worker ─┐
+                 ├── AUTH Queue → AUTH Worker ── Go /auth/check → Redis
+                 └── Response Queue ◄────────┘
+                              │ eventfd
+                              └───────────────→ Reactor
+~~~
 
-The Reactor owns accept, reads, writes, epoll interest and connection close.
-Workers never mutate socket lifetime. Every request and response carries
-`fd + conn_id`; the monotonic connection id prevents a delayed response from
-being applied after kernel fd reuse.
+Reactor 独占 accept、读写、epoll 状态和连接关闭。Worker 不修改 Socket 生命周期。请求和响应携带 fd + conn_id，连接编号防止内核复用 fd 后误用旧响应。
 
-When the peer sends FIN, the Reactor drains readable bytes before marking
-`read_eof`. Complete frames are admitted normally, while a truncated trailing
-frame is logged and discarded. The connection remains live while
-`in_flight_work` or pending output exists; Worker responses can therefore be
-written after the peer half-close, and the fd closes only after both are
-drained.
+收到 FIN 后先排空可读数据，再标记 read_eof。完整帧照常接纳，残缺尾帧记录后丢弃。只要还有 in-flight 工作或待发送输出，连接继续保持可写。
 
-The normal and AUTH queues are bounded and return explicit `OK`, `FULL` and
-`STOPPED` states. AUTH has its own queue and worker pool, so a slow Go/Redis
-dependency cannot consume ordinary TCP worker capacity. Worker responses enter
-a bounded Response Queue and wake the Reactor through eventfd; the Reactor
-drains the queue rather than using fixed-interval polling.
+Normal、AUTH、Response 队列均有界。独立 AUTH Worker 避免 Go/Redis 延迟占用普通 Worker。响应入队后以 eventfd 唤醒 Reactor，避免固定周期轮询。
 
-## Backpressure and shutdown
+## 背压与退出
 
-Each connection has an output buffer and write offset. Partial writes retain
-the unsent suffix and enable `EPOLLOUT`; the configured output limit protects
-against slow readers. The lifecycle is:
+每连接输出缓冲使用 write offset 处理部分写；待发数据保留并启用 EPOLLOUT。达到输出上限时关闭慢读连接。生命周期为 RUNNING → DRAINING → STOPPED。DRAINING 停止接纳新任务，排空已接纳工作与输出，到 deadline 后中止剩余任务并关闭连接。
 
-```text
-RUNNING → DRAINING → STOPPED
-```
+## 控制路径
 
-DRAINING closes the listener, stops new work, drains accepted work and
-responses, flushes pending output, and closes a connection only when its
-admitted work and output are both drained. Remaining queue items are aborted
-at the shutdown deadline. The deadline is finite and eventfd wakes the loop
-for both responses and stop requests.
+~~~text
+AUTH Worker → POST /auth/check → Redis Token 摘要与失败 TTL
+Admin → PUT /config + If-Match → Redis Lua CAS
+      → 版本递增 → C++ 拉取 → 校验 → 不可变快照切换
+~~~
 
-## Control plane
+Token 用安全随机源生成，Redis 只存 HMAC-SHA256 摘要。AUTH 失败计数通过原子 INCR 与 TTL 保存；成功后清除，Redis 故障时失败关闭。C++ 只应用校验通过的较新配置，失败时保留 last-known-good。
 
-```text
-AUTH Worker → POST /auth/check → Token digest + Failure TTL in Redis
+## 项目边界
 
-Admin → PUT /config → validate + If-Match
-                  → Redis Lua CAS
-                  → version + 1
-                  → C++ GET /config
-                  → validate → immutable snapshot swap
-```
-
-Tokens are generated with a secure random source. Only HMAC-SHA256 digests are
-stored. Failed authentication uses atomic Redis `INCR + PEXPIRE`, clears on
-success, and fails closed when Redis is unavailable.
-
-Runtime configuration uses an atomic Lua compare-and-set. C++ accepts only a
-validated response with a strictly newer version; failed fetches retain the
-last-known-good snapshot.
-
-The HTTP service uses Go's `net/http`, strict JSON decoding, structured API
-errors, admin/gateway authentication, readiness backed by Store health, and
-standard signal/context/deadline shutdown.
-
-## Deliberate boundary
-
-This final project does not include Kubernetes orchestration, a Prometheus
-monitoring product, multi-gateway registry or fleet status, online-client
-aggregation, service discovery, distributed rate limiting, TLS termination,
-business database integration, message queues, multi-Reactor sharding or HA
-Redis orchestration.
-
-The single Reactor drains a readable socket until `EAGAIN`. A continuously
-writing peer can therefore consume a disproportionate share of one Reactor
-iteration; this is an explicit single-Reactor input-fairness boundary. The
-final scope does not add a multi-Reactor scheduler, `io_uring` or a coroutine
-runtime to address it.
+不包含 Kubernetes、Prometheus 产品监控、多网关注册、客户端汇总、服务发现、分布式限流、TLS 终止、业务数据库、消息队列、多 Reactor 或 Redis 高可用。单 Reactor 不承诺持续输入下的调度公平性；同步 getaddrinfo 不受 Socket deadline 控制。

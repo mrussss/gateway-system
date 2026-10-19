@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// Run starts the control plane and blocks until it exits or receives a shutdown signal.
+// Run 启动控制面并持续运行，直至进程退出或收到关闭信号。
 func Run() {
 	config, err := loadApplicationConfigFromEnv()
 	if err != nil {

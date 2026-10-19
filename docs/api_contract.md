@@ -1,79 +1,31 @@
-# API Contract
+# HTTP API 契约
 
-The Go control plane listens on `:8080`. JSON requests must use
-`Content-Type: application/json`; unknown fields, trailing JSON values and
-oversized bodies are rejected. Responses include a request id, explicit
-`Content-Length` and structured JSON errors.
+Go 控制面默认监听 8080。JSON 请求使用 Content-Type: application/json；未知字段、尾随 JSON 值和超限请求体会被拒绝。响应包含 Request ID、Content-Length 和结构化 JSON。
 
-## Authentication
+## 认证与健康检查
 
-Admin endpoints require:
+管理接口使用 Authorization: Bearer <CONTROL_PLANE_ADMIN_TOKEN>；C++ 网关到 Go 使用 X-Gateway-Token: <GATEWAY_SHARED_TOKEN>。
 
-```http
-Authorization: Bearer <CONTROL_PLANE_ADMIN_TOKEN>
-```
-
-The C++ gateway uses:
-
-```http
-X-Gateway-Token: <GATEWAY_SHARED_TOKEN>
-```
-
-## Health
-
-| Method | Path | Auth | Meaning |
+| 方法 | 路径 | 认证 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/health` | none | Process is serving HTTP |
-| GET | `/health/ready` | none | Store is reachable and control plane can serve requests |
+| GET | /health | 无 | HTTP 进程正在服务 |
+| GET | /health/ready | 无 | Store 可用并能接受工作 |
+| POST | /auth/check | Gateway Token | 校验 client_id 和 token |
+| POST | /tokens | 管理 Token | 创建 Token，返回一次性 secret |
+| GET | /tokens | 管理 Token | 仅列出元数据 |
+| DELETE | /tokens/{client_id} | 管理 Token | 禁用 Token；不存在返回 404 |
+| POST | /tokens/{client_id}/rotate | 管理 Token | 用 If-Match generation 轮换 |
+| GET | /config | 管理或 Gateway Token | 读取配置和 ETag |
+| PUT | /config | 管理 Token | 用 If-Match 原子更新配置 |
 
-Readiness returns `503 NOT_READY` when the configured Store cannot be reached.
+Store 不可用时 readiness 返回 503 NOT_READY。Token secret 只在创建时返回；存储仅保留 HMAC-SHA256 摘要。client_id 限 1–128 字节，index 为 Redis 索引集合保留值。
 
-## AUTH and tokens
+AUTH 的业务拒绝返回 HTTP 200 及 allowed/code。依赖故障返回 HTTP 503 AUTH_UNAVAILABLE，调用方失败关闭。只有确认的凭据错误增加失败计数；计数带 TTL，成功认证后清除。
 
-| Method | Path | Auth | Purpose |
-| --- | --- | --- | --- |
-| POST | `/auth/check` | gateway | Check `client_id` and token |
-| POST | `/tokens` | admin | Generate and create a token |
-| GET | `/tokens` | admin | List token metadata only |
-| DELETE | `/tokens/{client_id}` | admin | Disable a token |
-| POST | `/tokens/{client_id}/rotate` | admin | Rotate using `If-Match: "<generation>"` |
+## 运行配置
 
-Token creation returns the one-time secret. Listing never returns a secret or
-digest. Token management accepts `client_id` values of 1–128 bytes; `index` is
-reserved for the Redis token index. Disabling an absent token returns HTTP 404
-without creating a record. AUTH returns HTTP 200 with `allowed` and one of `OK`,
-`INVALID_CREDENTIALS`, `TOKEN_DISABLED` or `RATE_LIMITED`. Store errors return
-HTTP 503 `AUTH_UNAVAILABLE` and fail closed. Failure counts have a
-bounded TTL and are cleared after successful authentication.
+PUT /config 必须携带当前 ETag 对应的 If-Match。版本冲突返回 409 CONFLICT，缺少前置条件返回 428 PRECONDITION_REQUIRED。Redis Lua CAS 负责比较并递增版本。C++ 只接受完整校验且版本更新的配置；拉取或校验失败时保留 last-known-good。
 
-## Runtime configuration
+字段包括 version、max_payload_size、max_connections_per_client、max_requests_per_client_per_second、slow_client_output_limit、log_level、request_queue_capacity_display。queue capacity display 仅供显示，实际队列容量由 C++ 启动参数控制。
 
-| Method | Path | Auth | Purpose |
-| --- | --- | --- | --- |
-| GET | `/config` | admin or gateway | Read active snapshot and ETag |
-| PUT | `/config` | admin | Validate and atomically update with If-Match |
-
-`PUT /config` requires the current quoted or unquoted version in
-`If-Match`. A stale version returns `409 CONFLICT`; missing precondition
-returns `428 PRECONDITION_REQUIRED`. Redis Lua CAS increments the version
-monotonically. C++ retains its last-known-good immutable snapshot if fetching or
-validating a newer config fails.
-
-The snapshot fields are:
-
-- `version`
-- `max_payload_size`
-- `max_connections_per_client`
-- `max_requests_per_client_per_second`
-- `slow_client_output_limit`
-- `log_level`
-- `request_queue_capacity_display`
-
-The queue capacity display is informational because C++ bounded queues are
-allocated at startup.
-
-`max_payload_size` limits the complete protocol body, including its 10-byte
-fixed header, and must be in `[10, 4194314]`. The output limit must cover this
-body plus the 4-byte length prefix and stay at or below 64 MiB. Connection and
-request limits must be in `[1, 2147483647]`; C++ rejects fractional or
-out-of-range numeric fields without replacing its current snapshot.
+max_payload_size 沿用现有字段名，但限制的是完整协议 body（包括 10 字节固定头），范围为 10 到 4 MiB + 10 字节。slow_client_output_limit 还要容纳 4 字节长度前缀，且不能超过 64 MiB。连接数和每客户端每秒请求数范围为 1 到 2147483647。Go 与 C++ 均拒绝小数及越界整数；C++ 校验失败时保留当前快照。

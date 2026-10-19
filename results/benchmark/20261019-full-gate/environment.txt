@@ -1,9 +1,9 @@
-captured_at_utc=2026-08-25T02:00:39Z
-git_head=0ad989a2a1051f2d4a188dde8ba1b90111cf00ea
-working_tree=139 tracked changes
+captured_at_utc=2026-10-19T12:58:16Z
+git_head=f5fdfe8b4c3485e30e356a70c441ffaadd418e3c
+git_status=clean
 
 [kernel]
-Linux LAPTOP-7Q69GP7V 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+Linux host-redacted 6.18.33.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun 18 21:54:43 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
 
 [cpu]
 Architecture:                            x86_64
@@ -14,7 +14,7 @@ CPU(s):                                  32
 
 [memory]
                total        used        free      shared  buff/cache   available
-Mem:            15Gi       3.6Gi       3.0Gi        49Mi       8.9Gi        11Gi
+Mem:            15Gi       3.7Gi       9.3Gi        49Mi       2.5Gi        11Gi
 Swap:          4.0Gi          0B       4.0Gi
 
 [toolchains]
@@ -31,7 +31,22 @@ Python 3.10.12
 
 [containers]
 Client:
- Version:           29.6.2
- API version:       1.55
- Go version:        go1.26.5
- Git commit:        dfc4efb
+ Version:           29.8.1
+ API version:       1.56
+ Go version:        go1.26.8
+ Git commit:        4a63305
+Docker Compose version v5.5.1
+
+[benchmark]
+run_id=a-completion-20261019
+repeats=3
+requests_1=1000
+requests_10=200
+requests_100=50
+requests_500=20
+response_queue_capacity=4096
+auth_worker_count=2
+auth_queue_capacity=32
+gateway_host=127.0.0.1
+gateway_port=9000
+control_plane_url=http://127.0.0.1:8080

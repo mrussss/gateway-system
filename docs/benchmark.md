@@ -1,67 +1,33 @@
-# Benchmark
+# Benchmark 方法与结果
 
-The benchmark exercises authenticated TCP throughput and latency across a
-controlled worker/request-queue matrix, payload sizes, concurrent clients and
-slow readers. It records request success/failure accounting, latency
-percentiles, AUTH latency, Gateway `STATS` before/after snapshots and optional
-Linux process CPU/RSS samples.
+Benchmark 用 Compose 测量已认证 TCP 请求吞吐与延迟，记录请求成功/失败、百分位延迟、AUTH 延迟、网关 STATS 前后快照；可用时另采集 Linux CPU/RSS。
 
-The final matrix keeps the response queue and AUTH controls fixed:
+## 当前完整结果
 
-| Profile | Workers | Request Queue | Response Queue | AUTH Workers | AUTH Queue |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `workers1-q64` | 1 | 64 | 4096 | 2 | 32 |
-| `workers1-q4096` | 1 | 4096 | 4096 | 2 | 32 |
-| `workers4-q64` | 4 | 64 | 4096 | 2 | 32 |
-| `workers4-q4096` | 4 | 4096 | 4096 | 2 | 32 |
+2026-10-19 对提交 f5fdfe8b4c3485e30e356a70c441ffaadd418e3c 运行完整 release gate Benchmark。环境为 WSL2 + Docker Desktop，工作区干净。4 种配置 × 9 种场景 × 3 次重复，共 36 格、108 次运行、492000 次请求；成功 492000，失败 0。
 
-Each profile covers 1/10/100/500 clients with 128/4096-byte payloads and a
-100-client, 4096-byte, 10% slow-reader case with a 50ms read delay. By default
-the workload uses 1000/200/50/20 requests per client for 1/10/100/500 clients
-respectively and repeats every cell three times. The script produces 108 raw
-JSON files plus `summary.json`, which reports min/median/max for QPS and
-latency percentiles. `BENCHMARK_REQUESTS_PER_CLIENT` can override the sample
-plan for development runs.
+配置固定 AUTH Worker=2、AUTH Queue=32、Response Queue=4096；变化项如下：
 
-The final matrix is strict: a case with any failed request fails the matrix
-validation. The standalone TCP runner retains an explicit
-`--allow-request-failures` option for deliberate overload experiments, but the
-final matrix does not use it.
+| 配置 | Worker | Request Queue | Response Queue |
+| --- | ---: | ---: | ---: |
+| workers1-q64 | 1 | 64 | 4096 |
+| workers1-q4096 | 1 | 4096 | 4096 |
+| workers4-q64 | 4 | 64 | 4096 |
+| workers4-q4096 | 4 | 4096 | 4096 |
 
-Every raw result contains `gateway_stats.before`, `gateway_stats.after` and
-counter deltas for queue rejection, slow-client close and stale-response
-events. Queue peaks are process-lifetime values and are not presented as
-per-cell values unless the profile has been restarted.
+每组包括 1/10/100/500 客户端、128/4096 字节 payload，以及 100 客户端中 10% 慢读、延迟 50ms 的场景。默认每客户端请求量依次为 1000/200/50/20。每项均通过请求记账，并记录前后 STATS 和队列容量。
 
-Before each profile, the runner uses the existing versioned `/config` API and
-CAS contract to raise `max_requests_per_client_per_second` for the workload.
-This keeps the requested sample plan from being dominated by the normal
-per-client policy limiter; queue capacities and worker counts remain the
-controlled matrix variables.
+容器 PID 不在 WSL /proc 命名空间，因此本次没有 CPU/RSS 样本；不据此推断进程资源使用。统计摘要见 results/benchmark/20261019-full-gate/summary.json，环境记录和方法见同目录。
 
-Run the reproducible Compose matrix with:
+## 复现
 
-    CONTROL_PLANE_ADMIN_TOKEN=... GATEWAY_SHARED_TOKEN=... TOKEN_PEPPER=... scripts/benchmark_matrix.sh
+需要 Docker、curl、Python、Compose 和测试凭据。脚本默认要求干净工作区：
 
-When the default host ports are occupied, use a Compose override together
-with `BENCHMARK_CONTROL_PLANE_URL`, `BENCHMARK_GATEWAY_HOST` and
-`BENCHMARK_GATEWAY_PORT`; the service-internal ports remain unchanged.
+~~~bash
+CONTROL_PLANE_ADMIN_TOKEN=... GATEWAY_SHARED_TOKEN=... TOKEN_PEPPER=... \
+  scripts/benchmark_matrix.sh
+~~~
 
-The script requires a clean Git tree before creating the output directory or
-capturing the environment. `BENCHMARK_ALLOW_DIRTY=1` is available only for
-development runs and marks the captured evidence as non-final.
+默认端口被占用时，用 Compose override 和 BENCHMARK_CONTROL_PLANE_URL、BENCHMARK_GATEWAY_HOST、BENCHMARK_GATEWAY_PORT 指向隔离端口。输出目录可用 BENCHMARK_OUTPUT_DIR 改到本地 build 目录。BENCHMARK_ALLOW_DIRTY=1 只用于开发试跑，不能作为正式结果。
 
-Final evidence must include the frozen commit SHA, `git_status=clean`, the
-release-container build, the fixed matrix above, repeated raw JSON, summary
-statistics and the captured environment. Benchmark output is evidence for
-queue, eventfd, framing, AUTH isolation, partial-write and overload behavior.
-It does not claim production capacity or availability. In the current local
-container setup, process CPU/RSS samples may be unavailable across the PID
-namespace boundary and are not a final headline metric when null.
-
-Recommended wording:
-
-> On a frozen local Compose benchmark, the gateway records latency,
-> throughput, queue pressure, slow-reader behavior and request accounting
-> across a controlled worker/request-queue matrix. Results are development
-> evidence rather than production capacity claims.
+历史原始数据已先归档，归档位置、SHA256 和恢复方式见归档 README。仓库保留当前提交的环境记录和统计摘要。Benchmark 只代表记录的本地环境，不代表线上 SLA 或生产容量。

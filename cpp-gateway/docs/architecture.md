@@ -1,15 +1,15 @@
-# C++ Data Plane Architecture
+# C++ 数据面架构
 
-```text
+~~~text
 epoll Reactor
-  ├─ listener and client descriptors
-  ├─ Connection map (fd + conn_id)
-  ├─ protocol decode and local policy decisions
-  ├─ bounded Request Queue → Worker pool
-  ├─ eventfd ◄────────────── bounded Response Queue
-  └─ offset-based output buffers
-```
+  ├─ listener 和 client descriptor
+  ├─ Connection map（fd + conn_id）
+  ├─ 协议解析与本地策略
+  ├─ 有界 Request Queue → Worker
+  ├─ eventfd ◄── 有界 Response Queue
+  └─ 带 offset 的输出缓冲
+~~~
 
-The Reactor owns connection mutation. Normal Workers dispatch ordinary requests; a separate bounded AUTH Executor performs synchronous control-plane checks. Both groups publish Response values through the shared bounded queue. Eventfd integrates that cross-thread completion path with epoll without timeout polling.
+Reactor 修改连接状态；普通 Worker 执行业务，独立 AUTH Executor 调用控制面。结果经有界 Response Queue 返回，并以 eventfd 唤醒 epoll。
 
-See the authoritative [system architecture](../../docs/architecture.md) and [design decisions](../../docs/design_decisions.md).
+完整所有权与数据流见[系统架构](../../docs/architecture.md)。

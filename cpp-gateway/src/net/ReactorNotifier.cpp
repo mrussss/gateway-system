@@ -40,8 +40,7 @@ bool ReactorNotifier::notify() const noexcept
         {
             continue;
         }
-        // EAGAIN means the counter is already saturated, so the reactor is
-        // guaranteed to observe a pending wakeup.
+        // EAGAIN 表示 eventfd 已有待处理计数，Reactor 已能观察到这次唤醒。
         return written == -1 && errno == EAGAIN;
     }
 }
@@ -55,6 +54,7 @@ bool ReactorNotifier::consume() const noexcept
     }
 
     uint64_t value = 0;
+    // 读到 EAGAIN 才表示计数器已清空，后续通知可以再次唤醒 Reactor。
     while (true)
     {
         ssize_t n = read(descriptor, &value, sizeof(value));

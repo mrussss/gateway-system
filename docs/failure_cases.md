@@ -1,20 +1,5 @@
-# Failure cases
+# 故障场景索引
 
-- Invalid framing is rejected and the connection is closed without touching
-  worker queues.
-- A full Request or AUTH queue returns an explicit overload response while
-  retaining queue isolation.
-- A full Response Queue closes only the affected connection through the
-  Reactor's rejected-response path.
-- A slow reader is bounded by its output limit and the shutdown deadline.
-- A stale worker response is dropped unless both fd and conn_id still identify
-  the same live connection.
-- Control-plane HTTP timeout, malformed JSON, non-2xx status or Redis failure
-  fails AUTH closed and does not terminate the C++ process.
-- Redis outage makes readiness fail, preserves established C++ data-plane
-  traffic, rejects new AUTH with AUTH_UNAVAILABLE, and recovers on later
-  successful calls.
-- Invalid or stale runtime configuration is rejected; the active C++ snapshot
-  remains last-known-good.
-- SIGINT/SIGTERM transitions the C++ server through bounded DRAINING and the
-  Go server uses context cancellation plus an HTTP shutdown deadline.
+当前完整故障语义统一记录在[故障语义](failure_semantics.md)，避免协议、AUTH、队列、Redis 和退出行为发生文档漂移。
+
+测试覆盖 Redis 不可用、AUTH fail-closed、配置保留、队列过载、迟到响应、慢读客户端和 deadline 退出；见[测试说明](testing.md)。

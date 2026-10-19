@@ -1,172 +1,47 @@
-# Protocol
+# TCP 二进制协议
 
-## Packet Format
+每个 TCP 帧使用大端长度前缀：
 
-Each TCP packet is length-prefixed:
-
-```text
+~~~text
 uint32 body_length
 uint8  version
 uint8  message_type
 uint64 request_id
 bytes  payload
-```
+~~~
 
-Rules:
+body_length 不含自身的 4 字节长度字段，包含其后的 version、message_type、request_id 与 payload。固定头长 10 字节；多字节整数采用网络字节序。每次读取后先校验声明长度，再等待完整消息体；因此只暂存一个不完整的尾帧。
 
-- `body_length` does not include the 4-byte length field itself
-- `body_length` includes `version + message_type + request_id + payload`
-- multi-byte integers use network byte order
-- the fixed header size after the length prefix is 10 bytes
-- the gateway validates declared body length after each read, before waiting
-  for the full body; only an incomplete trailing frame stays buffered
+## 消息类型
 
-## Message Types
+| 值 | 名称 | 说明 |
+| ---: | --- | --- |
+| 1 | PING | 连通性探测，响应 PONG |
+| 2 | ECHO | 原样回显 payload |
+| 3 | LOG_PUSH | 接收包含 level、service、message 的 JSON 日志 |
+| 4 | STATS | 返回请求、错误、字节、连接和队列计数 |
+| 5 | PONG | PING 响应 |
+| 6 | ECHO_RESP | ECHO 响应 |
+| 7 | ERROR_RESP | 业务错误响应 |
+| 8 | LOG_ACK | 日志写入确认 |
+| 9 | STATS_RESP | STATS 响应 |
+| 10 | AUTH | 连接级认证 |
+| 11 | AUTH_RESP | AUTH 结果 |
 
-```text
-1  PING
-2  ECHO
-3  LOG_PUSH
-4  STATS
-5  PONG
-6  ECHO_RESP
-7  ERROR_RESP
-8  LOG_ACK
-9  STATS_RESP
-10 AUTH
-11 AUTH_RESP
-```
+## AUTH 与连接规则
 
-## Request and Response Summary
+新连接必须先发送 JSON 对象，包含字符串 client_id 和 token。字段类型错误、认证被拒绝、未认证前发送业务请求、AUTH 等待期间发送第二条消息，都会关闭连接。Go/Redis 不可用时返回 AUTH_UNAVAILABLE 并失败关闭。AUTH 队列满时尽可能返回 AUTH_OVERLOADED 后关闭。成功后才允许业务请求；重复 AUTH 返回 ERROR_RESP，连接仍保持打开。
 
-`PING`
+max_connections_per_client 与 max_requests_per_client_per_second 按单进程执行。达到连接上限时返回 allowed=false 并关闭；超过每秒请求限制时返回 429 错误，连接保持打开。
 
-- request payload: empty
-- response type: `PONG`
-- response payload: JSON with `message: "pong"`
+## 帧长度与响应
 
-`ECHO`
+body 固定部分为 10 字节。当前 payload 上限 4 MiB，body 上限 4 MiB + 10。长度小于固定头或超出配置/硬上限时，在等待 body 前即拒绝。慢读连接超过输出缓冲限制时关闭。
 
-- request payload: arbitrary bytes
-- response type: `ECHO_RESP`
-- response payload: original bytes
+解码器支持单次 read 中多个完整帧和跨 read 的分片帧。半关闭时先处理完整请求，再丢弃截断尾帧。STATS 字段的具体采集点见 cpp-gateway/src/business/Handlers.cpp 和 StatsManager.cpp。
 
-`LOG_PUSH`
-
-- request payload: JSON object with `level`, `service`, `message`
-- response type: `LOG_ACK` on success
-- error response: `ERROR_RESP` for invalid JSON, missing fields, or oversized payload
-
-`STATS`
-
-- request payload: empty
-- response type: `STATS_RESP`
-- response payload: JSON counters for requests, errors, bytes, active connections, and queue state
-
-Queue fields:
-
-```text
-total_request_queue_backlog
-total_response_queue_backlog
-request_queue_capacity
-response_queue_capacity
-request_queue_peak
-response_queue_peak
-request_queue_rejected
-response_queue_rejected
-```
-
-`AUTH`
-
-- request payload: JSON object with `client_id` and `token`
-- response type: `AUTH_RESP` on success
-- response type: `AUTH_RESP` with `allowed=false` when the per-process connection limit is exceeded after auth validation
-- connection close on malformed or rejected auth
-- `AUTH_RESP` with `AUTH_OVERLOADED` followed by close when the independent AUTH Queue is full
-
-## AUTH Rules
-
-New connections start unauthenticated.
-
-Before auth succeeds:
-
-- only `AUTH` is allowed
-- any business message closes the connection
-- a second message while auth is pending closes the connection
-
-`AUTH` request shape:
-
-```json
-{"client_id":"client_001","token":"test-token"}
-```
-
-Success path:
-
-- payload must be valid JSON
-- `client_id` must be a string
-- `token` must be a string
-- the Go control plane must allow the token
-- the connection is then marked authenticated
-- successful `AUTH` returns `{"allowed":true,"code":"OK"}`
-
-Failure path:
-
-- invalid JSON closes the connection
-- missing `client_id` or `token` closes the connection
-- invalid field types close the connection
-- rejected token closes the connection
-- when the control plane is unreachable or returns a store error, auth also fails closed
-
-AUTH pending behavior:
-
-- the first `AUTH` request is queued to a worker thread
-- the connection stays unauthenticated while that worker request is in flight
-- any second packet that arrives before the auth result is applied closes the connection
-
-After auth succeeds:
-
-- business messages are allowed
-- a repeated `AUTH` request returns `ERROR_RESP` with `{"status":400,"message":"already authenticated"}`
-
-Connection limit behavior:
-
-- after a successful auth result is ready, the gateway counts other authenticated connections for the same `client_id` in the local process
-- if that count would exceed `max_connections_per_client`, the gateway returns `AUTH_RESP` with `{"allowed":false,"reason":"max connections exceeded"}`
-- that response is followed by connection close
-
-Rate-limit behavior:
-
-- after auth succeeds, the gateway enforces `max_requests_per_client_per_second`
-- when the current per-second window is exceeded, the gateway returns `ERROR_RESP`
-- the rate-limit payload is `{"status":429,"message":"rate limited"}`
-- the connection stays open
-
-## Error Handling
-
-The protocol currently uses two styles of failure:
-
-- `ERROR_RESP` for business-level errors such as duplicate `AUTH` or invalid business payloads
-- direct connection close for malformed protocol frames and rejected auth
-- `AUTH_RESP` with `allowed=false` for connection-limit rejection after otherwise valid auth
-- an explicit status 503 response for Request Queue overload
-
-## Test Coverage
-
-Current repo-level protocol tests cover:
-
-- valid `AUTH`
-- valid `PING`, `ECHO`, `LOG_PUSH`, `STATS`
-- half-packet handling
-- sticky-packet handling
-- invalid length handling
-- unauthenticated request rejection
-- invalid auth JSON
-- missing auth fields
-- invalid auth field types
-- auth pending second-request rejection
-- duplicate auth rejection
-- per-process max connection rejection
-- per-process rate limiting
-- queue capacity/peak/rejection telemetry
-- Request Queue overload response and close policy
-- bounded graceful shutdown and slow-client deadline (CTest integration)
+- PING 返回 PONG；ECHO 返回原 payload。
+- LOG_PUSH 成功返回 LOG_ACK；格式或写入错误返回 ERROR_RESP。
+- STATS 返回队列容量、积压、峰值与拒绝计数等。
+- 普通业务队列过载返回 503；AUTH 有独立过载语义。
+- 非法帧和被拒绝的 AUTH 关闭连接。
