@@ -8,6 +8,10 @@ state:
     auth:failures:{client_id} String counter with PEXPIRE
     config:active            Hash: version and validated runtime fields
 
+`client_id=index` is reserved and rejected by token-management endpoints so a
+Token Hash cannot collide with the `token:index` Set. Disabling a missing token
+does not create a hash.
+
 Token digests are the only credential material stored. AUTH failure increments
 use a Lua script so the first increment sets the window TTL atomically.
 Configuration updates use a Lua compare-and-set: expected version is checked,

@@ -39,9 +39,11 @@ Readiness returns `503 NOT_READY` when the configured Store cannot be reached.
 | POST | `/tokens/{client_id}/rotate` | admin | Rotate using `If-Match: "<generation>"` |
 
 Token creation returns the one-time secret. Listing never returns a secret or
-digest. AUTH returns HTTP 200 with `allowed` and one of `OK`,
-`INVALID_CREDENTIALS`, `TOKEN_DISABLED`, `RATE_LIMITED` or
-`AUTH_UNAVAILABLE`. Store errors are fail-closed. Failure counts have a
+digest. Token management accepts `client_id` values of 1–128 bytes; `index` is
+reserved for the Redis token index. Disabling an absent token returns HTTP 404
+without creating a record. AUTH returns HTTP 200 with `allowed` and one of `OK`,
+`INVALID_CREDENTIALS`, `TOKEN_DISABLED` or `RATE_LIMITED`. Store errors return
+HTTP 503 `AUTH_UNAVAILABLE` and fail closed. Failure counts have a
 bounded TTL and are cleared after successful authentication.
 
 ## Runtime configuration
@@ -69,3 +71,9 @@ The snapshot fields are:
 
 The queue capacity display is informational because C++ bounded queues are
 allocated at startup.
+
+`max_payload_size` limits the complete protocol body, including its 10-byte
+fixed header, and must be in `[10, 4194314]`. The output limit must cover this
+body plus the 4-byte length prefix and stay at or below 64 MiB. Connection and
+request limits must be in `[1, 2147483647]`; C++ rejects fractional or
+out-of-range numeric fields without replacing its current snapshot.

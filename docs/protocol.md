@@ -18,6 +18,8 @@ Rules:
 - `body_length` includes `version + message_type + request_id + payload`
 - multi-byte integers use network byte order
 - the fixed header size after the length prefix is 10 bytes
+- the gateway validates declared body length after each read, before waiting
+  for the full body; only an incomplete trailing frame stays buffered
 
 ## Message Types
 
@@ -105,7 +107,7 @@ Success path:
 - `token` must be a string
 - the Go control plane must allow the token
 - the connection is then marked authenticated
-- successful `AUTH` returns `{"allowed":true,"reason":"ok"}`
+- successful `AUTH` returns `{"allowed":true,"code":"OK"}`
 
 Failure path:
 
